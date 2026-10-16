@@ -870,6 +870,33 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: ["cdn-site -> site : origin"],
   },
+  "soa-10-containers": {
+    nodes: [
+      "bastion eice-lab < snet-private-1",
+      "containerApp svc-web < lab-soa-10-containers · London",
+      "generic ecs-lab < lab-soa-10-containers · London",
+      "internetGateway igw-lab < vpc-lab",
+      "loadBalancer alb-web < vpc-lab",
+      "logAnalytics /cloudlabs/soa-10-containers/web < lab-soa-10-containers · London",
+      "managedIdentity lab-soa-10-containers-exec < lab-soa-10-containers · London",
+      "natGateway nat-lab < snet-public-1",
+      "nsg sg-alb < vpc-lab",
+      "nsg sg-eice < vpc-lab",
+      "nsg sg-tasks < vpc-lab",
+      "nsg sg-vms < vpc-lab",
+      "privateEndpoint vpce-s3 < vpc-lab",
+      "registry ecr-web < lab-soa-10-containers · London",
+      "resourceGroup lab-soa-10-containers · London",
+      "routeTable rt-private < vpc-lab",
+      "routeTable rt-public < vpc-lab",
+      "subnet snet-private-1 < vpc-lab",
+      "subnet snet-private-2 < vpc-lab",
+      "subnet snet-public-1 < vpc-lab",
+      "subnet snet-public-2 < vpc-lab",
+      "vnet vpc-lab < lab-soa-10-containers · London",
+    ],
+    edges: ["alb-web -> svc-web : HTTP 80", "rt-private ..> nat-lab : 0.0.0.0/0", "rt-public ..> igw-lab : 0.0.0.0/0"],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);

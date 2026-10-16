@@ -1,0 +1,45 @@
+# Lab soa-10 (AWS labs batch 2). SOA-C03 ((V) the wording against the current
+# exam guide): Deployment, Provisioning, and Automation (container images in
+# ECR, ECS services on Fargate); Monitoring (Container Insights).
+# London list prices × 0.75 (labs-verify --aws-prices); the NAT gateway and the
+# ALB bill each started hour whole (V, A20). Authored: Fargate ARM64 2 tasks ×
+# (0.25 vCPU × $0.03725/h + 0.5 GB × $0.00409/h) (V) -> £0.0171; ALB capacity
+# units; Container Insights metrics; logs. EKS is described under Not built here.
+id: soa-10-containers
+version: 1
+cloud: aws
+title: "Containers: ECR and ECS Fargate behind an ALB"
+summary: >-
+  An ECS cluster with Container Insights running two Fargate tasks behind an internet-facing Application Load Balancer,
+  pulling through a NAT gateway, and an ECR repository with scanning and a lifecycle policy for your own images.
+exam: SOA-C03
+skill_areas: [soa.deployment, soa.monitoring]
+level: associate
+type: explore
+prerequisites: [soa-03-auto-scaling]
+cost:
+  items:
+    - name: "NAT gateway, hourly"
+      gbp_h: 0.0375
+      whole_hours: true
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { productFamily: "NAT Gateway", usagetype: "{usage}-NatGateway-Hours" } }
+    - name: "Application Load Balancer, hourly"
+      gbp_h: 0.0199
+      whole_hours: true
+      aws_price: { service: AWSELB, unit: Hrs, filters: { productFamily: "Load Balancer-Application", usagetype: "{usage}-LoadBalancerUsage" } }
+    - { name: "ALB capacity units, light test traffic", gbp_h: 0.0060 }
+    - name: "Public IPv4 addresses (the ALB's 2 and the NAT gateway's)"
+      gbp_h: 0.0038
+      qty: 3
+      aws_price: { service: AmazonVPC, unit: Hrs, filters: { group: VPCPublicIPv4Address, usagetype: "{usage}-PublicIPv4:InUseAddress" } }
+    - { name: "Fargate ARM64, 2 tasks of 0.25 vCPU and 0.5 GB", gbp_h: 0.0171 }
+    - { name: "Container Insights metrics, CloudWatch Logs, ECR storage (empty)", gbp_h: 0.0020 }
+  pricey: null
+timing: { deploy_min: 8, destroy_min: 6, session_h: 2, max_h: 4 }
+capacity: { instance_types: [] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: [role]
+  roles: []
+  governance: false

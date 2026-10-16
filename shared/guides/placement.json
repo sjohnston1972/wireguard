@@ -774,5 +774,14 @@
    "width": 632,
    "height": 438
   }
+ ],
+ "soa-10-containers": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A load balancer sending traffic to an ECS service, in one VPC with four subnets.",
+   "width": 1755,
+   "height": 1146
+  }
  ]
 }
