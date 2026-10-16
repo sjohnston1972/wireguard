@@ -8,14 +8,18 @@
 # eu-west-1), plus its Config recorders named lab-<id>-*. Never an item
 # carrying the VPN server's wg-admin tag, even with the lab's tag too.
 #
-#   RDS instances          deletion protection off (applied immediately)
+#   RDS instances          deletion protection off (applied immediately), only
+#                          when it is on or cannot be read (ruling P18: the
+#                          modify leaves a database "modifying")
 #   load balancers         deletion_protection.enabled = false (application,
 #                          network and gateway; a classic one has none)
 #   DynamoDB tables        deletion protection off
 #   Network Firewall       delete protection off
 #   EC2 instances          termination protection off, then stop protection off
 #   CloudFormation stacks  termination protection off
-#   Config recorders       named lab-<id>-* stopped (lab 02; never another one)
+#   Config recorders       named lab-<id>-* stopped (lab 02; never another one),
+#                          listed in the lab regions only (never us-east-1 or
+#                          us-west-2, where the role is refused Config)
 #   Backup vaults          every recovery point deleted, then the vault polled
 #                          every 15 s until it is empty, at most
 #                          LAB_UNBLOCK_VAULT_WAIT_SECONDS (default 300)
@@ -145,7 +149,12 @@ for r in $REGIONS; do
     if [ "$head" = "$rest" ]; then id="$rest"; else id="${rest:${#head}+1}"; fi
     case "$service:$head" in
       rds:db)
-        do_write "$r" "turn off deletion protection on rds:db $id" rds modify-db-instance --db-instance-identifier "$id" --no-deletion-protection --apply-immediately ;;
+        # Only when it is on (or cannot be read): the modify leaves a database "modifying", which a destroy then waits on.
+        if dj="$(awsq "$r" rds describe-db-instances --db-instance-identifier "$id")" && [ "$(jq -r '.DBInstances[0].DeletionProtection' <<<"$dj" 2>/dev/null)" = false ]; then
+          echo "unblock: rds:db $id has no deletion protection"
+        else
+          do_write "$r" "turn off deletion protection on rds:db $id" rds modify-db-instance --db-instance-identifier "$id" --no-deletion-protection --apply-immediately
+        fi ;;
       elasticloadbalancing:loadbalancer)
         [[ "$id" == app/* || "$id" == net/* || "$id" == gwy/* ]] || continue
         do_write "$r" "turn off deletion protection on load balancer $id" elbv2 modify-load-balancer-attributes --load-balancer-arn "$arn" --attributes Key=deletion_protection.enabled,Value=false ;;
@@ -177,14 +186,17 @@ for r in $REGIONS; do
     esac
   done < <(jq -r '.ResourceTagMappingList[]? | [.ResourceARN // "", (if any((.Tags // [])[]; .Key == "wg-admin") then "1" else "0" end)] | join("\u001f")' <<<"$listed")
 
-  # Config recorders by name (they take no tags): only this lab's.
-  if rj="$(awsq "$r" configservice describe-configuration-recorders)"; then
-    while IFS= read -r n; do
-      [ -z "$n" ] && continue
-      do_write "$r" "stop Config recorder $n" configservice stop-configuration-recorder --configuration-recorder-name "$n"
-    done < <(jq -r --arg p "$PREFIX" '.ConfigurationRecorders[]?.name // empty | select(startswith($p))' <<<"$rj")
-  else
-    warn "could not list the Config recorders in $r ($(code))"
+  # Config recorders by name (they take no tags): only this lab's, and only in the lab regions (a global lab's
+  # us-east-1 and us-west-2 hold CloudFront, Route 53 and Global Accelerator only; the role is refused Config there).
+  if [ "$r" != us-east-1 ] && [ "$r" != us-west-2 ]; then
+    if rj="$(awsq "$r" configservice describe-configuration-recorders)"; then
+      while IFS= read -r n; do
+        [ -z "$n" ] && continue
+        do_write "$r" "stop Config recorder $n" configservice stop-configuration-recorder --configuration-recorder-name "$n"
+      done < <(jq -r --arg p "$PREFIX" '.ConfigurationRecorders[]?.name // empty | select(startswith($p))' <<<"$rj")
+    else
+      warn "could not list the Config recorders in $r ($(code))"
+    fi
   fi
 
   for v in "${vaults[@]}"; do empty_vault "$r" "$v"; done

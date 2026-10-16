@@ -14,9 +14,12 @@
 #   IAM              roles, instance profiles, customer policies and users under
 #                    /cloudlabs-lab/ named lab-<id>-* (never a service-linked
 #                    role, ruling A18, nor wg-admin-labs)
-#   named items      in each lab region, the types that take no tags, named
-#                    lab-<id>-*: CloudWatch dashboards, Config recorders and
-#                    delivery channels, Logs query definitions, KMS aliases
+#   named items      in each lab region (never us-east-1 or us-west-2, where
+#                    the role is refused these services: pre-flight C3), the
+#                    types that take no tags, named lab-<id>-*: CloudWatch
+#                    dashboards, Config recorders and delivery channels, Logs
+#                    query definitions, KMS aliases; and in us-east-1 (a global
+#                    lab's) CloudFront origin access controls
 #
 # Never the VPN server's: an item carrying the wg-admin tag is skipped even
 # when it carries the lab's tag too, and so is anything inside a VPC tagged
@@ -24,13 +27,23 @@
 # a VPC is deleted in that region). Verify clean still names such an item when
 # it carries the lab's tag (a person must look), but never scans inside it.
 #
-# Sweep mode deletes, in dependency order (§8.2; batch 1's handlers, ruling
-# A36: any other type is a warning, "no handler for <type> yet", left for
-# Verify clean to report):
+# Sweep mode deletes, in dependency order (§8.2; batches 1 and 2's handlers,
+# ruling A36: any other type is a warning, "no handler for <type> yet", left
+# for Verify clean to report):
 #
-#   1 workloads      Auto Scaling groups (force), EventBridge rules (targets
+#   1 workloads      CloudFormation stacks (ruling P4: deleted and waited for;
+#                    one that ends DELETE_FAILED deleted again with
+#                    FORCE_DELETE_STACK, what it leaves going by its own
+#                    handler), ECS services (scaled to 0, deleted), tasks
+#                    stopped, clusters, task definitions (ruling P12:
+#                    deregistered and deleted), Lambda functions, Auto
+#                    Scaling groups (force), EventBridge rules (targets
 #                    first), Config rules (remediation first), the lab's
 #                    Config recorder stopped, its delivery channel and recorder
+#   2 edge and DNS   CloudFront distributions (disabled, waited for until
+#                    Deployed, deleted with their newest ETag), then the lab's
+#                    origin access controls; Route 53 zones (every record but
+#                    the zone's own NS and SOA first), then health checks
 #   3 network        load balancers, then listener rules and listeners still
 #                    there (most go with their load balancer), then target
 #                    groups; RDS replicas, then
@@ -38,7 +51,7 @@
 #                    (never an automated one: it goes with its database);
 #                    instances terminated; launch templates; NAT gateways;
 #                    Elastic IPs; VPC peering; VPC endpoints; Instance Connect
-#                    Endpoints; volumes
+#                    Endpoints; volumes; flow logs
 #   4 VPC fabric     detached network interfaces, security groups (rules that
 #                    name another lab group revoked first; never "default"),
 #                    subnets, route tables (non-main associations first),
@@ -46,15 +59,22 @@
 #                    (detached first), egress-only gateways, prefix lists, VPCs;
 #                    then security group rules still there (most go with their
 #                    group), revoked by id, never in the VPN server's VPC
-#   5 data           buckets (every version and delete marker), SNS topics, log
-#                    groups, alarms, dashboards, query definitions, SSM
-#                    associations, patch baselines (their patch groups first),
-#                    Backup plans (selections first) and vaults, AMIs, then
-#                    snapshots, resource groups
+#   5 data           buckets (every version and delete marker), SNS topics, SQS
+#                    queues, SSM parameters, log groups, alarms, dashboards,
+#                    query definitions, SSM associations, patch baselines
+#                    (their patch groups first), Backup plans (selections
+#                    first) and vaults, KMS aliases, then keys (ruling P11:
+#                    scheduled for deletion in 7 days), Secrets Manager secrets
+#                    (no recovery window), ECR repositories (with their
+#                    images), Access Analyzer analyzers, AMIs, then snapshots,
+#                    resource groups
 #   6 IAM            instance profiles (roles removed), roles (policies detached
-#                    and deleted), users (login profile and policies first),
-#                    customer policies (old versions first)
+#                    and deleted), users (login profile, then hand-made access
+#                    keys, MFA devices, SSH keys, signing certificates and
+#                    service credentials, ruling P6, then policies), customer
+#                    policies (old versions first)
 #
+# CloudFormation stacks, ECS services and clusters, CloudFront distributions,
 # Auto Scaling groups, load balancers, RDS instances, instances, NAT gateways,
 # VPC endpoints and Instance Connect Endpoints are polled after the delete,
 # every LAB_DELETE_POLL_SECONDS (30), until gone or LAB_JOB_DEADLINE less 420 s
@@ -72,8 +92,11 @@
 # 15 minutes),
 # an AMI deregistered, a dead peering connection, anything AWS answers "not
 # found" for (a security group rule, listener or listener rule gone with its
-# group or load balancer too), and a KMS key pending deletion, are clean). A type with no
-# handler is never clean ("no handler for <type>: <name>"). While a lab VPC
+# group or load balancer too), a stack DELETE_COMPLETE, an ECS cluster or
+# service INACTIVE, a task STOPPED, a task definition DELETE_IN_PROGRESS (an
+# INACTIVE one is a leftover, ruling P12), a secret deleted, and a KMS key
+# pending deletion (ruling P11; an enabled one is a leftover), are clean). A
+# type with no handler is never clean ("no handler for <type>: <name>"). While a lab VPC
 # still exists, every instance (not terminated) and every network interface
 # (not requester-managed, not attached to an instance, which is judged
 # itself) inside it without the lab's tag is "untagged inside lab VPC: <id>"
@@ -123,7 +146,7 @@ code() { local c; c="$(errcode)"; echo "${c:-refused}"; }
 # The last call failed because AWS has no such item.
 gone_err() {
   case "$(errcode)" in
-    *NotFound* | NoSuch* | *DoesNotExist* | 404) return 0 ;;
+    *NotFound* | NoSuch* | *DoesNotExist* | *NonExistentQueue* | 404) return 0 ;;
   esac
   return 1
 }
@@ -193,30 +216,43 @@ discover() {
     else
       list_failed "tagged resources in $r"
     fi
-    if json="$(awsq "$r" cloudwatch list-dashboards --dashboard-name-prefix "$PREFIX")"; then
-      while IFS= read -r n; do [ -n "$n" ] && add "$r" cloudwatch:dashboard "$n" "" "" 0; done < <(jq -r --arg p "$PREFIX" '.DashboardEntries[]?.DashboardName // empty | select(startswith($p))' <<<"$json")
-    else
-      list_failed "CloudWatch dashboards in $r"
+    # The lab-service listings run in the lab regions only (pre-flight C3): a global lab's us-east-1 and us-west-2
+    # hold CloudFront, Route 53 and Global Accelerator only, and the role is refused the rest there.
+    if [ "$r" != us-east-1 ] && [ "$r" != us-west-2 ]; then
+      if json="$(awsq "$r" cloudwatch list-dashboards --dashboard-name-prefix "$PREFIX")"; then
+        while IFS= read -r n; do [ -n "$n" ] && add "$r" cloudwatch:dashboard "$n" "" "" 0; done < <(jq -r --arg p "$PREFIX" '.DashboardEntries[]?.DashboardName // empty | select(startswith($p))' <<<"$json")
+      else
+        list_failed "CloudWatch dashboards in $r"
+      fi
+      if json="$(awsq "$r" configservice describe-configuration-recorders)"; then
+        while IFS= read -r n; do [ -n "$n" ] && add "$r" config:configuration-recorder "$n" "" "" 0; done < <(jq -r --arg p "$PREFIX" '.ConfigurationRecorders[]?.name // empty | select(startswith($p))' <<<"$json")
+      else
+        list_failed "Config recorders in $r"
+      fi
+      if json="$(awsq "$r" configservice describe-delivery-channels)"; then
+        while IFS= read -r n; do [ -n "$n" ] && add "$r" config:delivery-channel "$n" "" "" 0; done < <(jq -r --arg p "$PREFIX" '.DeliveryChannels[]?.name // empty | select(startswith($p))' <<<"$json")
+      else
+        list_failed "Config delivery channels in $r"
+      fi
+      if json="$(awsq "$r" logs describe-query-definitions --query-definition-name-prefix "$PREFIX")"; then
+        while IFS=$'\x1f' read -r n x; do [ -n "$n" ] && add "$r" logs:query-definition "$n" "$x" "" 0; done < <(jq -r --arg p "$PREFIX" '.queryDefinitions[]? | select((.name // "") | startswith($p)) | [.name, .queryDefinitionId // ""] | join("\u001f")' <<<"$json")
+      else
+        list_failed "Logs query definitions in $r"
+      fi
+      if json="$(awsq "$r" kms list-aliases)"; then
+        while IFS=$'\x1f' read -r n x; do [ -n "$n" ] && add "$r" kms:alias "$n" "$x" "" 0; done < <(jq -r --arg p "alias/$PREFIX" '.Aliases[]? | select((.AliasName // "") | startswith($p)) | [.AliasName, .TargetKeyId // ""] | join("\u001f")' <<<"$json")
+      else
+        list_failed "KMS aliases in $r"
+      fi
     fi
-    if json="$(awsq "$r" configservice describe-configuration-recorders)"; then
-      while IFS= read -r n; do [ -n "$n" ] && add "$r" config:configuration-recorder "$n" "" "" 0; done < <(jq -r --arg p "$PREFIX" '.ConfigurationRecorders[]?.name // empty | select(startswith($p))' <<<"$json")
-    else
-      list_failed "Config recorders in $r"
-    fi
-    if json="$(awsq "$r" configservice describe-delivery-channels)"; then
-      while IFS= read -r n; do [ -n "$n" ] && add "$r" config:delivery-channel "$n" "" "" 0; done < <(jq -r --arg p "$PREFIX" '.DeliveryChannels[]?.name // empty | select(startswith($p))' <<<"$json")
-    else
-      list_failed "Config delivery channels in $r"
-    fi
-    if json="$(awsq "$r" logs describe-query-definitions --query-definition-name-prefix "$PREFIX")"; then
-      while IFS=$'\x1f' read -r n x; do [ -n "$n" ] && add "$r" logs:query-definition "$n" "$x" "" 0; done < <(jq -r --arg p "$PREFIX" '.queryDefinitions[]? | select((.name // "") | startswith($p)) | [.name, .queryDefinitionId // ""] | join("\u001f")' <<<"$json")
-    else
-      list_failed "Logs query definitions in $r"
-    fi
-    if json="$(awsq "$r" kms list-aliases)"; then
-      while IFS=$'\x1f' read -r n x; do [ -n "$n" ] && add "$r" kms:alias "$n" "$x" "" 0; done < <(jq -r --arg p "alias/$PREFIX" '.Aliases[]? | select((.AliasName // "") | startswith($p)) | [.AliasName, .TargetKeyId // ""] | join("\u001f")' <<<"$json")
-    else
-      list_failed "KMS aliases in $r"
+    # CloudFront origin access controls take no tags (A4) and are global, so they are listed by name in us-east-1,
+    # which $REGIONS holds only for AWS_GLOBAL_LABS.
+    if [ "$r" = us-east-1 ]; then
+      if json="$(awsq "$r" cloudfront list-origin-access-controls)"; then
+        while IFS=$'\x1f' read -r n x; do [ -n "$n" ] && add "$r" cloudfront:origin-access-control "$x" "" "$n" 0; done < <(jq -r --arg p "$PREFIX" '.OriginAccessControlList.Items[]? | select((.Name // "") | startswith($p)) | [.Name, .Id] | join("\u001f")' <<<"$json")
+      else
+        list_failed "CloudFront origin access controls"
+      fi
     fi
   done
   if json="$(awsq iam iam list-roles --path-prefix "$IAM_PATH")"; then
@@ -298,9 +334,25 @@ describe() {
     backup:backup-vault) set -- backup describe-backup-vault --backup-vault-name "$id"; q='.' ;;
     resource-groups:group) set -- resource-groups get-group --group "$id"; q='.Group' ;;
     kms:key) set -- kms describe-key --key-id "$id"; q='.KeyMetadata' ;;
+    cloudformation:stack) set -- cloudformation describe-stacks --stack-name "$x"; q='.Stacks[]?' ;;
+    sqs:queue) set -- sqs get-queue-url --queue-name "$id"; q='.' ;;
+    ssm:parameter) set -- ssm get-parameter --name "/$id"; q='.Parameter' ;;
+    secretsmanager:secret) set -- secretsmanager describe-secret --secret-id "$x"; q='select(.DeletedDate == null)' ;;
+    lambda:function) set -- lambda get-function-configuration --function-name "${id%%:*}"; q='.' ;;
+    access-analyzer:analyzer) set -- accessanalyzer get-analyzer --analyzer-name "$id"; q='.analyzer' ;;
+    ecr:repository) set -- ecr describe-repositories --repository-names "$id"; q='.repositories[]?' ;;
+    ecs:cluster) set -- ecs describe-clusters --clusters "$x"; q='.clusters[]?' ;;
+    ecs:service) set -- ecs describe-services --cluster "${id%%/*}" --services "$x"; q='.services[]?' ;;
+    ecs:task) set -- ecs describe-tasks --cluster "${id%%/*}" --tasks "$x"; q='.tasks[]?' ;;
+    ecs:task-definition) set -- ecs describe-task-definition --task-definition "$x"; q='.taskDefinition' ;;
+    ec2:vpc-flow-log) set -- ec2 describe-flow-logs --flow-log-ids "$id"; q='.FlowLogs[]?' ;;
+    cloudfront:distribution) set -- cloudfront get-distribution --id "$id"; q='.Distribution' ;;
+    cloudfront:origin-access-control) set -- cloudfront get-origin-access-control --id "$id"; q='.OriginAccessControl' ;;
+    route53:hostedzone) set -- route53 get-hosted-zone --id "$id"; q='.HostedZone' ;;
+    route53:healthcheck) set -- route53 get-health-check --health-check-id "$id"; q='.HealthCheck' ;;
     kms:alias)
       [ -n "$x" ] || return 3
-      set -- kms describe-key --key-id "$x"; q='.KeyMetadata' ;;
+      set -- kms list-aliases --key-id "$x"; q='.Aliases[]? | select(.AliasName == $id)' ;;
     iam:role) set -- iam get-role --role-name "$id"; q='.Role' ;;
     iam:instance-profile) set -- iam get-instance-profile --instance-profile-name "$id"; q='.InstanceProfile' ;;
     iam:policy) set -- iam get-policy --policy-arn "$x"; q='.Policy' ;;
@@ -308,6 +360,7 @@ describe() {
     *) return 3 ;;
   esac
   if ! json="$(awsq "${C_R[$i]}" "$@")"; then
+    [ "${C_T[$i]}" = ecs:task-definition ] && [ "$(errcode)" = ClientException ] && return 1 # a deleted task definition describes as ClientException (V; Task 13)
     gone_err && return 1
     return 2
   fi
@@ -342,14 +395,17 @@ judge() {
     ec2:instance-connect-endpoint | ec2:prefix-list) g='.State == "delete-complete"' ;;
     ec2:image) g='.State == "deregistered"' ;;
     ec2:vpc-peering-connection) g='(.Status.Code // "") | IN("deleted", "rejected", "failed", "expired")' ;;
-    kms:key | kms:alias) g='.KeyState == "PendingDeletion"' ;;
+    kms:key) g='.KeyState == "PendingDeletion"' ;;
+    cloudformation:stack) g='.StackStatus == "DELETE_COMPLETE"' ;;
+    ecs:cluster | ecs:service) g='.status == "INACTIVE"' ;;
+    ecs:task) g='.lastStatus == "STOPPED"' ;;
+    ecs:task-definition) g='.status == "DELETE_IN_PROGRESS"' ;;
     rds:snapshot) g='.Status == "deleting"' ;;
     *) g='false' ;;
   esac
   IFS=$'\x1f' read -r s n < <(jq -r "[ (if ($g) then \"gone\" else \"there\" end), ((.Tags // .TagSet // []) | if type == \"array\" then (map(select(.Key == \"Name\"))[0].Value // \"\") else \"\" end) ] | join(\"\u001f\")" <<<"$DJ" 2>/dev/null)
   J="${s:-there}"
   [ -n "${n:-}" ] && NT="$n"
-  [[ "${C_T[$i]}" == kms:* && "$J" = there ]] && J=nohandler
 }
 
 # ── Verify clean ─────────────────────────────────────────────────────────
@@ -503,7 +559,92 @@ run() {
 }
 
 # ── Handlers ──
-# Phase 1, workloads.
+# Phase 1, workloads. CloudFormation stacks first (ruling P4): deleted and waited for; one that ends DELETE_FAILED
+# (a resource its role could not remove, or a hand-made change) is deleted again with FORCE_DELETE_STACK, which leaves
+# those resources: they carry the stack's tags, so their own handlers below remove them.
+stack_status() {
+  describe "$1"
+  case $? in
+    0) if [ -z "$DJ" ]; then echo DELETE_COMPLETE; else jq -r '.StackStatus // "DELETE_COMPLETE"' <<<"$DJ"; fi ;;
+    1) echo DELETE_COMPLETE ;;
+    *) echo UNKNOWN ;;
+  esac
+}
+stacks() {
+  local i s pass
+  local -a left next
+  for pass in 1 2; do
+    left=()
+    for i in $(of_type cloudformation:stack); do
+      s="$(stack_status "$i")"
+      case "$s" in
+        DELETE_COMPLETE | UNKNOWN) ;;
+        DELETE_IN_PROGRESS) left+=("$i") ;;
+        DELETE_FAILED) wr "$i" "force-delete $(label "$i") (DELETE_FAILED: what it could not delete is left to its own handler)" cloudformation delete-stack --stack-name "${C_A[$i]}" --deletion-mode FORCE_DELETE_STACK && left+=("$i") ;;
+        *) [ "$pass" = 1 ] && wr "$i" "delete $(label "$i")" cloudformation delete-stack --stack-name "${C_A[$i]}" && left+=("$i") ;;
+      esac
+    done
+    while [ "${#left[@]}" -gt 0 ]; do
+      next=()
+      for i in "${left[@]}"; do [[ "$(stack_status "$i")" == *_IN_PROGRESS ]] && next+=("$i"); done
+      left=("${next[@]}")
+      [ "${#left[@]}" -eq 0 ] && break
+      if past_until; then
+        for i in "${left[@]}"; do warn "left behind: $(label "$i")"; done
+        return 0
+      fi
+      echo "safety net: waiting for ${#left[@]} stack(s) to delete"
+      sleep "$POLL_S"
+    done
+  done
+}
+# ECS (ruling P12): services scaled to 0 and deleted, running tasks stopped, clusters deleted once their tasks are gone,
+# task definitions deregistered and deleted (Terraform only deregisters, and the tagging API lists them for ever).
+del_ecs_service() {
+  local i="$1"
+  describe "$i"
+  [ $? -eq 1 ] && return 1
+  [ "$(jq -r '.status // ""' <<<"$DJ" 2>/dev/null)" = INACTIVE ] && return 1
+  wr "$i" "scale $(label "$i") to 0" ecs update-service --cluster "${C_I[$i]%%/*}" --service "${C_A[$i]}" --desired-count 0
+  wr "$i" "delete $(label "$i")" ecs delete-service --cluster "${C_I[$i]%%/*}" --service "${C_A[$i]}" --force
+}
+del_ecs_task() {
+  local i="$1"
+  describe "$i"
+  [ $? -eq 1 ] && return 1
+  [ "$(jq -r '.lastStatus // "STOPPED"' <<<"$DJ" 2>/dev/null)" = STOPPED ] && return 1
+  wr "$i" "stop $(label "$i")" ecs stop-task --cluster "${C_I[$i]%%/*}" --task "${C_A[$i]}"
+}
+ecs_clusters() {
+  local i pass
+  local -a left next
+  mapfile -t left < <(of_type ecs:cluster)
+  for pass in 1 2 3 4 5 6 7 8 9 10; do
+    next=()
+    for i in "${left[@]}"; do
+      judge "$i"
+      [ "$J" = gone ] && continue
+      wr "$i" "delete $(label "$i")" ecs delete-cluster --cluster "${C_A[$i]}" || case "$WCODE" in ClusterContains*) next+=("$i") ;; esac
+    done
+    left=("${next[@]}")
+    [ "${#left[@]}" -eq 0 ] && return 0
+    past_until && break
+    echo "safety net: waiting for the tasks of ${#left[@]} ECS cluster(s) to stop (pass $pass)"
+    sleep "$POLL_S"
+  done
+  for i in "${left[@]}"; do warn "left behind: $(label "$i") (its tasks are still stopping)"; done
+}
+del_taskdef() {
+  local i="$1"
+  describe "$i"
+  [ $? -eq 1 ] && return 1
+  case "$(jq -r '.status // ""' <<<"$DJ" 2>/dev/null)" in
+    DELETE_IN_PROGRESS) return 1 ;;
+    ACTIVE) wr "$i" "deregister $(label "$i")" ecs deregister-task-definition --task-definition "${C_A[$i]}" ;;
+  esac
+  wr "$i" "delete $(label "$i")" ecs delete-task-definitions --task-definitions "${C_A[$i]}"
+}
+del_lambda() { wr "$1" "delete $(label "$1")" lambda delete-function --function-name "${C_I[$1]%%:*}"; }
 del_asg() { wr "$1" "delete $(label "$1")" autoscaling delete-auto-scaling-group --auto-scaling-group-name "${C_I[$1]}" --force-delete; }
 del_rule() {
   local i="$1" id="${C_I[$1]}" json
@@ -534,6 +675,79 @@ del_config_rule() {
 stop_recorder() { wr "$1" "stop $(label "$1")" configservice stop-configuration-recorder --configuration-recorder-name "${C_I[$1]}"; }
 del_channel() { wr "$1" "delete $(label "$1")" configservice delete-delivery-channel --delivery-channel-name "${C_I[$1]}"; }
 del_recorder() { wr "$1" "delete $(label "$1")" configservice delete-configuration-recorder --configuration-recorder-name "${C_I[$1]}"; }
+
+# Phase 2, edge and DNS. CloudFront (spec §15, slow deletes): every enabled distribution is disabled; then each is
+# waited for until Deployed (AWS takes minutes; V up to 20, by UNTIL) and deleted with its newest ETag; then the lab's
+# origin access controls, each with its own ETag.
+distributions() {
+  local i id json etag s e
+  local -a left next
+  for i in $(of_type cloudfront:distribution); do
+    id="${C_I[$i]}"
+    if ! json="$(awsq "${C_R[$i]}" cloudfront get-distribution-config --id "$id")"; then
+      gone_err || warn "could not read $(label "$i") ($(code))"
+      continue
+    fi
+    if [ "$(jq -r '.DistributionConfig.Enabled' <<<"$json")" = true ]; then
+      jq '.DistributionConfig | .Enabled = false' <<<"$json" >"$TMPD/cf-$id.json"
+      wr "$i" "disable $(label "$i")" cloudfront update-distribution --id "$id" --if-match "$(jq -r '.ETag' <<<"$json")" --distribution-config "file://$TMPD/cf-$id.json" || continue
+    fi
+    left+=("$i")
+  done
+  while [ "${#left[@]}" -gt 0 ]; do
+    next=()
+    for i in "${left[@]}"; do
+      if ! json="$(awsq "${C_R[$i]}" cloudfront get-distribution --id "${C_I[$i]}")"; then
+        gone_err || { warn "could not read $(label "$i") ($(code))"; next+=("$i"); }
+        continue
+      fi
+      s="$(jq -r '.Distribution.Status // ""' <<<"$json")"
+      e="$(jq -r '.Distribution.DistributionConfig.Enabled' <<<"$json")"
+      if [ "$s" = Deployed ] && [ "$e" = false ]; then
+        etag="$(jq -r '.ETag' <<<"$json")"
+        wr "$i" "delete $(label "$i")" cloudfront delete-distribution --id "${C_I[$i]}" --if-match "$etag"
+      else
+        next+=("$i")
+      fi
+    done
+    left=("${next[@]}")
+    [ "${#left[@]}" -eq 0 ] && break
+    if past_until; then
+      for i in "${left[@]}"; do warn "left behind: $(label "$i") (still deploying its disabled configuration)"; done
+      return 0
+    fi
+    echo "safety net: waiting for ${#left[@]} CloudFront distribution(s) to finish disabling"
+    sleep "$POLL_S"
+  done
+}
+del_oac() {
+  local i="$1" json
+  if ! json="$(awsq "${C_R[$i]}" cloudfront get-origin-access-control --id "${C_I[$i]}")"; then
+    gone_err || warn "could not read $(label "$i") ($(code))"
+    return 1
+  fi
+  wr "$i" "delete $(label "$i")" cloudfront delete-origin-access-control --id "${C_I[$i]}" --if-match "$(jq -r '.ETag' <<<"$json")"
+}
+# Route 53: every record but the zone's own NS and SOA, as one change batch, then the zone; health checks after (a
+# record that names one would stop its delete).
+del_zone() {
+  local i="$1" z="${C_I[$1]}" json name
+  if ! json="$(awsq "${C_R[$i]}" route53 get-hosted-zone --id "$z")"; then
+    gone_err || warn "could not read $(label "$i") ($(code))"
+    return 1
+  fi
+  name="$(jq -r '.HostedZone.Name' <<<"$json")"
+  if ! json="$(awsq "${C_R[$i]}" route53 list-resource-record-sets --hosted-zone-id "$z")"; then
+    warn "could not list the records of $(label "$i") ($(code))"
+    return 1
+  fi
+  jq --arg n "$name" '{Changes: [.ResourceRecordSets[]? | select(((.Type == "NS" or .Type == "SOA") and .Name == $n) | not) | {Action: "DELETE", ResourceRecordSet: .}]}' <<<"$json" >"$TMPD/rr-$z.json"
+  if [ "$(jq '.Changes | length' "$TMPD/rr-$z.json")" -gt 0 ]; then
+    wr "$i" "delete the records of $(label "$i")" route53 change-resource-record-sets --hosted-zone-id "$z" --change-batch "file://$TMPD/rr-$z.json"
+  fi
+  wr "$i" "delete $(label "$i")" route53 delete-hosted-zone --id "$z"
+}
+del_healthcheck() { wr "$1" "delete $(label "$1")" route53 delete-health-check --health-check-id "${C_I[$1]}"; }
 
 # Phase 3, network services.
 del_lb() { wr "$1" "delete $(label "$1")" elbv2 delete-load-balancer --load-balancer-arn "${C_A[$1]}"; }
@@ -584,6 +798,8 @@ del_eice() {
   wr "$1" "delete $(label "$1")" ec2 delete-instance-connect-endpoint --instance-connect-endpoint-id "${C_I[$1]}"
 }
 del_volume() { wr "$1" "delete $(label "$1")" ec2 delete-volume --volume-id "${C_I[$1]}"; }
+# Flow logs, before the VPC fabric.
+del_flowlog() { wr "$1" "delete $(label "$1")" ec2 delete-flow-logs --flow-log-ids "${C_I[$1]}"; }
 # RDS: read replicas first (ReadReplicaSourceDBInstanceIdentifier set), then the rest.
 rds_dbs() {
   local i want="$1" rep
@@ -815,6 +1031,28 @@ del_vault() { wr "$1" "delete $(label "$1")" backup delete-backup-vault --backup
 del_image() { wr "$1" "deregister $(label "$1")" ec2 deregister-image --image-id "${C_I[$1]}"; }
 del_snapshot() { wr "$1" "delete $(label "$1")" ec2 delete-snapshot --snapshot-id "${C_I[$1]}"; }
 del_group() { wr "$1" "delete $(label "$1")" resource-groups delete-group --group "${C_I[$1]}"; }
+del_queue() {
+  local i="$1" json
+  if ! json="$(awsq "${C_R[$i]}" sqs get-queue-url --queue-name "${C_I[$i]}")"; then
+    gone_err || warn "could not find $(label "$i") ($(code))"
+    return 1
+  fi
+  wr "$i" "delete $(label "$i")" sqs delete-queue --queue-url "$(jq -r '.QueueUrl' <<<"$json")"
+}
+del_param() { wr "$1" "delete $(label "$1")" ssm delete-parameter --name "/${C_I[$1]}"; }
+del_alias() { wr "$1" "delete $(label "$1")" kms delete-alias --alias-name "${C_I[$1]}"; }
+# Ruling P11: a key is scheduled for deletion with the shortest window (7 days, no charge while pending); one already
+# pending is left as it is.
+del_key() {
+  local i="$1"
+  describe "$i"
+  [ $? -eq 1 ] && return 1
+  [ "$(jq -r '.KeyState // ""' <<<"$DJ" 2>/dev/null)" = PendingDeletion ] && return 1
+  wr "$i" "schedule $(label "$i") for deletion in 7 days" kms schedule-key-deletion --key-id "${C_I[$i]}" --pending-window-in-days 7
+}
+del_secret() { wr "$1" "delete $(label "$1") (no recovery window)" secretsmanager delete-secret --secret-id "${C_A[$1]}" --force-delete-without-recovery; }
+del_repo() { wr "$1" "delete $(label "$1") and its images" ecr delete-repository --repository-name "${C_I[$1]}" --force; }
+del_analyzer() { wr "$1" "delete $(label "$1")" accessanalyzer delete-analyzer --analyzer-name "${C_I[$1]}"; }
 
 # Phase 6, IAM (names lab-<id>-* under /cloudlabs-lab/ only, as found above).
 del_profile() {
@@ -846,6 +1084,23 @@ del_role() {
 del_user() {
   local i="$1" n="${C_I[$1]}" json p
   wr "$i" "delete the console password of $(label "$i")" iam delete-login-profile --user-name "$n"
+  # Credentials made by hand (the lab makes none): keys, MFA devices, SSH keys, signing certificates, service
+  # credentials, each of which stops DeleteUser.
+  if json="$(awsq iam iam list-access-keys --user-name "$n")"; then
+    while IFS= read -r p; do [ -n "$p" ] && wr "$i" "delete an access key of $(label "$i")" iam delete-access-key --user-name "$n" --access-key-id "$p"; done < <(jq -r '.AccessKeyMetadata[]?.AccessKeyId // empty' <<<"$json")
+  fi
+  if json="$(awsq iam iam list-mfa-devices --user-name "$n")"; then
+    while IFS= read -r p; do [ -n "$p" ] && wr "$i" "deactivate an MFA device of $(label "$i")" iam deactivate-mfa-device --user-name "$n" --serial-number "$p"; done < <(jq -r '.MFADevices[]?.SerialNumber // empty' <<<"$json")
+  fi
+  if json="$(awsq iam iam list-ssh-public-keys --user-name "$n")"; then
+    while IFS= read -r p; do [ -n "$p" ] && wr "$i" "delete an SSH key of $(label "$i")" iam delete-ssh-public-key --user-name "$n" --ssh-public-key-id "$p"; done < <(jq -r '.SSHPublicKeys[]?.SSHPublicKeyId // empty' <<<"$json")
+  fi
+  if json="$(awsq iam iam list-signing-certificates --user-name "$n")"; then
+    while IFS= read -r p; do [ -n "$p" ] && wr "$i" "delete a signing certificate of $(label "$i")" iam delete-signing-certificate --user-name "$n" --certificate-id "$p"; done < <(jq -r '.Certificates[]?.CertificateId // empty' <<<"$json")
+  fi
+  if json="$(awsq iam iam list-service-specific-credentials --user-name "$n")"; then
+    while IFS= read -r p; do [ -n "$p" ] && wr "$i" "delete a service credential of $(label "$i")" iam delete-service-specific-credential --user-name "$n" --service-specific-credential-id "$p"; done < <(jq -r '.ServiceSpecificCredentials[]?.ServiceSpecificCredentialId // empty' <<<"$json")
+  fi
   if json="$(awsq iam iam list-attached-user-policies --user-name "$n")"; then
     while IFS= read -r p; do
       [ -n "$p" ] && wr "$i" "detach a policy from $(label "$i")" iam detach-user-policy --user-name "$n" --policy-arn "$p"
@@ -883,7 +1138,10 @@ HANDLED=" autoscaling:autoScalingGroup events:rule config:config-rule config:con
   ec2:volume ec2:network-interface ec2:security-group ec2:security-group-rule ec2:subnet ec2:route-table ec2:network-acl ec2:internet-gateway
   ec2:egress-only-internet-gateway ec2:prefix-list ec2:vpc s3:bucket sns:topic logs:log-group cloudwatch:alarm
   cloudwatch:dashboard logs:query-definition ssm:association ssm:patchbaseline backup:backup-plan backup:backup-vault
-  ec2:image ec2:snapshot resource-groups:group iam:instance-profile iam:role iam:user iam:policy "
+  ec2:image ec2:snapshot resource-groups:group iam:instance-profile iam:role iam:user iam:policy
+  cloudformation:stack ecs:service ecs:task ecs:cluster ecs:task-definition lambda:function cloudfront:distribution
+  cloudfront:origin-access-control route53:hostedzone route53:healthcheck ec2:vpc-flow-log sqs:queue ssm:parameter
+  kms:alias kms:key secretsmanager:secret ecr:repository access-analyzer:analyzer "
 HANDLED="${HANDLED//$'\n'/ }"
 
 discover
@@ -900,12 +1158,23 @@ done
 for r in "${!ec2_regions[@]}"; do find_wg_vpcs "$r"; done
 
 # 1 workloads
+stacks
+run ecs:service poll del_ecs_service
+run ecs:task - del_ecs_task
+ecs_clusters
+run ecs:task-definition - del_taskdef
+run lambda:function - del_lambda
 run autoscaling:autoScalingGroup poll del_asg
 run events:rule - del_rule
 run config:config-rule - del_config_rule
 run config:configuration-recorder - stop_recorder
 run config:delivery-channel - del_channel
 run config:configuration-recorder - del_recorder
+# 2 edge and DNS
+distributions
+run cloudfront:origin-access-control - del_oac
+run route53:hostedzone - del_zone
+run route53:healthcheck - del_healthcheck
 # 3 network services
 run elasticloadbalancing:loadbalancer poll del_lb
 run elasticloadbalancing:listener-rule - del_lb_child
@@ -924,12 +1193,15 @@ run ec2:vpc-peering-connection - del_pcx
 run ec2:vpc-endpoint poll del_vpce
 run ec2:instance-connect-endpoint poll del_eice
 run ec2:volume - del_volume
+run ec2:vpc-flow-log - del_flowlog
 # 4 VPC fabric (then any security group rule its group did not take along)
 fabric
 run ec2:security-group-rule - del_sgr
 # 5 data and the rest (AMIs before snapshots: a snapshot behind an AMI cannot go first)
 run s3:bucket - del_bucket
 run sns:topic - del_topic
+run sqs:queue - del_queue
+run ssm:parameter - del_param
 run logs:log-group - del_loggroup
 run cloudwatch:alarm - del_alarm
 run cloudwatch:dashboard - del_dashboard
@@ -938,6 +1210,11 @@ run ssm:association - del_assoc
 run ssm:patchbaseline - del_baseline
 run backup:backup-plan - del_plan
 run backup:backup-vault - del_vault
+run kms:alias - del_alias
+run kms:key - del_key
+run secretsmanager:secret - del_secret
+run ecr:repository - del_repo
+run access-analyzer:analyzer - del_analyzer
 run ec2:image - del_image
 run ec2:snapshot - del_snapshot
 run resource-groups:group - del_group

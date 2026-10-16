@@ -580,14 +580,14 @@ test("what Terraform does for a lab is allowed: tagged creates on the new item o
 // ── Every AWS CLI call the lab workflow's scripts make, as the role ──────
 
 /** The CLI's service names that are not IAM's, and the commands whose IAM action is not their own name. */
-const CLI_SERVICE = { elbv2: "elasticloadbalancing", configservice: "config", resourcegroupstaggingapi: "tag", s3api: "s3" };
+const CLI_SERVICE = { elbv2: "elasticloadbalancing", configservice: "config", resourcegroupstaggingapi: "tag", s3api: "s3", accessanalyzer: "access-analyzer" };
 const CLI_ACTION = {
   "s3api head-bucket": ["s3:ListBucket"],
   "s3api list-object-versions": ["s3:ListBucketVersions"],
   "s3api delete-objects": ["s3:DeleteObject", "s3:DeleteObjectVersion"],
   "s3api get-object-lock-configuration": ["s3:GetBucketObjectLockConfiguration"],
 };
-const SERVICES_RE = /(?:^|[\s(])(ec2|elbv2|rds|autoscaling|events|configservice|s3api|sns|logs|cloudwatch|ssm|backup|resource-groups|kms|iam|resourcegroupstaggingapi|dynamodb|network-firewall|cloudformation|elasticache|eks|ecs|cloudfront|globalaccelerator|vpc-lattice|route53resolver)\s+"?([a-z0-9]+-[a-z0-9$-]+)"?/g;
+const SERVICES_RE = /(?:^|[\s(])(ec2|elbv2|rds|autoscaling|events|configservice|s3api|sns|logs|cloudwatch|ssm|backup|resource-groups|kms|iam|resourcegroupstaggingapi|dynamodb|network-firewall|cloudformation|elasticache|eks|ecs|cloudfront|globalaccelerator|vpc-lattice|route53resolver|sqs|secretsmanager|lambda|ecr|accessanalyzer|route53)\s+"?([a-z0-9]+-[a-z0-9$-]+)"?/g;
 /** Every "<service> <command>" an aws call names in a script (comments left out), with the region it names. */
 function cliCalls(path) {
   const out = [];
@@ -607,15 +607,15 @@ function requestsOf({ cli, region }) {
   const [svc, cmd] = cli.split(" ");
   const actions = CLI_ACTION[cli] ?? [`${CLI_SERVICE[svc] ?? svc}:${camel(cmd)}`];
   const read = /^(describe|list|get|head)-/.test(cmd);
-  const named = /dashboard|configuration-recorder|delivery-channel|query-definition|alias/.test(cmd);
+  const named = /dashboard|configuration-recorder|delivery-channel|query-definition|alias|origin-access-control/.test(cmd);
   const action0 = actions[0];
   if (svc === "iam") {
-    const what = /instance-profile/.test(cmd) ? "instance-profile" : /policy-version|^(get|delete)-policy$/.test(cmd) ? "policy" : /user|login-profile/.test(cmd) ? "user" : /role/.test(cmd) ? "role" : null;
+    const what = /instance-profile/.test(cmd) ? "instance-profile" : /policy-version|^(get|delete)-policy$/.test(cmd) ? "policy" : /user|login-profile|access-key|mfa-device|ssh-public-key|signing-certificate|service-specific-credential/.test(cmd) ? "user" : /role/.test(cmd) ? "role" : null;
     const name = what === "user" ? "lab-soa-07-iam-kms-ann" : "lab-soa-01-x-vm";
     const resource = what && !/^list-(roles|instance-profiles|policies|users)$/.test(cmd) ? `arn:aws:iam::${A}:${what}/cloudlabs-lab/${name}` : "*";
     return actions.map((action) => ({ action, resource, ctx: { "aws:RequestedRegion": "us-east-1", ...(what === "role" || what === "user" ? BOUNDED : {}) } }));
   }
-  const r = region ?? "eu-west-2";
+  const r = region ?? (["cloudfront", "route53"].includes(svc) ? "us-east-1" : "eu-west-2");
   const resource = svc === "s3api" ? "arn:aws:s3:::cloudlabs-a01abcde-logs" : /dashboard|configuration-recorder/.test(cmd) ? namedArn(action0, "lab-soa-01-x-main") : `arn:aws:${CLI_SERVICE[svc] ?? svc}:${r}:${A}:lab-item/x`;
   // A read must not need the lab's tag; a write is on a tagged item, or a named one that cannot carry tags.
   const ctx = { "aws:RequestedRegion": r, ...(read || named ? {} : { "aws:ResourceTag/cloudlabs-lab": "soa-01-x" }) };
@@ -630,7 +630,9 @@ test("every AWS CLI call in Unblock, the safety net, Verify clean and the ready 
   assert.ok(calls.length > 90, `${calls.length} calls`);
   for (const must of ["iam delete-role", "configservice stop-configuration-recorder", "cloudwatch delete-dashboards", "ec2 revoke-security-group-egress", "resourcegroupstaggingapi get-resources", "cloudfront get-distribution", "s3api delete-objects",
     // Final review, Important 2: security group rules, listeners and listener rules, read and (when still there) deleted.
-    "ec2 describe-security-group-rules", "ec2 revoke-security-group-ingress", "elbv2 describe-listeners", "elbv2 describe-rules", "elbv2 delete-listener", "elbv2 delete-rule"]) assert.ok(calls.some((c) => c.cli === must), must);
+    "ec2 describe-security-group-rules", "ec2 revoke-security-group-ingress", "elbv2 describe-listeners", "elbv2 describe-rules", "elbv2 delete-listener", "elbv2 delete-rule",
+    // Batch 2 (Task 4): the new types' deletes.
+    "cloudformation delete-stack", "cloudfront delete-distribution", "cloudfront delete-origin-access-control", "route53 delete-hosted-zone", "ecs delete-service", "ecs delete-task-definitions", "kms schedule-key-deletion", "iam delete-access-key", "accessanalyzer delete-analyzer"]) assert.ok(calls.some((c) => c.cli === must), must);
   const refused = [];
   for (const c of calls) for (const req of requestsOf(c)) {
     const d = decide(POLICIES.role, req);
