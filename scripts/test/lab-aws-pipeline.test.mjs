@@ -269,6 +269,40 @@ test("ruling P9: a Spot instance AWS took back mid-check is gone, never failed; 
   w.cleanup();
 });
 
+test("the ready check waits for a peering attachment pending acceptance and an ACM certificate ISSUED", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: JSON.stringify({ ResourceTagMappingList: [{ ResourceARN: "arn:aws:ec2:eu-west-2:123456789012:transit-gateway-attachment/tgw-attach-0p" }, { ResourceARN: "arn:aws:acm:eu-west-2:123456789012:certificate/c1" }] }) },
+    { cmd: "aws", match: "^ec2 describe-transit-gateway-attachments", out: ['{"TransitGatewayAttachments":[{"State":"pendingAcceptance"}]}', '{"TransitGatewayAttachments":[{"State":"available"}]}'] },
+    { cmd: "aws", match: "^acm describe-certificate", out: '{"Certificate":{"Status":"ISSUED"}}' },
+  ]);
+  const r = w.run("infra/ci/lab-ready-aws.sh", ["ans-29-multi-region", "5"], { LAB_REGIONS: "eu-west-2", LAB_READY_POLL_SECONDS: "0" });
+  assert.equal(r.status, 0, r.out);
+  assert.equal(w.calls().filter((c) => c.startsWith("aws ec2 describe-transit-gateway-attachments")).length, 2);
+  w.cleanup();
+});
+
+test("the ready check fails at once on an ACM certificate FAILED, and waits on one PENDING_VALIDATION", { skip }, () => {
+  const arns = JSON.stringify({ ResourceTagMappingList: [{ ResourceARN: "arn:aws:acm:eu-west-2:123456789012:certificate/c1" }] });
+  const bad = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: arns },
+    { cmd: "aws", match: "^acm describe-certificate --certificate-arn arn:aws:acm:eu-west-2:123456789012:certificate/c1 --region eu-west-2", out: '{"Certificate":{"Status":"FAILED"}}' },
+  ]);
+  const b = bad.run("infra/ci/lab-ready-aws.sh", ["ans-22-site-to-site", "5"], { LAB_REGIONS: "eu-west-2", LAB_READY_POLL_SECONDS: "0" });
+  assert.equal(b.status, 1, b.out);
+  assert.match(b.out, /not ready: acm:certificate c1 \(FAILED\)/);
+  assert.equal(bad.calls().filter((c) => c.startsWith("aws acm describe-certificate")).length, 1, "no waiting");
+  const slow = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: arns },
+    { cmd: "aws", match: "^acm describe-certificate", out: '{"Certificate":{"Status":"PENDING_VALIDATION"}}' },
+  ]);
+  const s = slow.run("infra/ci/lab-ready-aws.sh", ["ans-22-site-to-site", "0"], { LAB_REGIONS: "eu-west-2", LAB_READY_POLL_SECONDS: "0" });
+  assert.equal(s.status, 1, s.out);
+  assert.match(s.out, /not ready: acm:certificate c1 \(PENDING_VALIDATION\)/);
+  assert.doesNotMatch(b.out + s.out, /123456789012/);
+  bad.cleanup();
+  slow.cleanup();
+});
+
 test("the ready check and peering refuse a bad lab id with exit 2", { skip: BASH ? false : "no bash found" }, () => {
   const w = world([]);
   for (const id of ["../x", "soa-03-Auto", "soa-03-auto-scaling-and-more-words", ""]) {

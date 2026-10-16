@@ -52,6 +52,10 @@
 #   S3 buckets             Object Lock switched on is a loud warning: its
 #                          locked versions cannot be deleted until they expire
 #
+# Batch 4 (ruling P26): Network Firewall delete protection and Client VPN
+# connections are already here; no batch 4 Lambda runs in a VPC, so the Lambda
+# interface wait stays as it is.
+#
 # Every wait is also capped at LAB_JOB_DEADLINE (Parse payload: the job's
 # start plus its timeout) less the reserve the later steps need (420 s, the
 # safety net's own reserve, plus 60 s per minute of LAB_DESTROY_MIN, default

@@ -17,7 +17,10 @@
 #                        create-failed, incompatible-network or restore-failed
 #                        (ruling P17))
 #   NAT gateways, VPC endpoints, transit gateways and their attachments,
-#   VPN connections      available (failed fails)
+#   VPN connections      available (failed fails; a peering attachment
+#                        pendingAcceptance is waited for, never failed: lab
+#                        29's accept follows at once)
+#   ACM certificates     ISSUED (FAILED fails)
 #   Client VPN           available
 #   EKS clusters and node groups   ACTIVE (FAILED fails)
 #   ECS services         running = desired
@@ -147,6 +150,8 @@ check() {
       json="$(awsq ec2 describe-transit-gateway-attachments --transit-gateway-attachment-ids "$id" --region "$region")" || { unanswered; return; }
       s="$(jq -r '.TransitGatewayAttachments[0].State // ""' <<<"$json")"
       [ "$s" = failing ] && s=failed
+      # Waited for, never failed: lab 29's accept follows at once.
+      [ "$s" = pendingAcceptance ] && s=pending
       judge "$s" available failed ;;
     ec2:vpn-connection)
       # Its tunnels may stay down until the lab's own router configures itself: the connection's state is what counts.
@@ -208,6 +213,9 @@ check() {
       json="$(awsq route53resolver get-resolver-endpoint --resolver-endpoint-id "$id" --region "$region")" || { unanswered; return; }
       s="$(jq -r '.ResolverEndpoint.Status // ""' <<<"$json")"
       judge "$s" OPERATIONAL ACTION_NEEDED ;;
+    acm:certificate)
+      json="$(awsq acm describe-certificate --certificate-arn "$arn" --region "$region")" || { unanswered; return; }
+      judge "$(jq -r '.Certificate.Status // ""' <<<"$json")" ISSUED FAILED ;;
     *) ;; # ready by existing
   esac
 }

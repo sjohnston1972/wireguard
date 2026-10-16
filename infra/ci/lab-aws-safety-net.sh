@@ -71,27 +71,47 @@
 #                    deregistered and drained first), then service networks.
 #                    Never an association with, or an endpoint in, the VPN
 #                    server's VPC
-#   3 network        load balancers, then listener rules and listeners still
-#                    there (most go with their load balancer), then target
-#                    groups; RDS replicas, then
+#   3 network        Client VPN endpoints (ruling P20: every target network
+#                    disassociated, a refused one asked again, and waited for
+#                    first), Network Firewall firewalls (waited for until not
+#                    found), then their policies and rule groups; VPC endpoint
+#                    services (ruling P23: their connected endpoints first, the
+#                    lab's deleted, any other rejected, each asked again until
+#                    none is left), then load balancers, then listener rules
+#                    and listeners still there (most go with their load
+#                    balancer), then target groups; RDS replicas, then
 #                    instances, subnet groups, parameter groups, snapshots
 #                    (never an automated one: it goes with its database);
 #                    ElastiCache replication groups, clusters of their own
 #                    (never a group's member), subnet groups, snapshots; EFS
 #                    file systems (every mount target first, waited for);
-#                    instances terminated; launch templates; NAT gateways;
-#                    Elastic IPs; VPC peering; VPC endpoints; Instance Connect
-#                    Endpoints; volumes; flow logs
+#                    traffic mirror sessions, targets, then filters (ruling
+#                    P17); instances terminated; launch templates; NAT
+#                    gateways; Elastic IPs; VPN connections, virtual private
+#                    gateways (detached first, a refused detach asked again,
+#                    waited for), customer gateways; transit gateway
+#                    attachments (VPC and peering: one already deleting, as a
+#                    peering seen from its other region, is only waited for),
+#                    non-default route tables, then transit gateways (ruling
+#                    P15); VPC peering; VPC endpoints; Instance Connect
+#                    Endpoints; volumes; flow logs. Never a gateway, network,
+#                    attachment, firewall or endpoint tied to the VPN server's
+#                    VPC
 #   4 VPC fabric     detached network interfaces, security groups (rules that
 #                    name another lab group revoked first; never "default"),
 #                    subnets, route tables (non-main associations first),
 #                    network ACLs (not the default), internet gateways
 #                    (detached first), egress-only gateways, prefix lists, VPCs;
 #                    then security group rules still there (most go with their
-#                    group), revoked by id, never in the VPN server's VPC
-#   5 data           buckets (every version and delete marker), SNS topics, SQS
-#                    queues, SSM parameters, log groups, alarms, dashboards,
-#                    query definitions, SSM associations, patch baselines
+#                    group), revoked by id, never in the VPN server's VPC; then
+#                    IPAMs (ruling P5 / P23: with --cascade, their pools, scopes
+#                    and provisioned CIDRs with them)
+#   5 data           buckets (every version and delete marker), ACM
+#                    certificates (one still in use for minutes after its load
+#                    balancer or Client VPN endpoint goes is asked again, by
+#                    the deadline), SNS topics, SQS queues, SSM parameters, log
+#                    groups, alarms, dashboards, query definitions, SSM
+#                    associations, patch baselines
 #                    (their patch groups first), Backup plans (selections
 #                    first) and vaults, KMS aliases, then keys (ruling P11:
 #                    scheduled for deletion in 7 days), Secrets Manager secrets
@@ -113,8 +133,12 @@
 # streams, load balancers, RDS instances, ElastiCache groups and clusters, EFS
 # file systems, instances, NAT gateways, VPC endpoints, Instance Connect
 # Endpoints, DynamoDB tables, accelerators, Resolver rules, endpoints and
-# firewall rule group associations, and Lattice associations, services and
-# target groups are polled after the delete (one already being deleted too),
+# firewall rule group associations, Lattice associations, services and target
+# groups, Client VPN endpoints, Network Firewall firewalls, VPC endpoint
+# services, VPN connections and gateways, transit gateways, their attachments
+# and route tables, and IPAMs are polled after the delete (one already being
+# deleted too; ruling P23: the transit gateway, VPN, Client VPN, endpoint
+# service and IPAM family until AWS has it deleted, never only "deleting"),
 # every LAB_DELETE_POLL_SECONDS (30), until gone or LAB_JOB_DEADLINE less 420 s
 # (what is left then is a warning, "left behind: <name>"). VPC fabric deletes
 # are synchronous (pre-flight ruling C15): one AWS refuses with
@@ -139,7 +163,13 @@
 # clean; every other batch 3 and 4 type (ruling P23: a Resolver endpoint
 # DELETING or a Lattice association DELETE_IN_PROGRESS too) only once AWS no
 # longer has it; a Lattice listener is judged by its own describe, going with
-# its service). A
+# its service). Ruling P23: a transit gateway, attachment or route table
+# (rejected or failed too), VPN connection, virtual private or customer
+# gateway, Client VPN endpoint, VPC endpoint service, IPAM, IPAM pool or scope
+# deleting or deleted is clean (nothing can stop it); a Network Firewall
+# firewall, policy or rule group, a traffic mirror session, target or filter,
+# or an ACM certificate only once AWS no longer has it (an IPAM's pools and
+# scopes go with it: judged only). A
 # type with no handler is never clean ("no handler for <type>: <name>"). While a lab VPC
 # still exists, every instance (not terminated) and every network interface
 # (not requester-managed, not attached to an instance, which is judged
@@ -454,6 +484,25 @@ describe() {
     vpc-lattice:targetgroup) set -- vpc-lattice get-target-group --target-group-identifier "$id"; q='.' ;;
     vpc-lattice:servicenetworkvpcassociation) set -- vpc-lattice get-service-network-vpc-association --service-network-vpc-association-identifier "$id"; q='.' ;;
     vpc-lattice:servicenetworkserviceassociation) set -- vpc-lattice get-service-network-service-association --service-network-service-association-identifier "$id"; q='.' ;;
+    # Batch 4, network services (an IPAM's pools and scopes are judged only, going with it).
+    ec2:client-vpn-endpoint) set -- ec2 describe-client-vpn-endpoints --client-vpn-endpoint-ids "$id"; q='.ClientVpnEndpoints[]?' ;;
+    network-firewall:firewall) set -- network-firewall describe-firewall --firewall-arn "$x"; q='.Firewall' ;;
+    network-firewall:firewall-policy) set -- network-firewall describe-firewall-policy --firewall-policy-arn "$x"; q='.FirewallPolicyResponse' ;;
+    network-firewall:stateful-rulegroup|network-firewall:stateless-rulegroup) set -- network-firewall describe-rule-group --rule-group-arn "$x"; q='.RuleGroupResponse' ;;
+    ec2:vpc-endpoint-service) set -- ec2 describe-vpc-endpoint-service-configurations --service-ids "$id"; q='.ServiceConfigurations[]?' ;;
+    ec2:traffic-mirror-session) set -- ec2 describe-traffic-mirror-sessions --traffic-mirror-session-ids "$id"; q='.TrafficMirrorSessions[]?' ;;
+    ec2:traffic-mirror-target) set -- ec2 describe-traffic-mirror-targets --traffic-mirror-target-ids "$id"; q='.TrafficMirrorTargets[]?' ;;
+    ec2:traffic-mirror-filter) set -- ec2 describe-traffic-mirror-filters --traffic-mirror-filter-ids "$id"; q='.TrafficMirrorFilters[]?' ;;
+    ec2:vpn-connection) set -- ec2 describe-vpn-connections --vpn-connection-ids "$id"; q='.VpnConnections[]?' ;;
+    ec2:vpn-gateway) set -- ec2 describe-vpn-gateways --vpn-gateway-ids "$id"; q='.VpnGateways[]?' ;;
+    ec2:customer-gateway) set -- ec2 describe-customer-gateways --customer-gateway-ids "$id"; q='.CustomerGateways[]?' ;;
+    ec2:transit-gateway) set -- ec2 describe-transit-gateways --transit-gateway-ids "$id"; q='.TransitGateways[]?' ;;
+    ec2:transit-gateway-attachment) set -- ec2 describe-transit-gateway-attachments --transit-gateway-attachment-ids "$id"; q='.TransitGatewayAttachments[]?' ;;
+    ec2:transit-gateway-route-table) set -- ec2 describe-transit-gateway-route-tables --transit-gateway-route-table-ids "$id"; q='.TransitGatewayRouteTables[]?' ;;
+    ec2:ipam) set -- ec2 describe-ipams --ipam-ids "$id"; q='.Ipams[]?' ;;
+    ec2:ipam-pool) set -- ec2 describe-ipam-pools --ipam-pool-ids "$id"; q='.IpamPools[]?' ;;
+    ec2:ipam-scope) set -- ec2 describe-ipam-scopes --ipam-scope-ids "$id"; q='.IpamScopes[]?' ;;
+    acm:certificate) set -- acm describe-certificate --certificate-arn "$x"; q='.Certificate' ;;
     kms:alias)
       [ -n "$x" ] || return 3
       set -- kms list-aliases --key-id "$x"; q='.Aliases[]? | select(.AliasName == $id)' ;;
@@ -504,7 +553,7 @@ describe() {
 
 # judge <i>: J = gone, there, unknown (AWS could not be asked) or nohandler; NT = its Name tag.
 judge() {
-  local i="$1" g s n
+  local i="$1" g s n w=""
   NT="${C_N[$i]}"
   describe "$i"
   case $? in
@@ -531,10 +580,20 @@ judge() {
     states:stateMachine) g='.status == "DELETING"' ;;
     elasticfilesystem:file-system) g='.LifeCycleState == "deleted"' ;;
     ec2:fleet) g='(.FleetState // "") | startswith("deleted")' ;;
-    # Ruling P23: every batch 4 edge, DNS and Lattice type (a Resolver endpoint DELETING, a Lattice association
-    # DELETE_IN_PROGRESS too) is there until AWS no longer has it, so the sweep's poll waits for it until not found.
+    # Ruling P23: these cannot be stopped once deleting, and the tagging API keeps listing them, so Verify clean counts
+    # them clean while deleting. The sweep waits on until AWS has them deleted (w: the state it reads), since what
+    # follows them (a gateway, route table, load balancer, subnet or VPC) cannot go before.
+    ec2:client-vpn-endpoint) g='(.Status.Code // "") | IN("deleting", "deleted")'; w='.Status.Code' ;;
+    ec2:vpn-connection|ec2:vpn-gateway|ec2:customer-gateway) g='(.State // "") | IN("deleting", "deleted")'; w='.State' ;;
+    ec2:transit-gateway|ec2:transit-gateway-attachment|ec2:transit-gateway-route-table) g='(.State // "") | IN("deleting", "deleted", "rejected", "failed")'; w='.State' ;;
+    ec2:ipam|ec2:ipam-pool|ec2:ipam-scope) g='(.State // "") | IN("delete-in-progress", "delete-complete")'; w='.State' ;;
+    ec2:vpc-endpoint-service) g='(.ServiceState // "" | ascii_downcase) | IN("deleting", "deleted")'; w='.ServiceState' ;;
+    # Ruling P23: every other batch 4 type (a Resolver endpoint DELETING, a Lattice association DELETE_IN_PROGRESS, a
+    # Network Firewall item, a mirror item or an ACM certificate too) is there until AWS no longer has it, so the
+    # sweep's poll waits for it until not found.
     *) g='false' ;;
   esac
+  [ "$MODE" = sweep ] && [ -n "$w" ] && g="($g) and (($w // \"\" | ascii_downcase) | IN(\"deleting\", \"delete-in-progress\") | not)"
   IFS=$'\x1f' read -r s n < <(jq -r "[ (if ($g) then \"gone\" else \"there\" end), ((.Tags // .TagSet // []) | if type == \"array\" then (map(select(.Key == \"Name\"))[0].Value // \"\") else \"\" end) ] | join(\"\u001f\")" <<<"$DJ" 2>/dev/null)
   J="${s:-there}"
   [ -n "${n:-}" ] && NT="$n"
@@ -620,6 +679,13 @@ of_type() {
   local i
   for i in "${!C_T[@]}"; do
     [ "${C_T[$i]}" = "$1" ] && [ "${C_W[$i]}" != 1 ] && echo "$i"
+  done
+}
+# of_id <type> <id>: the index of that type's item with that id, or nothing (never one carrying the VPN server's tag).
+of_id() {
+  local i
+  for i in $(of_type "$1"); do
+    [ "${C_I[$i]}" = "$2" ] && { echo "$i"; return; }
   done
 }
 
@@ -967,7 +1033,7 @@ del_healthcheck() { wr "$1" "delete $(label "$1")" route53 delete-health-check -
 # wait_until_none <i> <what> <aws args…> -- <list key> [<jq filter>]: poll the listing (in the item's region) until its
 # list <list key> holds nothing (after the filter, when given), or UNTIL (then a warning and false). A listing AWS
 # refuses is a warning and false (never taken for none), unless the item itself is gone; so is an answer that is not
-# JSON or holds no such list (review: never "0 left" from an answer that could not be read).
+# JSON or holds no such list (review: never "0 left" from an answer that could not be read). With ASK=<fn>, see below.
 wait_until_none() {
   local i="$1" what="$2" json n k f
   local -a args=()
@@ -987,6 +1053,10 @@ wait_until_none() {
       return 1
     fi
     [ "$n" -eq 0 ] && return 0
+    # ASK=<fn> (batch 4 network services): called with the item and this listing on each pass while something is left,
+    # to ask AWS (again) for whatever still needs asking, so a refused disassociate, detach or delete is asked again
+    # rather than waited on to the deadline. False leaves the item at once (the fn has warned why).
+    if [ -n "${ASK:-}" ]; then "$ASK" "$i" "$json" || return 1; fi
     if past_until; then
       warn "left behind: $(label "$i") ($n $what still there)"
       return 1
@@ -1263,6 +1333,110 @@ del_efs() {
   wr "$i" "delete $(label "$i")" efs delete-file-system --file-system-id "$fs"
 }
 
+# Phase 3, network services (batch 4). Each waits for what AWS needs gone first inside its handler (run does not
+# retry a handler), and re-asks a refused disassociate, detach or delete on each pass (ASK, wait_until_none).
+# Ruling P20: Client VPN: every target network disassociated and waited for, then the endpoint. A network in the VPN
+# server's VPC is never disassociated, and its endpoint is then left (AWS would refuse it).
+cvpn_disassociate() {
+  local i="$1" a v
+  while IFS= read -r v; do [ -n "$v" ] && wg_vpc "$i" "$v" && return 1; done < <(jq -r '.ClientVpnTargetNetworks[]? | select(.Status.Code != "disassociated") | .VpcId // empty' <<<"$2" 2>/dev/null)
+  # One still associating is asked once it is associated; one disassociating is only waited for.
+  while IFS= read -r a; do
+    [ -n "$a" ] && wr "$i" "disassociate $a from $(label "$i")" ec2 disassociate-client-vpn-target-network --client-vpn-endpoint-id "${C_I[$i]}" --association-id "$a"
+  done < <(jq -r '.ClientVpnTargetNetworks[]? | select((.Status.Code // "") | IN("associating", "disassociating", "disassociated") | not) | .AssociationId // empty' <<<"$2" 2>/dev/null)
+  return 0
+}
+del_cvpn() {
+  local i="$1"
+  ASK=cvpn_disassociate wait_until_none "$i" "target networks" ec2 describe-client-vpn-target-networks --client-vpn-endpoint-id "${C_I[$i]}" -- ClientVpnTargetNetworks 'select(.Status.Code != "disassociated")' || return 1
+  wr "$i" "delete $(label "$i")" ec2 delete-client-vpn-endpoint --client-vpn-endpoint-id "${C_I[$i]}" || being_deleted "$i" '.Status.Code == "deleting"'
+}
+# Ruling P16 / P23: a firewall (never one in the VPN server's VPC) is deleted and waited for until AWS no longer has it
+# (its endpoints hold the subnets; one a timed-out destroy left DELETING is waited for all the same); then policies and
+# rule groups (AWS refuses one still in use).
+del_nfw() {
+  vpc_ok "$1" || return 1
+  wr "$1" "delete $(label "$1")" network-firewall delete-firewall --firewall-arn "${C_A[$1]}" && return 0
+  [ "$(awsq "${C_R[$1]}" network-firewall describe-firewall --firewall-arn "${C_A[$1]}" | jq -r '.FirewallStatus.Status // ""' 2>/dev/null)" = DELETING ]
+}
+del_nfw_policy() { wr "$1" "delete $(label "$1")" network-firewall delete-firewall-policy --firewall-policy-arn "${C_A[$1]}"; }
+del_nfw_group() { wr "$1" "delete $(label "$1")" network-firewall delete-rule-group --rule-group-arn "${C_A[$1]}"; }
+# Ruling P23: an endpoint service's connected endpoints go, then the service; both before load balancers, which AWS
+# will not delete while a service names them. The lab's own endpoints (in its candidates) are deleted, any other is
+# rejected. One of the lab's inside the VPN server's VPC is never deleted, and the service is then left.
+vpce_svc_release() {
+  local i="$1" e j
+  while IFS= read -r e; do
+    [ -z "$e" ] && continue
+    j="$(of_id ec2:vpc-endpoint "$e")"
+    if [ -n "$j" ]; then
+      vpc_ok "$j" || return 1
+      wr "$j" "delete $(label "$j"), connected to $(label "$i")" ec2 delete-vpc-endpoints --vpc-endpoint-ids "$e"
+    else
+      wr "$i" "reject endpoint $e on $(label "$i")" ec2 reject-vpc-endpoint-connections --service-id "${C_I[$i]}" --vpc-endpoint-ids "$e"
+    fi
+  done < <(jq -r '.VpcEndpointConnections[]? | select((.VpcEndpointState // "" | ascii_downcase) | IN("deleted", "deleting", "rejected") | not) | .VpcEndpointId // empty' <<<"$2" 2>/dev/null)
+  return 0
+}
+del_vpce_svc() {
+  local i="$1"
+  ASK=vpce_svc_release wait_until_none "$i" "connected endpoints" ec2 describe-vpc-endpoint-connections --filters "Name=service-id,Values=${C_I[$i]}" -- VpcEndpointConnections 'select((.VpcEndpointState // "" | ascii_downcase) | IN("deleted", "rejected") | not)' || return 1
+  wr "$i" "delete $(label "$i")" ec2 delete-vpc-endpoint-service-configurations --service-ids "${C_I[$i]}"
+}
+# Ruling P17: mirror sessions (a hand-made, tagged one) before targets and filters.
+del_mirror_session() { wr "$1" "delete $(label "$1")" ec2 delete-traffic-mirror-session --traffic-mirror-session-id "${C_I[$1]}"; }
+del_mirror_target() { wr "$1" "delete $(label "$1")" ec2 delete-traffic-mirror-target --traffic-mirror-target-id "${C_I[$1]}"; }
+del_mirror_filter() { wr "$1" "delete $(label "$1")" ec2 delete-traffic-mirror-filter --traffic-mirror-filter-id "${C_I[$1]}"; }
+# VPN: connections (waited for until deleted), virtual private gateways (detached, waited for, deleted), customer
+# gateways. A gateway attached to the VPN server's VPC is never detached, and is then left.
+del_vpn() { wr "$1" "delete $(label "$1")" ec2 delete-vpn-connection --vpn-connection-id "${C_I[$1]}" || being_deleted "$1" '.State == "deleting"'; }
+vgw_detach() {
+  local i="$1" v
+  while IFS= read -r v; do
+    [ -n "$v" ] || continue
+    wg_vpc "$i" "$v" && return 1
+    wr "$i" "detach $(label "$i") from $v" ec2 detach-vpn-gateway --vpn-gateway-id "${C_I[$i]}" --vpc-id "$v"
+  done < <(jq -r '.VpnGateways[]?.VpcAttachments[]? | select(.State == "attached" or .State == "attaching") | .VpcId // empty' <<<"$2" 2>/dev/null)
+  return 0
+}
+del_vgw() {
+  local i="$1"
+  ASK=vgw_detach wait_until_none "$i" "VPC attachments" ec2 describe-vpn-gateways --vpn-gateway-ids "${C_I[$i]}" -- VpnGateways 'select(any(.VpcAttachments[]?; .State != "detached"))' || return 1
+  wr "$i" "delete $(label "$i")" ec2 delete-vpn-gateway --vpn-gateway-id "${C_I[$i]}" || being_deleted "$i" '.State == "deleting"'
+}
+del_cgw() { wr "$1" "delete $(label "$1")" ec2 delete-customer-gateway --customer-gateway-id "${C_I[$1]}"; }
+# Ruling P15 / P3: transit gateway attachments (VPC and peering; a peering seen in both regions is deleted once, the
+# other region's then reading deleting, so only waited for), then non-default route tables, then transit gateways;
+# each waited for until deleted. An attachment of the VPN server's VPC is never deleted.
+del_tgw_attachment() {
+  local i="$1" kind v
+  readable "$i" || return 1
+  case "$(jq -r '.State // ""' <<<"$DJ" 2>/dev/null)" in
+    deleting) return 0 ;;
+    deleted | rejected | failed) return 1 ;;
+  esac
+  kind="$(jq -r '.ResourceType // ""' <<<"$DJ" 2>/dev/null)"
+  case "$kind" in
+    vpc)
+      v="$(jq -r '.ResourceId // empty' <<<"$DJ" 2>/dev/null)"
+      [ -n "$v" ] && wg_vpc "$i" "$v" && return 1
+      wr "$i" "delete $(label "$i")" ec2 delete-transit-gateway-vpc-attachment --transit-gateway-attachment-id "${C_I[$i]}" ;;
+    peering) wr "$i" "delete $(label "$i")" ec2 delete-transit-gateway-peering-attachment --transit-gateway-attachment-id "${C_I[$i]}" ;;
+    *) warn "left behind: $(label "$i") (a ${kind:-typeless} attachment; no lab makes one)"; return 1 ;;
+  esac
+}
+del_tgw_rt() {
+  local i="$1"
+  readable "$i" || return 1
+  case "$(jq -r '.State // ""' <<<"$DJ" 2>/dev/null)" in
+    deleting) return 0 ;;
+    deleted) return 1 ;;
+  esac
+  [ "$(jq -r '.DefaultAssociationRouteTable' <<<"$DJ" 2>/dev/null)" = true ] && return 1 # goes with its transit gateway
+  wr "$i" "delete $(label "$i")" ec2 delete-transit-gateway-route-table --transit-gateway-route-table-id "${C_I[$i]}"
+}
+del_tgw() { wr "$1" "delete $(label "$1")" ec2 delete-transit-gateway --transit-gateway-id "${C_I[$1]}" || being_deleted "$1" '.State == "deleting"'; }
+
 # Phase 4, VPC fabric: synchronous (ruling C15). FAB_DONE marks an item settled (deleted, gone, skipped
 # or refused); one refused with DependencyViolation is tried again in the next pass.
 declare -A FAB_DONE=() SG_SKIP=()
@@ -1368,6 +1542,9 @@ del_sgr() {
   fi
   wr "$i" "revoke $(label "$i")" ec2 "revoke-security-group-$dir" --group-id "$g" --security-group-rule-ids "${C_I[$i]}"
 }
+# Phase 4, after the fabric (ruling P5 / P23): IPAM with --cascade (its pools, scopes and provisioned CIDRs with it);
+# a pool or scope found on its own is judged only.
+del_ipam() { wr "$1" "delete $(label "$1") and its pools" ec2 delete-ipam --ipam-id "${C_I[$1]}" --cascade || being_deleted "$1" '.State == "delete-in-progress"'; }
 FABRIC=(ec2:network-interface:fab_eni ec2:security-group:fab_sg ec2:subnet:fab_subnet ec2:route-table:fab_rt ec2:network-acl:fab_acl ec2:internet-gateway:fab_igw ec2:egress-only-internet-gateway:fab_eigw ec2:prefix-list:fab_pl ec2:vpc:fab_vpc)
 fabric() {
   local pass=1 e t fn i open
@@ -1418,6 +1595,19 @@ del_bucket() {
     past_until && break
   done
   wr "$i" "delete $(label "$i")" s3api delete-bucket --bucket "$b"
+}
+# An imported certificate stays "in use" for minutes after its load balancer or Client VPN endpoint goes: asked again
+# until AWS takes it, by UNTIL.
+del_cert() {
+  local i="$1"
+  while :; do
+    if awsx acm delete-certificate --certificate-arn "${C_A[$i]}" --region "${C_R[$i]}" >/dev/null; then echo "safety net: deleted $(label "$i")"; return 0; fi
+    gone_err && return 0
+    [ "$(errcode)" != ResourceInUseException ] && { warn "could not delete $(label "$i") ($(code))"; return 1; }
+    if past_until; then warn "left behind: $(label "$i") (still in use)"; return 1; fi
+    echo "safety net: waiting for $(label "$i") to be free"
+    sleep "$POLL_S"
+  done
 }
 del_topic() { wr "$1" "delete $(label "$1")" sns delete-topic --topic-arn "${C_A[$1]}"; }
 del_loggroup() { wr "$1" "delete $(label "$1")" logs delete-log-group --log-group-name "${C_I[$1]}"; }
@@ -1631,7 +1821,11 @@ HANDLED=" autoscaling:autoScalingGroup events:rule config:config-rule config:con
   route53resolver:resolver-rule route53resolver:resolver-query-log-config route53resolver:firewall-rule-group
   route53resolver:firewall-rule-group-association route53resolver:firewall-domain-list vpc-lattice:servicenetwork
   vpc-lattice:service vpc-lattice:listener vpc-lattice:targetgroup vpc-lattice:servicenetworkvpcassociation
-  vpc-lattice:servicenetworkserviceassociation "
+  vpc-lattice:servicenetworkserviceassociation
+  ec2:client-vpn-endpoint network-firewall:firewall network-firewall:firewall-policy network-firewall:stateful-rulegroup
+  network-firewall:stateless-rulegroup ec2:vpc-endpoint-service ec2:traffic-mirror-session ec2:traffic-mirror-target
+  ec2:traffic-mirror-filter ec2:vpn-connection ec2:vpn-gateway ec2:customer-gateway ec2:transit-gateway
+  ec2:transit-gateway-attachment ec2:transit-gateway-route-table ec2:ipam ec2:ipam-pool ec2:ipam-scope acm:certificate "
 HANDLED="${HANDLED//$'\n'/ }"
 
 discover
@@ -1643,8 +1837,9 @@ for i in "${!C_T[@]}"; do
     continue
   fi
   [[ "$HANDLED" == *" ${C_T[$i]} "* ]] || warn "no handler for ${C_T[$i]} yet: ${C_I[$i]}${C_N[$i]:+ (${C_N[$i]})} (left for Verify clean to report)"
-  # Ruling P23 guard: Resolver items and Lattice VPC associations are tied to VPCs too (never the VPN server's).
-  [[ "${C_T[$i]}" == ec2:* || "${C_T[$i]}" == route53resolver:* || "${C_T[$i]}" == vpc-lattice:servicenetworkvpcassociation ]] && ec2_regions[${C_R[$i]}]=1
+  # Ruling P23 guard: Resolver items, Lattice VPC associations and Network Firewall firewalls are tied to VPCs too
+  # (never the VPN server's).
+  [[ "${C_T[$i]}" == ec2:* || "${C_T[$i]}" == route53resolver:* || "${C_T[$i]}" == vpc-lattice:servicenetworkvpcassociation || "${C_T[$i]}" == network-firewall:firewall ]] && ec2_regions[${C_R[$i]}]=1
 done
 for r in "${!ec2_regions[@]}"; do find_wg_vpcs "$r"; done
 
@@ -1690,7 +1885,13 @@ run vpc-lattice:servicenetworkvpcassociation poll del_sn_vpc_assoc
 run vpc-lattice:service poll del_lattice_service
 run vpc-lattice:targetgroup poll del_lattice_tg
 run vpc-lattice:servicenetwork - del_service_network
-# 3 network services
+# 3 network services (endpoint services before the load balancers they name)
+run ec2:client-vpn-endpoint poll del_cvpn
+run network-firewall:firewall poll del_nfw
+run network-firewall:firewall-policy - del_nfw_policy
+run network-firewall:stateful-rulegroup - del_nfw_group
+run network-firewall:stateless-rulegroup - del_nfw_group
+run ec2:vpc-endpoint-service poll del_vpce_svc
 run elasticloadbalancing:loadbalancer poll del_lb
 run elasticloadbalancing:listener-rule - del_lb_child
 run elasticloadbalancing:listener - del_lb_child
@@ -1705,20 +1906,32 @@ run elasticache:cluster poll del_cache_cluster
 run elasticache:subnetgroup - del_cache_subnets
 run elasticache:snapshot - del_cache_snapshot
 run elasticfilesystem:file-system poll del_efs
+run ec2:traffic-mirror-session - del_mirror_session
+run ec2:traffic-mirror-target - del_mirror_target
+run ec2:traffic-mirror-filter - del_mirror_filter
 run ec2:instance poll del_instance
 run ec2:launch-template - del_lt
 run ec2:natgateway poll del_nat
 run ec2:elastic-ip - del_eip
+run ec2:vpn-connection poll del_vpn
+run ec2:vpn-gateway poll del_vgw
+run ec2:customer-gateway - del_cgw
+run ec2:transit-gateway-attachment poll del_tgw_attachment
+run ec2:transit-gateway-route-table poll del_tgw_rt
+run ec2:transit-gateway poll del_tgw
 run ec2:vpc-peering-connection - del_pcx
 run ec2:vpc-endpoint poll del_vpce
 run ec2:instance-connect-endpoint poll del_eice
 run ec2:volume - del_volume
 run ec2:vpc-flow-log - del_flowlog
-# 4 VPC fabric (then any security group rule its group did not take along)
+# 4 VPC fabric (then any security group rule its group did not take along), then IPAM (pools and scopes go with it)
 fabric
 run ec2:security-group-rule - del_sgr
-# 5 data and the rest (AMIs before snapshots: a snapshot behind an AMI cannot go first)
+run ec2:ipam poll del_ipam
+# 5 data and the rest (AMIs before snapshots: a snapshot behind an AMI cannot go first; certificates after the buckets,
+# by when their load balancer or Client VPN endpoint has long gone)
 run s3:bucket - del_bucket
+run acm:certificate - del_cert
 run sns:topic - del_topic
 run sqs:queue - del_queue
 run ssm:parameter - del_param

@@ -625,7 +625,7 @@ const CLI_ACTION = {
   "apigatewayv2 get-stage": ["apigateway:GET"],
   "apigatewayv2 delete-api": ["apigateway:DELETE"],
 };
-const SERVICES_RE = /(?:^|[\s(])(ec2|elbv2|rds|autoscaling|events|configservice|s3api|sns|logs|cloudwatch|ssm|backup|resource-groups|kms|iam|resourcegroupstaggingapi|dynamodb|network-firewall|cloudformation|elasticache|eks|ecs|cloudfront|globalaccelerator|wafv2|vpc-lattice|route53resolver|sqs|secretsmanager|lambda|ecr|accessanalyzer|route53|elb|apigatewayv2|cognito-idp|stepfunctions|efs|kinesis|firehose|glue|athena)\s+"?([a-z0-9]+-[a-z0-9$-]+)"?/g;
+const SERVICES_RE = /(?:^|[\s(])(ec2|elbv2|rds|autoscaling|events|configservice|s3api|sns|logs|cloudwatch|ssm|backup|resource-groups|kms|iam|resourcegroupstaggingapi|dynamodb|network-firewall|cloudformation|elasticache|eks|ecs|cloudfront|globalaccelerator|wafv2|vpc-lattice|route53resolver|sqs|secretsmanager|lambda|ecr|accessanalyzer|route53|elb|apigatewayv2|cognito-idp|stepfunctions|efs|kinesis|firehose|glue|athena|acm)\s+"?([a-z0-9]+-[a-z0-9$-]+)"?/g;
 /** Every "<service> <command>" an aws call names in a script (comments left out), with the region it names. */
 function cliCalls(path) {
   const out = [];
@@ -669,7 +669,7 @@ test("every AWS CLI call in Unblock, the safety net, Verify clean and the ready 
   const scripts = ["infra/ci/lab-unblock-aws.sh", "infra/ci/lab-aws-safety-net.sh", "infra/ci/lab-ready-aws.sh"];
   const calls = scripts.flatMap((p) => cliCalls(p).map((c) => ({ ...c, p })));
   // The extraction found the calls (a script that stops naming them would make this test vacuous).
-  assert.ok(calls.length > 160, `${calls.length} calls`);
+  assert.ok(calls.length > 185, `${calls.length} calls`);
   for (const must of ["iam delete-role", "configservice stop-configuration-recorder", "cloudwatch delete-dashboards", "ec2 revoke-security-group-egress", "resourcegroupstaggingapi get-resources", "cloudfront get-distribution", "s3api delete-objects",
     // Final review, Important 2: security group rules, listeners and listener rules, read and (when still there) deleted.
     "ec2 describe-security-group-rules", "ec2 revoke-security-group-ingress", "elbv2 describe-listeners", "elbv2 describe-rules", "elbv2 delete-listener", "elbv2 delete-rule",
@@ -678,7 +678,9 @@ test("every AWS CLI call in Unblock, the safety net, Verify clean and the ready 
     // Batch 3 (Task 4): the new types' deletes, Unblock's Kubernetes-made load balancers and EKS deletion protection (pre-flight C9).
     "eks delete-nodegroup", "eks delete-cluster", "dynamodb update-table", "dynamodb delete-table", "apigatewayv2 delete-api", "cognito-idp delete-user-pool", "efs delete-mount-target", "elasticache delete-replication-group", "kinesis delete-stream", "firehose delete-delivery-stream", "glue stop-crawler", "glue delete-database", "athena delete-work-group", "stepfunctions delete-state-machine", "elbv2 delete-load-balancer", "elb delete-load-balancer", "eks update-cluster-config",
     // Batch 4 (Task 5): edge, DNS and Lattice.
-    "globalaccelerator update-accelerator", "globalaccelerator delete-accelerator", "globalaccelerator delete-endpoint-group", "globalaccelerator delete-listener", "wafv2 delete-web-acl", "cloudfront delete-function", "route53resolver delete-resolver-rule", "route53resolver disassociate-resolver-rule", "route53resolver delete-resolver-endpoint", "route53resolver delete-firewall-rule", "vpc-lattice delete-service", "vpc-lattice deregister-targets", "vpc-lattice delete-service-network"]) assert.ok(calls.some((c) => c.cli === must), must);
+    "globalaccelerator update-accelerator", "globalaccelerator delete-accelerator", "globalaccelerator delete-endpoint-group", "globalaccelerator delete-listener", "wafv2 delete-web-acl", "cloudfront delete-function", "route53resolver delete-resolver-rule", "route53resolver disassociate-resolver-rule", "route53resolver delete-resolver-endpoint", "route53resolver delete-firewall-rule", "vpc-lattice delete-service", "vpc-lattice deregister-targets", "vpc-lattice delete-service-network",
+    // Batch 4 (Task 6): network services, IPAM and certificates.
+    "ec2 delete-client-vpn-endpoint", "ec2 disassociate-client-vpn-target-network", "network-firewall delete-firewall", "ec2 delete-vpc-endpoint-service-configurations", "ec2 reject-vpc-endpoint-connections", "ec2 delete-traffic-mirror-target", "ec2 delete-vpn-connection", "ec2 detach-vpn-gateway", "ec2 delete-transit-gateway-peering-attachment", "ec2 delete-transit-gateway", "ec2 delete-ipam", "acm delete-certificate"]) assert.ok(calls.some((c) => c.cli === must), must);
   const refused = [];
   for (const c of calls) for (const req of requestsOf(c)) {
     const d = decide(POLICIES.role, req);
