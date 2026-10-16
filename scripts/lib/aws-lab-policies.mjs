@@ -31,9 +31,12 @@
 //
 // Batch 4. A peering's accepter side carries no lab tag until it is accepted,
 // so the two peering accepts are in neither list (ruling P3, A112: the VPC
-// accept still needs the lab tag on the accepter VPC); and CloudWatch Logs'
+// accept still needs the lab tag on the accepter VPC, and a requester VPC in
+// this account); a traffic mirror filter rule, which takes no tags, is judged
+// by its filter's tag instead (ruling P17, A126); and CloudWatch Logs'
 // account-wide resource policy, which vended log delivery would write and no
-// lab could remove, is refused outright (ruling P8, A117).
+// lab could remove, is refused outright, in the role and the boundary
+// (ruling P8, A117).
 //
 // Size (ruling A29). AWS caps a managed policy at 6,144 characters without
 // whitespace and a role at 10 of them, so the statements are packed, first
@@ -89,9 +92,10 @@ export const NAME_OWNED_TYPES = ["cloudwatch:dashboard", "config:ConfigurationRe
  */
 // Ruling P4 (A86): the provider's aws_ami_copy calls CopyImage with no TagSpecifications and tags the image after; a
 // lab's copies are named lab-<id>-* (lab-scope-aws.mjs) and found by that name.
-// Ruling P17 (A126): the provider's filter rule takes no tags, yet AWS asks the request tag of the rule it makes; the
-// rule sits in the lab's own tagged filter (lab-scope-aws.mjs: by reference), and DeleteTrafficMirrorFilterRule still
-// needs the lab tag.
+// Ruling P17 (A126, Task 2 fix round 1): the provider's filter rule takes no tags, yet AWS asks the request tag of the
+// rule it makes; the rule sits in the lab's own tagged filter (lab-scope-aws.mjs: by reference). AWS authorises the
+// rule's create, modify and delete on both the rule (untagged) and its filter, so the modify and delete are
+// change-tag exempt too (CHANGE_TAG_EXEMPT) and MirrorRulesInLabFilters holds all three to a lab-tagged filter.
 export const CREATE_TAG_EXEMPT = ["ec2:CreateNetworkInterface", "ssm:CreateAssociation", "ssm:CreateAssociationBatch", "ec2:CopyImage", "ec2:CreateTrafficMirrorFilterRule"];
 /**
  * Ruling A82: actions exempt from the change-needs-lab-tag rule. AWS authorises ReplaceNetworkAclAssociation on the ACL
@@ -106,7 +110,11 @@ export const CREATE_TAG_EXEMPT = ["ec2:CreateNetworkInterface", "ssm:CreateAssoc
 // Ruling P3 (A112): a peering's accepter side carries no lab tag until the accepter resource tags it, after the accept
 // (in another region, V: lab 29's release test). The VPC peering accept still meets VpcFabricNeedsLabTag on the
 // accepter VPC; lab-scope-aws.mjs allows an accepter only of the lab's own peering, in AWS_PEER_REGION_LABS.
-export const CHANGE_TAG_EXEMPT = ["ec2:ReplaceNetworkAclAssociation", "elasticloadbalancing:DeleteLoadBalancer", "ec2:DeleteNetworkInterface", "ec2:AcceptVpcPeeringConnection", "ec2:AcceptTransitGatewayPeeringAttachment"];
+// PeeringAcceptOwnAccountOnly keeps the VPC accept to peerings this account's own VPCs request (Task 2 fix round 1).
+// Ruling P17 (fix round 1): a mirror filter rule's modify and delete, judged on the rule's filter (MirrorRulesInLabFilters).
+export const CHANGE_TAG_EXEMPT = ["ec2:ReplaceNetworkAclAssociation", "elasticloadbalancing:DeleteLoadBalancer", "ec2:DeleteNetworkInterface", "ec2:AcceptVpcPeeringConnection", "ec2:AcceptTransitGatewayPeeringAttachment", "ec2:DeleteTrafficMirrorFilterRule", "ec2:ModifyTrafficMirrorFilterRule"];
+/** Ruling P17: the filter rule actions, exempt from the lists, held instead to a lab-tagged filter. */
+export const MIRROR_RULE_ACTIONS = ["ec2:CreateTrafficMirrorFilterRule", "ec2:DeleteTrafficMirrorFilterRule", "ec2:ModifyTrafficMirrorFilterRule"];
 /** Ruling P8: the tag Kubernetes gives what lab 19's cluster makes (its cluster is lab-<id>, ruling P7). */
 export const EKS_LB_TAG = "kubernetes.io/cluster/lab-saa-19-eks";
 /**
@@ -410,6 +418,12 @@ function fixedStatements(abac) {
     ...VPC_FABRIC_GUARDS,
     // Ruling P8: a load balancer is deleted only when it carries the lab tag or lab 19's Kubernetes cluster tag.
     deny("ElbDeleteLabOrEks", "elasticloadbalancing:DeleteLoadBalancer", "*", { Null: { [`aws:ResourceTag/${LAB_TAG}`]: "true", [`aws:ResourceTag/${EKS_LB_TAG}`]: "true" } }),
+    // Ruling P17 (fix round 1): a mirror filter rule is untagged, so its create, modify and delete need the lab tag on
+    // the filter it sits in (AWS authorises each on the filter too).
+    deny("MirrorRulesInLabFilters", MIRROR_RULE_ACTIONS, "arn:aws:ec2:*:*:traffic-mirror-filter/*", { Null: { [`aws:ResourceTag/${LAB_TAG}`]: "true" } }),
+    // Ruling P3 (fix round 1): the change-tag exempt VPC peering accept, only for a peering one of this account's VPCs
+    // requested (ec2:RequesterVpc, on the peering connection), never another account's.
+    deny("PeeringAcceptOwnAccountOnly", "ec2:AcceptVpcPeeringConnection", "arn:aws:ec2:*:*:vpc-peering-connection/*", { ArnNotLike: { "ec2:RequesterVpc": `arn:aws:ec2:*:${ACCT}:vpc/*` } }),
     // The untaggable named types (NAME_OWNED_TYPES): the lab's own names only, never the account's default recorder.
     { Sid: "LabDashboardsOnly", Effect: "Deny", Action: ["cloudwatch:PutDashboard", "cloudwatch:DeleteDashboards"], NotResource: `arn:aws:cloudwatch::${ACCT}:dashboard/lab-*` },
     // soa-02's release test must confirm AWS evaluates PutConfigurationRecorder, at create, against the recorder's named
@@ -446,7 +460,8 @@ function boundary(abac) {
       ...VPC_FABRIC_GUARDS,
       { Sid: "NoDefaultVpc", Effect: "Deny", NotAction: "ec2:Describe*", Resource: "__DEFAULT_VPC_ARNS__" },
       { Sid: "NoDefaultVpcChildren", Effect: "Deny", NotAction: "ec2:Describe*", Resource: "*", Condition: { ArnEquals: { "ec2:Vpc": "__DEFAULT_VPC_ARNS__" } } },
-      deny("NoAccountOrBilling", ["organizations:*", "account:*", "billing:*", "aws-portal:*", "budgets:*", "ce:Create*", "ce:Update*", "ce:Delete*", ...(abac.accountSettings ?? [])]),
+      // Ruling P8 (fix round 1): CloudWatch Logs' account-wide resource policy, here too (defence in depth).
+      deny("NoAccountOrBilling", ["organizations:*", "account:*", "billing:*", "aws-portal:*", "budgets:*", "ce:Create*", "ce:Update*", "ce:Delete*", "logs:PutResourcePolicy", "logs:DeleteResourcePolicy", ...(abac.accountSettings ?? [])]),
       deny("NoVpnServer", "*", "*", { StringEquals: { "aws:ResourceTag/wg-admin": "vpn" } }),
       deny("NoVpnTagRequest", "*", "*", { Null: { "aws:RequestTag/wg-admin": "false" } }),
       deny("NoVpnTagKeys", "*", "*", { "ForAnyValue:StringEquals": { "aws:TagKeys": ["wg-admin"] } }),
