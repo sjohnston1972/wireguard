@@ -229,7 +229,15 @@ export const AWS_GLOBAL_LABS: readonly string[] = ["soa-09-route53-cloudfront", 
  * Ruling P5: labs outside AWS_GLOBAL_LABS with Route 53 zones or health checks. The tagging API lists Route 53 items
  * in us-east-1 only, so Parse payload adds us-east-1 (never us-west-2) to their LAB_REGIONS and the Worker reads it.
  */
-export const AWS_DNS_LABS: readonly string[] = ["saa-16-dr-pilot-light"];
+export const AWS_DNS_LABS: readonly string[] = ["saa-16-dr-pilot-light", "ans-23-hybrid-dns", "ans-24-privatelink"];
+/** Ruling P1 (batch 4): the labs whose Terraform may declare the sensitive `files` output (A13): lab 31's client files. */
+export const AWS_FILES_LABS: readonly string[] = ["ans-31-client-vpn"];
+/** Ruling P1: the labs with Global Accelerator, whose API answers (and whose items are listed) only in us-west-2. */
+export const AWS_GA_LABS: readonly string[] = ["ans-26-edge"];
+/** Whether the Worker reads an AWS lab's tagged items in us-west-2 too. */
+export const readsUsWest2 = (id: string): boolean => AWS_GA_LABS.includes(id);
+/** Ruling P1: the labs whose VPC peering and transit gateway peering cross to the session's secondary region. */
+export const AWS_PEER_REGION_LABS: readonly string[] = ["ans-29-multi-region"];
 /** Whether an AWS lab has items the tagging API lists only in us-east-1 (a global lab's, or a DNS lab's Route 53). */
 export const readsUsEast1 = (id: string): boolean => AWS_GLOBAL_LABS.includes(id) || AWS_DNS_LABS.includes(id);
 /** The instance types a lab may list in capacity.instance_types. */

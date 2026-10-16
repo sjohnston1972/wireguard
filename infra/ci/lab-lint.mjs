@@ -163,6 +163,8 @@ const TEXT_RULES = [
 
 // AWS: the same rules, with IPv6 literals, the VPN server's VPC names and the aws-provider / data checks below.
 const AWS_BOUNDARY_NAME = "wg-admin-lab-boundary";
+/** Ruling P1: a copy of the contract's. */
+export const AWS_FILES_LABS = ["ans-31-client-vpn"];
 /** Every Name tag in infra/aws/main.tf (lab-scope-aws.mjs GATEWAY_NAME_LIST is the same list; a test keeps them equal). */
 export const AWS_GATEWAY_NAMES = ["vpc-wg", "snet-wg", "rt-wg", "sg-wg", "igw-wg", "nic-wg", "pip-wg", "vm-wg", "osdisk-wg", "rt-workloads", "snet-workloads", "sg-workloads", "vm-test", "osdisk-test"];
 const AWS_TEXT_RULES = [

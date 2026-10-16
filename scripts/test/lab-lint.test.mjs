@@ -15,7 +15,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cloudOfId, lintTfText } from "../lib/labs.mjs";
 import fs from "node:fs";
-import { AWS_GATEWAY_NAMES, fileProblems, lintBicepText, lintDir } from "../../infra/ci/lab-lint.mjs";
+import * as contract from "../lib/labs.mjs";
+import { AWS_FILES_LABS, AWS_GATEWAY_NAMES, fileProblems, lintBicepText, lintDir } from "../../infra/ci/lab-lint.mjs";
 import { GATEWAY_NAME_LIST } from "../../infra/ci/lab-scope-aws.mjs";
 import { labFolders } from "../lib/labs.mjs";
 
@@ -62,6 +63,7 @@ test("AWS: literal CIDRs only 0.0.0.0/0 and ::/0", () => {
 test("AWS: the VPN server's names and the wg-admin key are refused; the boundary's name is not", () => {
   // Every Name in infra/aws (final review, Important 3), the same list as the plan check's.
   assert.deepEqual(AWS_GATEWAY_NAMES, GATEWAY_NAME_LIST);
+  assert.deepEqual(AWS_FILES_LABS, contract.AWS_FILES_LABS);
   for (const n of GATEWAY_NAME_LIST) assert.ok(aws({ "main.tf": `locals {\n  x = "${n}"\n}\n` }).some((p) => p.startsWith("gateway:")), n);
   const names = [...fs.readFileSync(new URL("../../infra/aws/main.tf", import.meta.url), "utf8").matchAll(/\bName\s*=\s*"([a-z0-9-]+)"/g)].map((m) => m[1]);
   assert.ok(names.length >= 10, `${names.length} names read from infra/aws/main.tf`);

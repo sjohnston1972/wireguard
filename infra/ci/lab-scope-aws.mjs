@@ -173,7 +173,9 @@ export const LAB_ID_RE = /^(az(104|305|700)|soa|saa|ans)-\d{2}-[a-z0-9]+(-[a-z0-
 /** The labs whose provider may also be us-east-1 or us-west-2 (CloudFront's WAF, Global Accelerator). */
 export const AWS_GLOBAL_LABS = ["soa-09-route53-cloudfront", "ans-26-edge"];
 /** Ruling P5: labs with Route 53 items listed in us-east-1 that are not global labs (a copy of the contract's). */
-export const AWS_DNS_LABS = ["saa-16-dr-pilot-light"];
+export const AWS_DNS_LABS = ["saa-16-dr-pilot-light", "ans-23-hybrid-dns", "ans-24-privatelink"];
+/** Ruling P1: a copy of the contract's. */
+export const AWS_PEER_REGION_LABS = ["ans-29-multi-region"];
 /** The one lab that may make the account's Config recorder (one per region per account). */
 export const AWS_CONFIG_LABS = ["soa-02-systems-manager"];
 /** The one lab that may make IAM users. */

@@ -11,7 +11,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AWS_CONFIG_LABS, AWS_DNS_LABS, AWS_GLOBAL_LABS, AWS_IAM_USER_LABS, AWS_INSTANCE_TYPES, AWS_MEDIUM_LABS, LAB_ID_RE } from "../lib/labs.mjs";
+import { AWS_CONFIG_LABS, AWS_DNS_LABS, AWS_GLOBAL_LABS, AWS_IAM_USER_LABS, AWS_INSTANCE_TYPES, AWS_MEDIUM_LABS, AWS_PEER_REGION_LABS, LAB_ID_RE } from "../lib/labs.mjs";
 import * as scope from "../../infra/ci/lab-scope-aws.mjs";
 import { planResources } from "../../infra/ci/lab-scope.mjs";
 import { realisticPlan } from "./fixtures/labs/plans/realistic.mjs";
@@ -30,7 +30,7 @@ test("the template's plan passes, and with an instance", () => {
 
 test("the constants equal the contract's copies", () => {
   assert.equal(scope.LAB_ID_RE.source, LAB_ID_RE.source);
-  for (const [a, b] of [[scope.AWS_CONFIG_LABS, AWS_CONFIG_LABS], [scope.AWS_DNS_LABS, AWS_DNS_LABS], [scope.AWS_GLOBAL_LABS, AWS_GLOBAL_LABS],[scope.AWS_IAM_USER_LABS, AWS_IAM_USER_LABS], [scope.AWS_INSTANCE_TYPES, AWS_INSTANCE_TYPES], [scope.AWS_MEDIUM_LABS, AWS_MEDIUM_LABS]]) assert.deepEqual([...a], [...b]);
+  for (const [a, b] of [[scope.AWS_CONFIG_LABS, AWS_CONFIG_LABS], [scope.AWS_DNS_LABS, AWS_DNS_LABS], [scope.AWS_GLOBAL_LABS, AWS_GLOBAL_LABS],[scope.AWS_IAM_USER_LABS, AWS_IAM_USER_LABS], [scope.AWS_INSTANCE_TYPES, AWS_INSTANCE_TYPES], [scope.AWS_MEDIUM_LABS, AWS_MEDIUM_LABS], [scope.AWS_PEER_REGION_LABS, AWS_PEER_REGION_LABS]]) assert.deepEqual([...a], [...b]);
 });
 
 const role = (over = {}) => ({

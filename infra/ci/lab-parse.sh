@@ -77,7 +77,7 @@ AWS_PREFIXES = ("soa-", "saa-", "ans-")
 # Labs with parts in us-east-1 (CloudFront) or us-west-2 (Global Accelerator): kept equal to scripts/lib/labs.mjs by a test.
 AWS_GLOBAL_LABS = ("soa-09-route53-cloudfront", "ans-26-edge")
 # Labs outside that list with Route 53 items, which the tagging API lists in us-east-1 only (ruling P5): equal to the contract's, by a test.
-AWS_DNS_LABS = ("saa-16-dr-pilot-light",)
+AWS_DNS_LABS = ("saa-16-dr-pilot-light", "ans-23-hybrid-dns", "ans-24-privatelink")
 AWS_ID_MAX = 30
 
 if action not in ACTIONS:

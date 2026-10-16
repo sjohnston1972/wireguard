@@ -11,7 +11,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stringify } from "yaml";
-import { AWS_DNS_LABS, AWS_GLOBAL_LABS, AWS_LAB_ID_MAX, buildCatalogue, cloudOfId, EXAM_CLOUD, examOfId, LAB_EXAMS, LAB_ID_RE, LAB_TF_VARS_AWS, readmeFooter, readsUsEast1, validateLab, variablesProblems } from "../lib/labs.mjs";
+import { AWS_DNS_LABS, AWS_FILES_LABS, AWS_GA_LABS, AWS_GLOBAL_LABS, AWS_PEER_REGION_LABS, readsUsWest2, AWS_LAB_ID_MAX, buildCatalogue, cloudOfId, EXAM_CLOUD, examOfId, LAB_EXAMS, LAB_ID_RE, LAB_TF_VARS_AWS, readmeFooter, readsUsEast1, validateLab, variablesProblems } from "../lib/labs.mjs";
 
 const AREAS = [
   { key: "soa.reliability", exam: "SOA-C03", name: "Reliability and Business Continuity" },
@@ -160,4 +160,13 @@ test("lab-parse.sh's AWS_DNS_LABS equals the contract's (ruling P5)", () => {
 test("ruling P5: a global or DNS lab reads us-east-1; no other lab does", () => {
   assert.deepEqual(["soa-09-route53-cloudfront", "saa-16-dr-pilot-light", "soa-05-rds", "saa-19-eks"].map(readsUsEast1), [true, true, false, false]);
   assert.ok(!AWS_DNS_LABS.some((id) => AWS_GLOBAL_LABS.includes(id)), "a DNS lab is never also a global lab");
+});
+
+test("ruling P1 (batch 4): the files, Global Accelerator, peer-region and DNS lists; GA labs read us-west-2", () => {
+  assert.deepEqual(AWS_FILES_LABS, ["ans-31-client-vpn"]);
+  assert.deepEqual(AWS_GA_LABS, ["ans-26-edge"]);
+  assert.deepEqual(AWS_PEER_REGION_LABS, ["ans-29-multi-region"]);
+  assert.deepEqual(["ans-26-edge", "soa-09-route53-cloudfront", "ans-29-multi-region"].map(readsUsWest2), [true, false, false]);
+  assert.ok(AWS_GA_LABS.every((id) => AWS_GLOBAL_LABS.includes(id)), "a GA lab is a global lab (Parse payload lists us-west-2 for it)");
+  assert.deepEqual(["ans-23-hybrid-dns", "ans-24-privatelink", "ans-30-vpc-lattice"].map(readsUsEast1), [true, true, false]);
 });

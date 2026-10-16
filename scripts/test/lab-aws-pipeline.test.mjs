@@ -79,6 +79,12 @@ test("ruling P5: a DNS lab's regions add us-east-1 only (Route 53 is listed ther
   assert.equal(r.env.TF_VAR_secondary_region, "eu-west-1");
 });
 
+test("ruling P1: lab 23's regions add us-east-1 only; lab 26's add us-east-1 and us-west-2", { skip: skipParse }, () => {
+  const run = (id, more = {}) => parseRun("aws", { ...PAYLOAD, lab_id: id, version: 1, name_prefix: `a${id.split("-")[1]}k3x9q`, ...more }, { ...LAB, id, version: 1 });
+  assert.equal(run("ans-23-hybrid-dns").env.LAB_REGIONS, "eu-west-2 eu-west-1 us-east-1");
+  assert.equal(run("ans-26-edge", { secondary_region: "eu-west-1" }).env.LAB_REGIONS, "eu-west-2 eu-west-1 us-east-1 us-west-2");
+});
+
 test("Parse payload: an Azure run gains only LAB_CLOUD=azure", { skip: skipParse }, () => {
   const az = { id: "az104-08-vms", version: 1, connectivity: { peering: "optional", dns_link: false }, timing: { deploy_min: 5, destroy_min: 5 }, identity: { creates: [] } };
   const r = parseRun("azure", { ...PAYLOAD, lab_id: az.id, version: 1, region: "uksouth", name_prefix: "l08k3x9q", gateway_cidr: undefined }, az);
