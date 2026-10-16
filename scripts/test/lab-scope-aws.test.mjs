@@ -1202,3 +1202,15 @@ test("fix round 1: a Client VPN connect handler and a cross-region interface end
   assert.deepEqual(rulesFor(c13, [sfnRole, sm({ log_destination: `arn:aws:logs:eu-west-2:${ACCOUNT}:log-group:/aws/vendedlogs/states/someone-else:*` })]), ["gateway: aws_sfn_state_machine.orders"]);
   assert.deepEqual(rulesWith(c13, ["aws_cloudwatch_log_group.sfn"], [sfnRole, sm({}, { unknown: ["logging_configuration.0.log_destination"], refs: { "logging_configuration.0.log_destination": ref("aws_cloudwatch_log_group.sfn", "arn") } })]), []);
 });
+
+test("fix round 2: lab 22's VPN connection leaving its tunnel log options unset (Optional and Computed: planned unknown) passes; a dynamic one in HCL is refused", () => {
+  const cgw = T(c22, "aws_customer_gateway.onprem", { bgp_asn: "65001", type: "ipsec.1" }, { unknown: ["ip_address"], refs: { ip_address: ref("aws_eip.router", "public_ip") } });
+  const vgw = T(c22, "aws_vpn_gateway.lab", { amazon_side_asn: "64512" }, refs({ vpc_id: "aws_vpc.lab" }));
+  const vpn = (over = {}) => T(c22, "aws_vpn_connection.lab", { type: "ipsec.1", static_routes_only: false, ...over }, refs({ customer_gateway_id: "aws_customer_gateway.onprem", vpn_gateway_id: "aws_vpn_gateway.lab" }));
+  const vpnOnly = (xs) => xs.filter((x) => x.endsWith(" aws_vpn_connection.lab"));
+  // UNSET_BLOCKS_UNKNOWN plans both blocks wholly unknown, as AWS does.
+  assert.deepEqual(vpnOnly(rulesWith(c22, ["aws_eip.router"], [cgw, vgw, vpn()], templateResources(c22))), []);
+  assert.deepEqual(vpnOnly(rulesWith(c22, ["aws_eip.router"], [cgw, vgw, vpn({ tunnel1_log_options: [{ cloudwatch_log_options: [{ log_enabled: true }] }] })], templateResources(c22))), ["lingering: aws_vpn_connection.lab"]);
+  const hcl = { resource: { aws_vpn_connection: { lab: [{ type: "ipsec.1", customer_gateway_id: "${aws_customer_gateway.onprem.id}", vpn_gateway_id: "${aws_vpn_gateway.lab.id}", dynamic: { tunnel1_log_options: [{ for_each: "${var.logs}", content: [{ cloudwatch_log_options: [{ log_enabled: true }] }] }] } }] } } };
+  assert.deepEqual(scope.checkHclAws(hcl, c22.id).filter((x) => x.address === "aws_vpn_connection.lab").map((x) => x.rule), ["lingering"]);
+});

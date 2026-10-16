@@ -38,7 +38,10 @@
 // inside path.module); and outputs (ruling P2: an output "files" only in
 // AWS_FILES_LABS and with sensitive = true; lintDir takes the lab's id from
 // its labs/<id>/terraform folder, and with no id a files output is
-// refused). Bicep files are not read for AWS. `--cloud aws` also
+// refused); and dynamic (AWS batch 4 Task 4 fix round 2: a dynamic block for
+// any block lab-scope-aws.mjs judges element by element, AWS_DYNAMIC_JUDGED:
+// a plan cannot tell one whose for_each is not known at plan from a block left
+// unset, and the deploy-time runner runs this check and the plan check only). Bicep files are not read for AWS. `--cloud aws` also
 // reads the CloudFormation templates in `terraform/cfn/` (lab 06; rule cfn,
 // ruling P4): short-form tags (`!Ref`: Terraform's yamldecode reads none),
 // `Transform`, nested stacks, custom resources, macros, StackSets, SAM, IAM
@@ -168,6 +171,32 @@ const TEXT_RULES = [
 const AWS_BOUNDARY_NAME = "wg-admin-lab-boundary";
 /** Ruling P1: a copy of the contract's. */
 export const AWS_FILES_LABS = ["ans-31-client-vpn"];
+/**
+ * Task 4 fix round 2: the blocks lab-scope-aws.mjs judges element by element, by type, each with the scope rule that
+ * refuses a dynamic one. A dynamic block whose for_each is not known at plan plans as one unknown and is left out of
+ * the plan's configuration, so a plan cannot tell it from an Optional and Computed block left unset; this check (and
+ * the scope check's HCL mode, which imports this map) refuses it on the text. One list, so the two cannot drift.
+ */
+export const AWS_DYNAMIC_JUDGED = {
+  aws_cloudwatch_event_target: { dead_letter_config: "gateway" },
+  aws_sfn_state_machine: { logging_configuration: "gateway" },
+  aws_security_group: { ingress: "public" },
+  aws_cloudfront_distribution: { logging_config: "lingering" },
+  aws_glue_catalog_table: { target_table: "gateway" },
+  aws_ec2_client_vpn_endpoint: { authentication_options: "never", client_connect_options: "gateway" },
+  aws_ec2_managed_prefix_list: { entry: "address" },
+  aws_vpn_connection: { tunnel1_log_options: "lingering", tunnel2_log_options: "lingering" },
+  aws_route53_resolver_endpoint: { ip_address: "gateway" },
+  aws_route53_resolver_rule: { target_ip: "address" },
+  aws_globalaccelerator_endpoint_group: { endpoint_configuration: "gateway" },
+  aws_globalaccelerator_accelerator: { attributes: "lingering" },
+  aws_wafv2_web_acl: { rule: "size" },
+  aws_networkfirewall_firewall: { subnet_mapping: "size" },
+  aws_networkfirewall_firewall_policy: { firewall_policy: "never" },
+  aws_networkfirewall_logging_configuration: { logging_configuration: "lingering" },
+  aws_vpclattice_target_group_attachment: { target: "gateway" },
+  aws_vpclattice_listener: { default_action: "gateway" },
+};
 /** Every Name tag in infra/aws/main.tf (lab-scope-aws.mjs GATEWAY_NAME_LIST is the same list; a test keeps them equal). */
 export const AWS_GATEWAY_NAMES = ["vpc-wg", "snet-wg", "rt-wg", "sg-wg", "igw-wg", "nic-wg", "pip-wg", "vm-wg", "osdisk-wg", "rt-workloads", "snet-workloads", "sg-workloads", "vm-test", "osdisk-test"];
 const AWS_TEXT_RULES = [
@@ -225,22 +254,26 @@ function requiredProviders(codes) {
   return out;
 }
 
-/** The top-level entries of a block body: [{ key, kind: "attr" | "block", index, value }] (value: the rest of the line, or the block's body). */
+/**
+ * The top-level entries of a block body: [{ key, label, kind: "attr" | "block", index, value }] (value: the rest of the
+ * line, or the block's body; label: a block's label, dynamic "ingress" { ... }'s ingress, else null).
+ */
 function topLevel(body) {
   const entries = [];
   let depth = 0;
   let inStr = false;
   for (let i = 0; i < body.length; i++) {
     if (depth === 0 && !inStr && (i === 0 || body[i - 1] === "\n")) {
-      const m = /^[ \t]*([A-Za-z_][\w-]*)[ \t]*(=|\{)/.exec(body.slice(i, body.indexOf("\n", i) < 0 ? undefined : body.indexOf("\n", i)));
+      const m = /^[ \t]*([A-Za-z_][\w-]*)(?:[ \t]+(?:"([^"\n]*)"|([A-Za-z_][\w-]*)))?[ \t]*(=|\{)/.exec(body.slice(i, body.indexOf("\n", i) < 0 ? undefined : body.indexOf("\n", i)));
       if (m) {
-        if (m[2] === "{") {
+        const blockLabel = m[2] ?? m[3] ?? null;
+        if (m[4] === "{") {
           const open = i + m[0].length - 1;
           const close = closeOf(body, open);
-          entries.push({ key: m[1], kind: "block", index: i, value: close < 0 ? body.slice(open + 1) : body.slice(open + 1, close) });
-        } else {
+          entries.push({ key: m[1], label: blockLabel, kind: "block", index: i, value: close < 0 ? body.slice(open + 1) : body.slice(open + 1, close) });
+        } else if (blockLabel === null) {
           const end = body.indexOf("\n", i);
-          entries.push({ key: m[1], kind: "attr", index: i, value: body.slice(i + m[0].length, end < 0 ? body.length : end).trim() });
+          entries.push({ key: m[1], label: null, kind: "attr", index: i, value: body.slice(i + m[0].length, end < 0 ? body.length : end).trim() });
         }
       }
     }
@@ -307,6 +340,21 @@ function awsDataProblems(file, code) {
   return out;
 }
 
+/** Task 4 fix round 2: a dynamic block for a block the scope check judges element by element (AWS_DYNAMIC_JUDGED). */
+function awsDynamicProblems(file, code) {
+  const out = [];
+  for (const m of code.matchAll(new RegExp(String.raw`\bresource\s+${LABEL}\s+${LABEL}\s*\{`, "g"))) {
+    const judged = AWS_DYNAMIC_JUDGED[label(m, 1)];
+    if (!judged) continue;
+    const open = m.index + m[0].length - 1;
+    const close = closeOf(code, open);
+    for (const e of topLevel(close < 0 ? "" : code.slice(open + 1, close))) {
+      if (e.kind === "block" && e.key === "dynamic" && e.label in judged) out.push({ file, line: lineOf(code, open + 1 + e.index), rule: "dynamic", message: `dynamic "${e.label}" in ${label(m, 1)}: write each ${e.label} block, so the plan check can read it (a dynamic block whose for_each is not known at plan hides its contents)` });
+    }
+  }
+  return out;
+}
+
 /** Ruling P2: the files output (A13) only in AWS_FILES_LABS, and sensitive, so Terraform never prints it. */
 function awsFilesOutputProblems(file, code, labId) {
   const out = [];
@@ -336,7 +384,7 @@ export function lintTfText(files, { cloud = "azure", labId = null } = {}) {
   const out = [];
   const codes = Object.entries(files).map(([file, src]) => [file, stripComments(src)]);
   for (const [file, code] of codes) {
-    if (aws) out.push(...awsProviderProblems(file, code), ...awsDataProblems(file, code), ...awsFilesOutputProblems(file, code, labId));
+    if (aws) out.push(...awsProviderProblems(file, code), ...awsDataProblems(file, code), ...awsFilesOutputProblems(file, code, labId), ...awsDynamicProblems(file, code));
     for (const r of aws ? AWS_TEXT_RULES : TEXT_RULES) {
       for (const m of code.matchAll(r.re)) {
         if (r.ok?.(m[0])) continue;

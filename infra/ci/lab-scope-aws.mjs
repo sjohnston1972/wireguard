@@ -225,7 +225,7 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { normalizeSource } from "./lab-lint.mjs";
+import { AWS_DYNAMIC_JUDGED, normalizeSource } from "./lab-lint.mjs";
 import { hclResources, planResources, Unknown } from "./lab-scope.mjs";
 
 // ── The contract's copies (a test keeps them equal to scripts/lib/labs.mjs) ──
@@ -1144,6 +1144,10 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
     // 14. description (AWS rejects a security group or rule description outside its character set at apply)
     if (isManaged) descriptionProblems(r, v, refuse);
 
+    // Task 4 fix round 2: HCL sees a dynamic block a plan cannot tell from an unset computed one (lab-lint's
+    // AWS_DYNAMIC_JUDGED, the same list, refuses it on the text too).
+    if (isManaged) for (const [attr, rule] of Object.entries(AWS_DYNAMIC_JUDGED[type] ?? {})) if (dynamicHcl(r, attr)) refuse(rule, `${attr} is a dynamic block: write each one, so the plan check can read it`);
+
     // Batch 3's reference and value rules (rules provider to size, by type; preflight C14: before the report below).
     if (isManaged) batch3Problems(r, v);
     if (isManaged) batch4Problems(r, v);
@@ -1272,7 +1276,7 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         case "aws_cloudwatch_event_target":
           needOwn("arn", ["aws_sns_topic", "aws_sqs_queue", "aws_lambda_function", "aws_sfn_state_machine", "aws_kinesis_stream", "aws_cloudwatch_log_group"], "gateway", "the lab's own topic, queue, function, state machine, stream or log group (ruling P14)");
           // Batch 3 whole-branch minor 6: a failed event's second destination is the lab's own queue too.
-          if (blockUnknown(val.dead_letter_config) || dynamicHcl(res, "dead_letter_config")) refuse("gateway", "dead_letter_config is not known at plan: write the lab's own queue (ruling P14)");
+          if (blockUnknown(val.dead_letter_config)) refuse("gateway", "dead_letter_config is not known at plan: write the lab's own queue (ruling P14)");
           list(val.dead_letter_config).forEach((d, i) => {
             if (isObj(d) && d.arn != null && plan && !own(d.arn, ["aws_sqs_queue"], `dead_letter_config.${i}.arn`)) refuse("gateway", `dead_letter_config.${i}.arn must be the lab's own queue, by reference (ruling P14)`);
           });
@@ -1312,7 +1316,7 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           // Batch 3 whole-branch minor 6: execution logs go to the lab's own log group (an unset block is computed: unknown).
           // logging_configuration is Optional and Computed (planned wholly unknown when unset, saa-13's real plan), so in a
           // plan only a written one not known at plan is refused; HCL refuses a dynamic one.
-          if ((blockUnknown(val.logging_configuration) && res.configured?.has("logging_configuration")) || dynamicHcl(res, "logging_configuration")) refuse("gateway", "logging_configuration is not known at plan: write the lab's own log group");
+          if (blockUnknown(val.logging_configuration) && res.configured?.has("logging_configuration")) refuse("gateway", "logging_configuration is not known at plan: write the lab's own log group");
           list(val.logging_configuration).forEach((l, i) => {
             if (isObj(l) && l.log_destination != null && plan && !own(l.log_destination, ["aws_cloudwatch_log_group"], `logging_configuration.${i}.log_destination`)) refuse("gateway", `logging_configuration.${i}.log_destination must be the lab's own log group, by reference`);
           });
@@ -1535,11 +1539,12 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
       const written = (attr) => Boolean(res.configured?.has(attr)) || nonEmpty(val[attr]) || opaque(val[attr]);
       /**
        * Task 4 (fail closed): a block whose elements are judged, which a plan cannot read element by element (a dynamic
-       * block whose for_each is not known at plan; HCL sees it as one). Fix round 1: none of the blocks read here is
-       * Optional and Computed (computed.json), so left unset each plans as [], and a wholly unknown one is refused.
+       * block whose for_each is not known at plan). Fix round 1: the blocks read here are not Optional and Computed, so
+       * left unset each plans as [], and a wholly unknown one is refused; fix round 2: but VPN tunnel log options are
+       * (their caller exempts an unset one). HCL and lab-lint refuse a dynamic block on the text (AWS_DYNAMIC_JUDGED).
        */
       const unread = (attr, rule) => {
-        if (!blockUnknown(val[attr]) && !dynamicHcl(res, attr)) return false;
+        if (!blockUnknown(val[attr])) return false;
         refuse(rule, `${attr} is not known at plan (a dynamic block): write each one, so it can be read`);
         return true;
       };
@@ -1644,6 +1649,10 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           if (badOr(val.enable_acceleration, (x) => x === true, "enable_acceleration")) refuse("never", "enable_acceleration: accelerated VPN is readme-only (§12.2)");
           if (badOr(val.outside_ip_address_type, (x) => x === "PrivateIpv4", "outside_ip_address_type")) refuse("never", "PrivateIpv4 outside addresses need Direct Connect, which is never");
           for (const k of ["tunnel1_log_options", "tunnel2_log_options"]) {
+            // Fix round 2: Optional and Computed (the provider's vpnsite_connection.go), so left unset each plans wholly
+            // unknown, with no references and not in the configuration; HCL and lab-lint refuse a dynamic one.
+            const x = val[k];
+            if (x instanceof Unknown && !res.configured?.has(k) && !(x.refs?.length > 0)) continue;
             if (unread(k, "lingering")) continue;
             if (list(val[k]).some((o) => isObj(o) && (blockUnknown(o.cloudwatch_log_options) || list(o.cloudwatch_log_options).some((x) => isObj(x) && badOr(x.log_enabled, (e) => e === true))))) refuse("lingering", `${k}: VPN tunnel logs make a log delivery outside /cloudlabs/ (ruling P8)`);
           }
@@ -1777,7 +1786,7 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
             if (list(b.lambda_function_association).length) refuse("never", "Lambda@Edge runs in every edge region (ruling P9)");
           }
           if (written("web_acl_id") || val.web_acl_id instanceof Unknown) needOwn("web_acl_id", ["aws_wafv2_web_acl"], "gateway", "the lab's own web ACL");
-          if (list(val.logging_config).some(isObj) || blockUnknown(val.logging_config) || dynamicHcl(res, "logging_config")) refuse("lingering", "logging_config writes to a bucket with ACLs; a lab distribution keeps no logs (ruling P8)");
+          if (list(val.logging_config).some(isObj) || blockUnknown(val.logging_config)) refuse("lingering", "logging_config writes to a bucket with ACLs; a lab distribution keeps no logs (ruling P8)");
           break;
         }
         // ── Lab 27 (ruling P16) ──
@@ -1825,7 +1834,7 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           if (plan && !(typeof loc === "string" && nonEmpty(variables.name_prefix) && loc.startsWith(`s3://cloudlabs-${variables.name_prefix}-`))) refuse("gateway", "storage_descriptor.location must be in the lab's own bucket (ruling P17)");
           if (!(!plan && val.database_name instanceof Unknown) && !startsKnown(val.database_name, glueName) && !(plan && own(val.database_name, ["aws_glue_catalog_database"], "database_name"))) refuse("gateway", `database_name must be the lab's own database (${glueName})`);
           // As the lab's Glue database (review M-5): never another catalogue, nor a link to another table.
-          if (res.configured?.has("catalog_id") || list(val.target_table).some(isObj) || blockUnknown(val.target_table) || dynamicHcl(res, "target_table")) refuse("gateway", "catalog_id and target_table reach another catalogue or table (review M-5)");
+          if (res.configured?.has("catalog_id") || list(val.target_table).some(isObj) || blockUnknown(val.target_table)) refuse("gateway", "catalog_id and target_table reach another catalogue or table (review M-5)");
           break;
         }
         case "aws_flow_log":
@@ -1880,7 +1889,7 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           if (first(val.connection_log_options).enabled !== false) refuse("lingering", "connection_log_options.enabled must be false, known at plan (ruling P8)");
           if (badOr(val.self_service_portal, (x) => x === "enabled", "self_service_portal")) refuse("public", "self_service_portal must be disabled");
           // Fix round 1: a connect handler is a Lambda named AWSClientVPN-*, never a lab function (a computed block: unknown when unset).
-          if (dynamicHcl(res, "client_connect_options") || list(val.client_connect_options).some((o) => isObj(o) && badOr(o.enabled, (x) => x === true))) refuse("gateway", "client_connect_options.enabled: a connect handler is never a lab function (ruling P20)");
+          if (list(val.client_connect_options).some((o) => isObj(o) && badOr(o.enabled, (x) => x === true))) refuse("gateway", "client_connect_options.enabled: a connect handler is never a lab function (ruling P20)");
           needOwn("server_certificate_arn", ["aws_acm_certificate"], "gateway", "the lab's own imported certificate");
           for (const [i, a] of list(val.authentication_options).entries()) if (isObj(a) && plan && !own(a.root_certificate_chain_arn, ["aws_acm_certificate"], `authentication_options.${i}.root_certificate_chain_arn`)) refuse("gateway", `authentication_options.${i}.root_certificate_chain_arn must be the lab's own imported certificate, by reference (ruling P20)`);
           needOwn("vpc_id", ["aws_vpc"], "gateway", "one of the lab's own VPCs");
@@ -2118,9 +2127,9 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
       }
       if (type === "aws_security_group") {
         // Left unset, inline ingress is computed (unknown); written as one expression not known at plan, it cannot be read.
-        // Fix round 1: HCL refuses a dynamic ingress. A plan cannot tell one whose for_each is not known at plan from an
-        // ingress left unset (computed), which the template's own groups leave (their rules are separate resources).
-        if (dynamicHcl(res, "ingress") || (val.ingress instanceof Unknown && plan && (res.configured?.has("ingress") || opaque(val.ingress)))) no("public", "ingress is not known at plan: write each rule, so its source can be read (ruling P11)");
+        // A plan cannot tell a dynamic ingress whose for_each is not known at plan from one left unset (computed), which
+        // the template's own groups leave (their rules are separate resources): HCL and lab-lint refuse a dynamic one.
+        if (val.ingress instanceof Unknown && plan && (res.configured?.has("ingress") || opaque(val.ingress))) no("public", "ingress is not known at plan: write each rule, so its source can be read (ruling P11)");
         list(val.ingress).forEach((i, n) => {
           if (!isObj(i)) return;
           const each = (a) => (i[a] instanceof Unknown ? [at("ingress", i[a], `ingress.${n}.${a}`)] : list(i[a]).map((x, k) => at("ingress", x, `ingress.${n}.${a}.${k}`)));

@@ -314,3 +314,17 @@ test("Task 3 fix round 1 (--cloud aws): a bare files label is refused outside la
   assert.deepEqual(lint("ans-31-client-vpn", 'output "files" {\n  value = <<-EOT\n    x\n  EOT\n  sensitive = true\n}\n'), [], "after a heredoc, at the top level");
   assert.deepEqual(lint("ans-31-client-vpn", 'output files {\n  value     = { "a.txt" = "x" }\n  sensitive = true\n}\n'), []);
 });
+
+test("Task 4 fix round 2: --cloud aws refuses a dynamic block the scope check judges element by element (AWS_DYNAMIC_JUDGED)", async () => {
+  const { AWS_DYNAMIC_JUDGED } = await import("../../infra/ci/lab-lint.mjs");
+  const dyn = (type, block, body) => aws({ "main.tf": `resource "${type}" "x" {\n  name = "x"\n  dynamic "${block}" {\n    for_each = var.items\n    content {\n${body}\n    }\n  }\n}\n` }).filter((p) => p.startsWith("dynamic"));
+  assert.equal(dyn("aws_security_group", "ingress", "      from_port = 500\n      to_port = 500\n      protocol = \"udp\"\n      cidr_blocks = [ingress.value]").length, 1);
+  assert.equal(dyn("aws_sfn_state_machine", "logging_configuration", "      level = \"ALL\"\n      log_destination = logging_configuration.value").length, 1);
+  assert.equal(aws({ "main.tf": 'resource aws_sfn_state_machine x {\n  dynamic logging_configuration {\n    for_each = var.logs\n    content {\n      level = "ALL"\n    }\n  }\n}\n' }).filter((p) => p.startsWith("dynamic")).length, 1, "unquoted labels too");
+  // A block written out, and a dynamic block the scope check does not judge, are left alone.
+  assert.deepEqual(aws({ "main.tf": 'resource "aws_security_group" "x" {\n  name = "x"\n  ingress {\n    from_port = 22\n    to_port = 22\n    protocol = "tcp"\n    security_groups = [aws_security_group.y.id]\n  }\n}\n' }).filter((p) => p.startsWith("dynamic")), []);
+  assert.deepEqual(dyn("aws_security_group", "egress", "      from_port = 0"), []);
+  assert.deepEqual(dyn("aws_lb", "subnet_mapping", "      subnet_id = subnet_mapping.value"), []);
+  // Every judged type and block is one the scope check names (the map is the one both read).
+  for (const [type, blocks] of Object.entries(AWS_DYNAMIC_JUDGED)) for (const b of Object.keys(blocks)) assert.equal(dyn(type, b, "      x = 1").length, 1, `${type}.${b}`);
+});
