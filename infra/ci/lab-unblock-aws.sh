@@ -25,6 +25,18 @@
 #                          is refused by the cluster role's policy, so this
 #                          only ever finds one a person made through Kubernetes
 #                          some other way)
+#   NAT gateways           the lab's own (describe-nat-gateways filtered on
+#                          cloudlabs-lab = <id>) deleted first, then polled
+#                          every 15 s until AWS has them deleted, at most
+#                          LAB_UNBLOCK_NAT_WAIT_SECONDS (default 600); one
+#                          already deleting is only waited for. Destroy's
+#                          aws_eip delete then finds the address unassociated
+#                          and only releases it (tag-checked, allowed): AWS
+#                          authorises DisassociateAddress on "*" with no tags,
+#                          so the role refuses it, and exempting it would reach
+#                          the VPN server's address too (real AWS, 2026-10-16,
+#                          soa-10). Lab regions only (never us-east-1 or
+#                          us-west-2, which hold no lab VPC)
 #   Network Firewall       delete protection off
 #   EC2 instances          termination protection off, then stop protection off
 #   CloudFormation stacks  termination protection off
@@ -64,6 +76,8 @@ REGIONS="${LAB_REGIONS:-eu-west-2 eu-west-1}"
 num() { [[ "${1:-}" =~ ^[0-9]+$ ]] && echo "$1" || echo "$2"; }
 VAULT_WAIT_S="$(num "${LAB_UNBLOCK_VAULT_WAIT_SECONDS:-}" 300)"
 VAULT_POLL_S=15
+NAT_WAIT_S="$(num "${LAB_UNBLOCK_NAT_WAIT_SECONDS:-}" 600)"
+NAT_POLL_S=15
 LAMBDA_POLL_S=30
 UNTIL=""
 if [[ "${LAB_JOB_DEADLINE:-}" =~ ^[0-9]+$ ]]; then
@@ -169,8 +183,71 @@ k8s_lbs() {
   fi
 }
 
+# The lab's NAT gateways in a region (deleted ones too, for a while), never by the tagging API's possibly stale list.
+list_nats() { awsq "$1" ec2 describe-nat-gateways --filter "Name=tag:cloudlabs-lab,Values=$LAB_ID"; }
+# One row per NAT gateway: id, state, and 1 when it carries the VPN server's wg-admin tag.
+NAT_ROWS='.NatGateways[]? | [.NatGatewayId // "", .State // "", (if any((.Tags // [])[]; .Key == "wg-admin") then "1" else "0" end)] | join("\u001f")'
+NATS=()
+# nat_delete <region>: delete the lab's NAT gateways (never one carrying wg-admin); NATS lists the ones to wait for.
+nat_delete() {
+  local r="$1" json id st wg
+  NATS=()
+  if ! json="$(list_nats "$r")"; then
+    warn "could not list the NAT gateways in $r ($(code))"
+    return
+  fi
+  while IFS=$'\x1f' read -r id st wg; do
+    [ -z "$id" ] && continue
+    if [ "$wg" = 1 ]; then warn "never touched: NAT gateway $id carries the VPN server's tag wg-admin"; continue; fi
+    case "$st" in
+      pending | available)
+        if awsw "$r" ec2 delete-nat-gateway --nat-gateway-id "$id"; then
+          echo "unblock: delete NAT gateway $id"
+          NATS+=("$id")
+        else
+          warn "could not delete NAT gateway $id ($(code))"
+        fi ;;
+      deleting)
+        echo "unblock: NAT gateway $id is already deleting"
+        NATS+=("$id") ;;
+    esac
+  done < <(jq -r "$NAT_ROWS" <<<"$json")
+}
+# nat_wait <region>: poll until every NAT gateway in NATS is deleted (or gone), so the destroy finds its address free.
+nat_wait() {
+  local r="$1" json id st end
+  local -a left
+  [ "${#NATS[@]}" -eq 0 ] && return
+  end="$(wait_end "$NAT_WAIT_S")"
+  while :; do
+    if [ "$(date +%s)" -ge "$end" ]; then
+      for id in "${NATS[@]}"; do warn "NAT gateway $id is still deleting after waiting; the destroy may need the safety net"; done
+      return
+    fi
+    echo "unblock: waiting for ${#NATS[@]} NAT gateway(s) in $r to be deleted"
+    sleep "$NAT_POLL_S"
+    if ! json="$(list_nats "$r")"; then
+      warn "could not read the NAT gateways in $r ($(code)); the destroy may need the safety net"
+      return
+    fi
+    left=()
+    for id in "${NATS[@]}"; do
+      st="$(jq -r --arg id "$id" '[.NatGateways[]? | select(.NatGatewayId == $id) | .State][0] // "gone"' <<<"$json")"
+      case "$st" in
+        deleted | failed | gone) echo "unblock: NAT gateway $id is deleted" ;;
+        *) left+=("$id") ;;
+      esac
+    done
+    NATS=("${left[@]}")
+    [ "${#NATS[@]}" -eq 0 ] && return
+  done
+}
+
 echo "unblock: everything tagged cloudlabs-lab=$LAB_ID in $REGIONS"
 for r in $REGIONS; do
+  # NAT gateways first, so their deletes run while the rest of the region is unblocked; waited for at the end.
+  NATS=()
+  if [ "$r" != us-east-1 ] && [ "$r" != us-west-2 ]; then nat_delete "$r"; fi
   if ! listed="$(awsq "$r" resourcegroupstaggingapi get-resources --tag-filters "Key=cloudlabs-lab,Values=$LAB_ID")"; then
     warn "could not list the lab's tagged resources in $r ($(code))"
     listed=""
@@ -255,6 +332,7 @@ for r in $REGIONS; do
   for v in "${vaults[@]}"; do empty_vault "$r" "$v"; done
   for f in "${lambdas[@]}"; do wait_lambda "$r" "$f"; done
   for c in "${clusters[@]}"; do k8s_lbs "$r" "$c"; done
+  nat_wait "$r"
 done
 echo "unblock: done"
 exit 0

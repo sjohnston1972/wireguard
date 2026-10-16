@@ -1007,3 +1007,75 @@ test("review M1 / M4: a table waits for UPDATING to end before its delete; an un
   assert.match(r.out, /could not read elasticache:cluster ca16-001 \(ThrottlingException\)/);
   w.cleanup();
 });
+
+// ── Real AWS, 2026-10-16 (soa-10): destroy's aws_eip delete called DisassociateAddress on the NAT gateway's address,
+// which AWS authorises on "*" with no tags, so ChangeNeedsLabTag3 refused it. Unblock now deletes the lab's own NAT
+// gateways and waits until AWS has them deleted, so the destroy finds the address free and only releases it.
+const NATQ = /^aws ec2 describe-nat-gateways --filter Name=tag:cloudlabs-lab,Values=soa-10-containers --region eu-west-2/;
+const nat = (id, state, wg = false) => ({ NatGatewayId: id, State: state, Tags: [{ Key: "cloudlabs-lab", Value: "soa-10-containers" }, ...(wg ? [{ Key: "wg-admin", Value: "vpn" }] : [])] });
+const nats = (...n) => JSON.stringify({ NatGateways: n });
+
+test("NAT fix: Unblock deletes the lab's NAT gateway and waits until AWS has it deleted; a wg-admin one is never touched", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged() },
+    { cmd: "aws", match: "^ec2 describe-nat-gateways", out: [nats(nat("nat-0lab", "available"), nat("nat-0wg", "available", true), nat("nat-0old", "deleted")), nats(nat("nat-0lab", "deleting"), nat("nat-0wg", "available", true)), nats(nat("nat-0lab", "deleted"), nat("nat-0wg", "available", true))] },
+  ]);
+  const r = w.run("infra/ci/lab-unblock-aws.sh", ["soa-10-containers"], ENV);
+  assert.equal(r.status, 0, r.out);
+  const ec2 = calls3(w, /^aws ec2 /);
+  assert.deepEqual(calls3(w, /^aws ec2 delete-nat-gateway/).map((c) => c.split(" --region")[0]), ["aws ec2 delete-nat-gateway --nat-gateway-id nat-0lab"]);
+  assert.ok(!calls3(w, /^aws ec2 (?!describe)/).some((c) => c.includes("nat-0wg")), "the VPN server's NAT is never touched");
+  assert.equal(ec2.filter((c) => NATQ.test(c)).length, 3, `listed, then polled until deleted: ${ec2.join(" | ")}`);
+  assert.ok(idx(ec2, /delete-nat-gateway/) < ec2.findLastIndex((c) => NATQ.test(c)), "the wait comes after the delete");
+  assert.match(r.out, /::warning::.*nat-0wg.*VPN server/);
+  assert.match(r.out, /NAT gateway nat-0lab is deleted/);
+  w.cleanup();
+});
+
+test("NAT fix: a NAT gateway already deleting is only waited for, never deleted again", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged() },
+    { cmd: "aws", match: "^ec2 describe-nat-gateways", out: [nats(nat("nat-0lab", "deleting")), nats(nat("nat-0lab", "deleting")), nats(nat("nat-0lab", "deleted"))] },
+  ]);
+  const r = w.run("infra/ci/lab-unblock-aws.sh", ["soa-10-containers"], ENV);
+  assert.equal(r.status, 0, r.out);
+  assert.equal(calls3(w, /^aws ec2 delete-nat-gateway/).length, 0);
+  assert.equal(calls3(w, NATQ).length, 3, "waited for until deleted");
+  assert.match(r.out, /NAT gateway nat-0lab is deleted/);
+  w.cleanup();
+});
+
+test("NAT fix: a NAT listing AWS refuses is a warning; Unblock deletes nothing there and still exits 0", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(A("instance/i-0lab")) },
+    { cmd: "aws", match: "^ec2 describe-nat-gateways", out: "", code: 254, err: "An error occurred (UnauthorizedOperation) when calling the DescribeNatGateways operation: 123456789012" },
+  ]);
+  const r = w.run("infra/ci/lab-unblock-aws.sh", ["soa-10-containers"], ENV);
+  assert.equal(r.status, 0, r.out);
+  assert.equal(calls3(w, /^aws ec2 delete-nat-gateway/).length, 0);
+  assert.equal(calls3(w, /^aws ec2 describe-nat-gateways/).length, 1, "no wait");
+  assert.match(r.out, /::warning::unblock: could not list the NAT gateways in eu-west-2 \(UnauthorizedOperation\)/);
+  assert.doesNotMatch(r.out, /123456789012/);
+  assert.ok(w.calls().some((c) => /modify-instance-attribute --instance-id i-0lab/.test(c)), "the rest of Unblock still runs");
+  w.cleanup();
+});
+
+test("NAT fix: a NAT gateway still deleting at the wait's end is a warning, never a failure; a failed poll stops the wait", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged() },
+    { cmd: "aws", match: "^ec2 describe-nat-gateways", out: nats(nat("nat-0lab", "deleting")) },
+  ]);
+  const r = w.run("infra/ci/lab-unblock-aws.sh", ["soa-10-containers"], { ...ENV, LAB_UNBLOCK_NAT_WAIT_SECONDS: "0" });
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.out, /::warning::unblock: NAT gateway nat-0lab is still deleting/);
+  w.cleanup();
+  const f = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged() },
+    { cmd: "aws", match: "^ec2 describe-nat-gateways", out: [nats(nat("nat-0lab", "available")), ""], code: [0, 254], err: ["", "An error occurred (RequestLimitExceeded) when calling the DescribeNatGateways operation: x"] },
+  ]);
+  const s = f.run("infra/ci/lab-unblock-aws.sh", ["soa-10-containers"], ENV);
+  assert.equal(s.status, 0, s.out);
+  assert.equal(calls3(f, /^aws ec2 describe-nat-gateways/).length, 2, "one failed poll ends the wait");
+  assert.match(s.out, /::warning::unblock: could not read the NAT gateways in eu-west-2 \(RequestLimitExceeded\)/);
+  f.cleanup();
+});
