@@ -42,7 +42,7 @@ test("saa-16's data and image: replication to the Ireland bucket, a global table
 
 test("saa-16's failover: a private .internal zone in both lab VPCs, a CloudWatch-metric health check on the lab's alarm, PRIMARY and SECONDARY records", () => {
   const { tf } = awsLab(ID);
-  for (const re of [/name\s+= "dr\.\$\{var\.name_prefix\}\.internal"/, /vpc_id\s+= aws_vpc\.lab\.id/, /vpc_id\s+= aws_vpc\.dr\.id/, /type\s+= "CLOUDWATCH_METRIC"/, /cloudwatch_alarm_name\s+= aws_cloudwatch_metric_alarm\.app_down\.alarm_name/, /treat_missing_data\s+= "breaching"/, /type = "PRIMARY"/, /type = "SECONDARY"/, /records\s+= \[local\.dr_ip\]/]) assert.match(tf, re);
+  for (const re of [/name\s+= "dr\.\$\{var\.name_prefix\}\.internal"/, /vpc_id\s+= aws_vpc\.lab\.id/, /vpc_id\s+= aws_vpc\.dr\.id/, /type\s+= "CLOUDWATCH_METRIC"/, /cloudwatch_alarm_name\s+= aws_cloudwatch_metric_alarm\.app_down\.alarm_name/, /treat_missing_data\s+= "breaching"/, /insufficient_data_health_status\s+= "Unhealthy"/,/type = "PRIMARY"/, /type = "SECONDARY"/, /records\s+= \[local\.dr_ip\]/]) assert.match(tf, re);
 });
 
 test("saa-16's readme runs a DR drill and its learning content is valid", () => {

@@ -210,7 +210,7 @@ export default () => {
       },
       {
         address: "aws_route53_health_check.app",
-        values: tagged(c, { type: "CLOUDWATCH_METRIC", cloudwatch_alarm_name: `lab-${id}-app-down`, cloudwatch_alarm_region: c.variables.region, insufficient_data_health_status: "Healthy", tags: { Name: "hc-app" } }),
+        values: tagged(c, { type: "CLOUDWATCH_METRIC", cloudwatch_alarm_name: `lab-${id}-app-down`, cloudwatch_alarm_region: c.variables.region, insufficient_data_health_status: "Unhealthy", tags: { Name: "hc-app" } }),
         refs: { cloudwatch_alarm_name: ref("aws_cloudwatch_metric_alarm.app_down", "alarm_name"), cloudwatch_alarm_region: ["var.region"] },
       },
       record("app_london", "london", "PRIMARY", { unknown: ["records", "health_check_id"], refs: { records: ref("aws_instance.app", "private_ip"), health_check_id: ref("aws_route53_health_check.app", "id") } }),

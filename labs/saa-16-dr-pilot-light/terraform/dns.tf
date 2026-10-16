@@ -5,8 +5,9 @@
 # (ruling P6), and one name in it, app: London's address while the health
 # check is healthy, Ireland's standby address when it is not. Private zones
 # cannot probe an address, so the health check follows the London alarm
-# (a CloudWatch-metric health check; healthy while the alarm has no data yet,
-# at deploy).
+# (a CloudWatch-metric health check; unhealthy while London reports nothing,
+# as the alarm treats missing data; for the first minutes after deploy the
+# name may answer Ireland's address).
 
 resource "aws_route53_zone" "dr" {
   name          = "dr.${var.name_prefix}.internal"
@@ -26,7 +27,7 @@ resource "aws_route53_health_check" "app" {
   type                            = "CLOUDWATCH_METRIC"
   cloudwatch_alarm_name           = aws_cloudwatch_metric_alarm.app_down.alarm_name
   cloudwatch_alarm_region         = var.region
-  insufficient_data_health_status = "Healthy"
+  insufficient_data_health_status = "Unhealthy"
   tags                            = { Name = "hc-app" }
 }
 
