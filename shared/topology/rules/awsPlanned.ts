@@ -84,7 +84,7 @@ export const AWS_TF_RULES: Record<string, TfRule> = {
 
   // ── Compute ──
   aws_instance: { arm: "ec2:instance", props: (i) => ({ size: str(i.after.instance_type), privateIp: str(i.after.private_ip) }) },
-  aws_launch_template: { arm: "ec2:launch-template", ...intoReferrer("aws_autoscaling_group") },
+  aws_launch_template: { arm: "ec2:launch-template", ...intoReferrer("aws_autoscaling_group", "aws_eks_node_group") },
   aws_autoscaling_group: {
     arm: "autoscaling:autoScalingGroup",
     props: (i, h) => ({ size: str(h.refs(i, ["launch_template"])[0]?.after.instance_type), instances: num(i.after.desired_capacity) }),
@@ -203,7 +203,13 @@ export const AWS_TF_RULES: Record<string, TfRule> = {
     },
   },
   aws_sns_topic_policy: into("arn"),
-  aws_sns_topic_subscription: into("topic_arn"),
+  aws_sns_topic_subscription: {
+    fold: ["topic_arn"],
+    edges: (i, h) => {
+      const topic = h.refs(i, ["topic_arn"])[0];
+      return topic ? h.refs(i, ["endpoint"]).filter((t) => t !== topic).map((t) => ({ from: topic, to: t, kind: "dependency" as const, label: "fan-out" })) : [];
+    },
+  },
   aws_sqs_queue_policy: into("queue_url"),
 
   // ── Later batches: kinds only ──
@@ -238,6 +244,39 @@ export const AWS_TF_RULES: Record<string, TfRule> = {
   aws_ecs_cluster: { arm: "ecs:cluster" },
   aws_ecs_task_definition: { arm: "ecs:task-definition", ...intoReferrer("aws_ecs_service") },
   aws_ecs_service: { arm: "ecs:service", props: (i) => ({ instances: num(i.after.desired_count) }) },
+
+  // ── Batch 3 (labs 11–19; ruling P20) ──
+  aws_elasticache_replication_group: { arm: "elasticache:replicationgroup", props: (i) => ({ size: str(i.after.node_type) }) },
+  aws_elasticache_subnet_group: intoReferrer("aws_elasticache_replication_group"),
+  aws_apigatewayv2_api: { arm: "apigateway:apis" },
+  ...each(["aws_apigatewayv2_stage", "aws_apigatewayv2_route", "aws_apigatewayv2_authorizer"], into("api_id")),
+  aws_apigatewayv2_integration: {
+    fold: ["api_id"],
+    edges: (i, h) => {
+      const api = h.refs(i, ["api_id"])[0];
+      return api ? h.refs(i, ["integration_uri"]).filter((t) => t.type === "aws_lambda_function").map((t) => ({ from: api, to: t, kind: "traffic" as const, label: "HTTPS" })) : [];
+    },
+  },
+  aws_cognito_user_pool: { arm: "cognito-idp:userpool" },
+  ...each(["aws_cognito_user_pool_client", "aws_cognito_user"], into("user_pool_id")),
+  aws_cloudwatch_event_bus: { arm: "events:event-bus" },
+  aws_efs_file_system: { arm: "elasticfilesystem:file-system" },
+  aws_efs_mount_target: into("file_system_id"),
+  aws_vpc_endpoint_policy: into("vpc_endpoint_id"),
+  aws_ami_copy: { arm: "ec2:image" },
+  aws_kinesis_stream: { arm: "kinesis:stream" },
+  aws_kinesis_firehose_delivery_stream: {
+    arm: "firehose:deliverystream",
+    edges: (i, h) => [
+      ...h.refs(i, ["kinesis_source_configuration"]).filter((t) => t.type === "aws_kinesis_stream").map((t) => ({ from: t, to: i, kind: "dependency" as const, label: "reads" })),
+      ...h.refs(i, ["extended_s3_configuration"]).filter((t) => t.type === "aws_s3_bucket").map((t) => ({ from: i, to: t, kind: "dependency" as const, label: "delivers" })),
+    ],
+  },
+  aws_glue_catalog_database: { arm: "glue:database" },
+  aws_glue_crawler: { arm: "glue:crawler", edges: (i, h) => h.refs(i, ["database_name"]).filter((t) => t.type === "aws_glue_catalog_database").map((t) => ({ from: i, to: t, kind: "dependency" as const, label: "catalogues" })) },
+  aws_athena_workgroup: { arm: "athena:workgroup" },
+  aws_eks_cluster: { arm: "eks:cluster" },
+  aws_eks_node_group: { arm: "eks:nodegroup", props: (i) => ({ size: str(list(i.after.instance_types)[0]), instances: num(obj(list(i.after.scaling_config)[0]).desired_size) }) },
 
   // ── Systems Manager and Config: generic cards; their pieces fold in (C9) ──
   aws_config_config_rule: { arm: "config:config-rule" },
