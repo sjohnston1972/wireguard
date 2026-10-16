@@ -1129,3 +1129,136 @@ test("final review 4: a refused replica removal is asked again; a pending AMI is
   assert.match(r.out, /could not read cognito-idp:userpool eu-west-2_AbC \(TooManyRequestsException\)/);
   w.cleanup();
 });
+
+// ── Batch 4 (Task 5): edge, DNS and Lattice ──────────────────────────────
+const ARNR = (region, svc, rest) => `arn:aws:${svc}:${region}:123456789012:${rest}`;
+const notFound = (op) => `An error occurred (ResourceNotFoundException) when calling the ${op} operation: x`;
+
+test("Review Focus 4: Global Accelerator is disabled, waited for, emptied and deleted in us-west-2; the WAF ACL goes after CloudFront", { skip }, () => {
+  const ga = "arn:aws:globalaccelerator::123456789012:accelerator/0abc-1def";
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources .*--region us-west-2", out: tagged(ga) },
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources .*--region us-east-1", out: tagged(ARNR("us-east-1", "wafv2", "global/webacl/lab-ans-26-edge-waf/0a1b"), "arn:aws:cloudfront::123456789012:distribution/E1ABC") },
+    // The fourth answer ("{}": AWS no longer has it) ends the poll after the delete.
+    { cmd: "aws", match: "^globalaccelerator describe-accelerator", out: ['{"Accelerator":{"Enabled":true,"Status":"DEPLOYED"}}', '{"Accelerator":{"Enabled":false,"Status":"IN_PROGRESS"}}', '{"Accelerator":{"Enabled":false,"Status":"DEPLOYED"}}', "{}"] },
+    { cmd: "aws", match: "^globalaccelerator list-listeners", out: `{"Listeners":[{"ListenerArn":"${ga}/listener/l1"}]}` },
+    { cmd: "aws", match: "^globalaccelerator list-endpoint-groups", out: `{"EndpointGroups":[{"EndpointGroupArn":"${ga}/listener/l1/endpoint-group/g1"},{"EndpointGroupArn":"${ga}/listener/l1/endpoint-group/g2"}]}` },
+    { cmd: "aws", match: "^cloudfront get-distribution-config", out: '{"ETag":"E1","DistributionConfig":{"Enabled":false}}' },
+    { cmd: "aws", match: "^cloudfront get-distribution --id", out: ['{"ETag":"E2","Distribution":{"Status":"Deployed","DistributionConfig":{"Enabled":false}}}', "{}"] },
+    { cmd: "aws", match: "^wafv2 get-web-acl", out: '{"LockToken":"tok-1","WebACL":{}}' },
+    { cmd: "aws", match: "^cloudfront list-functions", out: '{"FunctionList":{"Items":[{"Name":"lab-ans-26-edge-headers"},{"Name":"someone-else"}]}}' },
+    { cmd: "aws", match: "^cloudfront describe-function", out: '{"ETag":"EF1"}' },
+    ...EMPTY_IAM,
+  ]);
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["ans-26-edge"], { ...ENV, LAB_REGIONS: "eu-west-2 eu-west-1 us-east-1 us-west-2" }).status, 0);
+  const ws = calls3(w, /^aws (globalaccelerator|wafv2|cloudfront) (update|delete)/);
+  const at = (re) => idx(ws, re);
+  assert.ok(at(/^aws globalaccelerator update-accelerator .*--no-enabled --region us-west-2$/) >= 0, ws.join("\n"));
+  assert.ok(at(/delete-endpoint-group .*g1 --region us-west-2$/) < at(/delete-listener .*l1 --region us-west-2$/));
+  assert.ok(at(/delete-listener/) < at(/^aws globalaccelerator delete-accelerator .*--region us-west-2$/));
+  assert.ok(at(/^aws cloudfront delete-distribution/) < at(/^aws wafv2 delete-web-acl --scope CLOUDFRONT --name lab-ans-26-edge-waf --id 0a1b --lock-token tok-1 --region us-east-1$/));
+  assert.ok(at(/^aws cloudfront delete-distribution/) < at(/^aws cloudfront delete-function --name lab-ans-26-edge-headers --if-match EF1/));
+  assert.ok(!ws.some((c) => c.includes("someone-else")));
+  w.cleanup();
+});
+
+test("ruling P10 (M-4): a CloudFront disable that failed is retried on the next pass", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources .*--region us-east-1", out: tagged("arn:aws:cloudfront::123456789012:distribution/E1ABC") },
+    { cmd: "aws", match: "^cloudfront get-distribution-config", out: '{"ETag":"E1","DistributionConfig":{"Enabled":true}}' },
+    { cmd: "aws", match: "^cloudfront update-distribution", out: ["", "{}"], code: [254, 0], err: ["An error occurred (PreconditionFailed) when calling the UpdateDistribution operation: x", ""] },
+    { cmd: "aws", match: "^cloudfront get-distribution --id", out: ['{"ETag":"E2","Distribution":{"Status":"InProgress","DistributionConfig":{"Enabled":true}}}', '{"ETag":"E3","Distribution":{"Status":"Deployed","DistributionConfig":{"Enabled":false}}}', "{}"] },
+    ...EMPTY_IAM,
+  ]);
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["ans-26-edge"], { ...ENV, LAB_REGIONS: "eu-west-2 us-east-1" }).status, 0);
+  assert.equal(calls3(w, /^aws cloudfront update-distribution/).length, 2);
+  assert.ok(calls3(w, /^aws cloudfront delete-distribution --id E1ABC --if-match E3/).length === 1);
+  w.cleanup();
+});
+
+test("Review Focus 4: Resolver's associations, rules, firewall rules and endpoints in order", { skip }, () => {
+  const R = (rest) => ARN3("route53resolver", rest);
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(R("resolver-rule/rslvr-rr-1"), R("resolver-query-log-config/rslvr-qlc-1"), R("firewall-rule-group-association/rslvr-frgassoc-1"), R("firewall-rule-group/rslvr-frg-1"), R("firewall-domain-list/rslvr-fdl-1"), R("resolver-endpoint/rslvr-in-1"), R("resolver-endpoint/rslvr-out-1")) },
+    { cmd: "aws", match: "^route53resolver list-resolver-rule-associations", out: ['{"ResolverRuleAssociations":[{"VPCId":"vpc-0lab","Status":"COMPLETE"}]}', '{"ResolverRuleAssociations":[]}'] },
+    { cmd: "aws", match: "^route53resolver list-resolver-query-log-config-associations", out: ['{"ResolverQueryLogConfigAssociations":[{"ResourceId":"vpc-0lab","Status":"ACTIVE"}]}', '{"ResolverQueryLogConfigAssociations":[]}'] },
+    { cmd: "aws", match: "^route53resolver list-firewall-rule-group-associations", out: '{"FirewallRuleGroupAssociations":[]}' },
+    { cmd: "aws", match: "^route53resolver list-firewall-rules", out: '{"FirewallRules":[{"FirewallDomainListId":"rslvr-fdl-1"}]}' },
+    { cmd: "aws", match: "^route53resolver get-firewall-rule-group-association", out: ['{"FirewallRuleGroupAssociation":{"Status":"DELETING"}}', "{}"] },
+    { cmd: "aws", match: "^route53resolver get-resolver-endpoint", out: ['{"ResolverEndpoint":{"Status":"DELETING"}}', "{}"] },
+    ...EMPTY_IAM,
+  ]);
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["ans-23-hybrid-dns"], ENV).status, 0);
+  const ws = calls3(w, /^aws route53resolver (disassociate|delete)/).map((c) => c.split(" --region")[0]);
+  const at = (s) => ws.indexOf(s);
+  assert.ok(at("aws route53resolver disassociate-resolver-rule --resolver-rule-id rslvr-rr-1 --vpc-id vpc-0lab") < at("aws route53resolver delete-resolver-rule --resolver-rule-id rslvr-rr-1"), ws.join("\n"));
+  assert.ok(at("aws route53resolver disassociate-resolver-query-log-config --resolver-query-log-config-id rslvr-qlc-1 --resource-id vpc-0lab") < at("aws route53resolver delete-resolver-query-log-config --resolver-query-log-config-id rslvr-qlc-1"));
+  assert.ok(at("aws route53resolver disassociate-firewall-rule-group --firewall-rule-group-association-id rslvr-frgassoc-1") < at("aws route53resolver delete-firewall-rule --firewall-rule-group-id rslvr-frg-1 --firewall-domain-list-id rslvr-fdl-1"));
+  assert.ok(at("aws route53resolver delete-firewall-rule-group --firewall-rule-group-id rslvr-frg-1") < at("aws route53resolver delete-firewall-domain-list --firewall-domain-list-id rslvr-fdl-1"));
+  assert.ok(at("aws route53resolver delete-firewall-domain-list --firewall-domain-list-id rslvr-fdl-1") < at("aws route53resolver delete-resolver-endpoint --resolver-endpoint-id rslvr-in-1"));
+  w.cleanup();
+});
+
+test("ruling P23: Lattice associations, then services, target groups (targets first), then the network", { skip }, () => {
+  const L = (rest) => ARN3("vpc-lattice", rest);
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(L("servicenetwork/sn-1"), L("service/svc-1"), L("service/svc-1/listener/listener-1"), L("targetgroup/tg-1"), L("servicenetworkvpcassociation/snva-1"), L("servicenetworkserviceassociation/snsa-1")) },
+    { cmd: "aws", match: "^vpc-lattice get-service-network-vpc-association", out: ['{"status":"DELETE_IN_PROGRESS"}', "{}"] },
+    { cmd: "aws", match: "^vpc-lattice get-service-network-service-association", out: ['{"status":"DELETE_IN_PROGRESS"}', "{}"] },
+    // Lattice's gets answer flat (no wrapper to come back empty): AWS no longer having it is ResourceNotFoundException.
+    { cmd: "aws", match: "^vpc-lattice get-service --", out: ['{"status":"DELETE_IN_PROGRESS"}', ""], code: [0, 254], err: ["", notFound("GetService")] },
+    { cmd: "aws", match: "^vpc-lattice get-target-group", out: ['{"status":"DELETE_IN_PROGRESS"}', ""], code: [0, 254], err: ["", notFound("GetTargetGroup")] },
+    { cmd: "aws", match: "^vpc-lattice list-targets", out: '{"items":[{"id":"i-0abc","port":80}]}' },
+    ...EMPTY_IAM,
+  ]);
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["ans-30-vpc-lattice"], ENV).status, 0);
+  const ws = calls3(w, /^aws vpc-lattice (delete|deregister)/).map((c) => c.split(" --region")[0].split(" ").slice(0, 3).join(" "));
+  assert.deepEqual(ws, ["aws vpc-lattice delete-service-network-service-association", "aws vpc-lattice delete-service-network-vpc-association", "aws vpc-lattice delete-service", "aws vpc-lattice deregister-targets", "aws vpc-lattice delete-target-group", "aws vpc-lattice delete-service-network"]);
+  assert.ok(!calls3(w, /delete-listener/).length, "a listener goes with its service");
+  assert.equal(calls3(w, /^aws vpc-lattice deregister-targets --target-group-identifier tg-1 --targets \[\{"id":"i-0abc","port":80\}\] /).length, 1);
+  w.cleanup();
+});
+
+test("review I1 (batch 4): a Resolver endpoint or Lattice service a timed-out destroy left deleting is waited for until gone", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("route53resolver", "resolver-endpoint/rslvr-in-1"), ARN3("vpc-lattice", "service/svc-1")) },
+    { cmd: "aws", match: "^route53resolver delete-resolver-endpoint", out: "", code: 254, err: "An error occurred (InvalidRequestException) when calling the DeleteResolverEndpoint operation: x" },
+    { cmd: "aws", match: "^route53resolver get-resolver-endpoint", out: ['{"ResolverEndpoint":{"Status":"DELETING"}}', '{"ResolverEndpoint":{"Status":"DELETING"}}', ""], code: [0, 0, 254], err: ["", "", notFound("GetResolverEndpoint")] },
+    { cmd: "aws", match: "^vpc-lattice delete-service ", out: "", code: 254, err: "An error occurred (ConflictException) when calling the DeleteService operation: x" },
+    { cmd: "aws", match: "^vpc-lattice get-service --", out: ['{"status":"DELETE_IN_PROGRESS"}', '{"status":"DELETE_IN_PROGRESS"}', ""], code: [0, 0, 254], err: ["", "", notFound("GetService")] },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["ans-23-hybrid-dns"], ENV);
+  assert.equal(r.status, 0, r.out);
+  assert.equal(calls3(w, /^aws route53resolver get-resolver-endpoint/).length, 3, "read once after the refusal, then polled until gone");
+  assert.equal(calls3(w, /^aws vpc-lattice get-service --/).length, 3);
+  assert.equal(calls3(w, /^aws (route53resolver delete-resolver-endpoint|vpc-lattice delete-service) /).length, 2, "never asked twice");
+  assert.doesNotMatch(r.out, /left behind/);
+  w.cleanup();
+});
+
+test("Verify clean judges batch 4's edge, DNS and Lattice types: gone is clean (WAF's own not-found too), an association being deleted is clean, a listener is judged", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources .*--region us-west-2", out: tagged("arn:aws:globalaccelerator::123456789012:accelerator/0abc-1def") },
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources .*--region us-east-1", out: tagged(ARNR("us-east-1", "wafv2", "global/webacl/lab-ans-26-edge-waf/0a1b")) },
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources .*--region eu-west-2", out: tagged(ARN3("vpc-lattice", "service/svc-1"), ARN3("vpc-lattice", "service/svc-1/listener/listener-1"), ARN3("vpc-lattice", "servicenetworkvpcassociation/snva-1"), ARN3("route53resolver", "resolver-endpoint/rslvr-in-1")) },
+    { cmd: "aws", match: "^cloudfront list-functions", out: '{"FunctionList":{"Items":[{"Name":"lab-ans-26-edge-headers"}]}}' },
+    { cmd: "aws", match: "^globalaccelerator describe-accelerator", out: "", code: 254, err: "An error occurred (AcceleratorNotFoundException) when calling the DescribeAccelerator operation: x" },
+    { cmd: "aws", match: "^wafv2 get-web-acl", out: "", code: 254, err: "An error occurred (WAFNonexistentItemException) when calling the GetWebACL operation: x" },
+    { cmd: "aws", match: "^cloudfront describe-function", out: "", code: 254, err: "An error occurred (NoSuchFunctionExists) when calling the DescribeFunction operation: x" },
+    { cmd: "aws", match: "^vpc-lattice get-service --", out: '{"id":"svc-1","status":"ACTIVE"}' },
+    { cmd: "aws", match: "^vpc-lattice get-listener --service-identifier svc-1 --listener-identifier listener-1 ", out: "", code: 254, err: notFound("GetListener") },
+    { cmd: "aws", match: "^vpc-lattice get-service-network-vpc-association", out: '{"status":"DELETE_IN_PROGRESS"}' },
+    { cmd: "aws", match: "^route53resolver get-resolver-endpoint", out: '{"ResolverEndpoint":{"Status":"DELETING"}}' },
+    ...EMPTY_IAM,
+  ]);
+  const out = join(w.dir, "gh-output");
+  writeFileSync(out, "");
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["--verify", "ans-26-edge"], { ...ENV, LAB_REGIONS: "eu-west-2 us-east-1 us-west-2", GITHUB_OUTPUT: fwd(out) }).status, 1);
+  const left = JSON.parse(/^leftovers=(.*)$/m.exec(readFileSync(out, "utf8"))[1]);
+  assert.deepEqual(left.sort(), ["route53resolver:resolver-endpoint rslvr-in-1", "vpc-lattice:service svc-1"]);
+  assert.equal(calls3(w, /^aws globalaccelerator describe-accelerator .*--region us-west-2 /).length, 1);
+  assert.equal(calls3(w, /^aws wafv2 get-web-acl --scope CLOUDFRONT --name lab-ans-26-edge-waf --id 0a1b --region us-east-1 /).length, 1);
+  assert.equal(calls3(w, /^aws cloudfront describe-function --name lab-ans-26-edge-headers --region us-east-1 /).length, 1);
+  w.cleanup();
+});

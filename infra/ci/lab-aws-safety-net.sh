@@ -19,7 +19,7 @@
 #                    types that take no tags, named lab-<id>-*: CloudWatch
 #                    dashboards, Config recorders and delivery channels, Logs
 #                    query definitions, KMS aliases; and in us-east-1 (a global
-#                    lab's) CloudFront origin access controls
+#                    lab's) CloudFront origin access controls and functions
 #   owned by name    in each lab region too (rulings P3, P4, P15): DynamoDB
 #                    tables named lab-<id>-* (a global table's replica before
 #                    its tags arrive), AMIs of its own named lab-<id>-* (a copy
@@ -32,7 +32,7 @@
 # a VPC is deleted in that region). Verify clean still names such an item when
 # it carries the lab's tag (a person must look), but never scans inside it.
 #
-# Sweep mode deletes, in dependency order (§8.2; batches 1 to 3's handlers,
+# Sweep mode deletes, in dependency order (§8.2; batches 1 to 4's handlers,
 # ruling A36: any other type is a warning, "no handler for <type> yet", left
 # for Verify clean to report):
 #
@@ -52,10 +52,20 @@
 #                    their tables), Athena workgroups (with their saved
 #                    queries), Config rules (remediation first), the lab's
 #                    Config recorder stopped, its delivery channel and recorder
-#   2 edge and DNS   CloudFront distributions (disabled, waited for until
-#                    Deployed, deleted with their newest ETag), then the lab's
-#                    origin access controls; Route 53 zones (every record but
-#                    the zone's own NS and SOA first), then health checks
+#   2 edge and DNS   CloudFront distributions (disabled, a refused disable asked
+#                    again on each pass, waited for until Deployed, deleted with
+#                    their newest ETag), then the lab's origin access controls
+#                    and functions; Global Accelerator in us-west-2 (disabled,
+#                    waited for until DEPLOYED, endpoint groups, listeners, then
+#                    the accelerator); WAF web ACLs (after the distributions that
+#                    use them, with the newest lock token); Route 53 zones
+#                    (every record but the zone's own NS and SOA first), then
+#                    health checks; Resolver rules and query log configs (their
+#                    VPC associations first, waited for), firewall rule group
+#                    associations, groups (their rules first), domain lists,
+#                    then endpoints; Lattice service and VPC associations,
+#                    services (their listeners go with them), target groups
+#                    (targets deregistered first), then service networks
 #   3 network        load balancers, then listener rules and listeners still
 #                    there (most go with their load balancer), then target
 #                    groups; RDS replicas, then
@@ -97,7 +107,9 @@
 # clusters, CloudFront distributions, Auto Scaling groups, Firehose and Kinesis
 # streams, load balancers, RDS instances, ElastiCache groups and clusters, EFS
 # file systems, instances, NAT gateways, VPC endpoints, Instance Connect
-# Endpoints and DynamoDB tables are polled after the delete,
+# Endpoints, DynamoDB tables, accelerators, Resolver endpoints and firewall
+# rule group associations, and Lattice associations, services and target
+# groups are polled after the delete (one already being deleted too),
 # every LAB_DELETE_POLL_SECONDS (30), until gone or LAB_JOB_DEADLINE less 420 s
 # (what is left then is a warning, "left behind: <name>"). VPC fabric deletes
 # are synchronous (pre-flight ruling C15): one AWS refuses with
@@ -118,8 +130,11 @@
 # INACTIVE one is a leftover, ruling P12), a secret deleted, a KMS key
 # pending deletion (ruling P11; an enabled one is a leftover), a DynamoDB
 # table or a state machine DELETING (ruling P21), an EFS file system deleted,
-# an EC2 Fleet deleted, and an EKS access entry whose cluster is gone, are
-# clean; every other batch 3 type only once AWS no longer has it). A
+# an EC2 Fleet deleted, an EKS access entry whose cluster is gone, and a
+# Lattice service or VPC association DELETE_IN_PROGRESS (ruling P23), are
+# clean; every other batch 3 and 4 type, a Resolver endpoint DELETING too,
+# only once AWS no longer has it; a Lattice listener is judged by its own
+# describe, going with its service). A
 # type with no handler is never clean ("no handler for <type>: <name>"). While a lab VPC
 # still exists, every instance (not terminated) and every network interface
 # (not requester-managed, not attached to an instance, which is judged
@@ -171,7 +186,7 @@ code() { local c; c="$(errcode)"; echo "${c:-refused}"; }
 # The last call failed because AWS has no such item.
 gone_err() {
   case "$(errcode)" in
-    *NotFound* | NoSuch* | *DoesNotExist* | *NonExistentQueue* | 404) return 0 ;;
+    *NotFound* | NoSuch* | *DoesNotExist* | *NonExistentQueue* | WAFNonexistentItemException | 404) return 0 ;;
   esac
   return 1
 }
@@ -218,6 +233,16 @@ split_arn() {
       apis/*/stages/*) TYPE=apigateway:stages; head="${rest#apis/}"; ID="${head%%/*}/${rest##*/}" ;;
       *) TYPE="apigateway:${rest%%/*}"; ID="${rest#*/}" ;;
     esac
+    return
+  fi
+  # Ruling P22: arn:aws:wafv2:us-east-1:<a>:global/webacl/<name>/<id>: the scope and kind are the type; name/id the ID.
+  if [ "$service" = wafv2 ]; then
+    TYPE="wafv2:$(cut -d/ -f1,2 <<<"$rest")"; ID="$(cut -d/ -f3- <<<"$rest")"
+    return
+  fi
+  # arn:aws:vpc-lattice:<r>:<a>:service/<svc>/listener/<l>: a listener goes with its service.
+  if [ "$service" = vpc-lattice ] && [[ "$rest" == service/*/listener/* ]]; then
+    TYPE=vpc-lattice:listener; ID="${rest#service/}"
     return
   fi
   head="${rest%%[/:]*}"
@@ -303,6 +328,12 @@ discover() {
         while IFS=$'\x1f' read -r n x; do [ -n "$n" ] && add "$r" cloudfront:origin-access-control "$x" "" "$n" 0; done < <(jq -r --arg p "$PREFIX" '.OriginAccessControlList.Items[]? | select((.Name // "") | startswith($p)) | [.Name, .Id] | join("\u001f")' <<<"$json")
       else
         list_failed "CloudFront origin access controls"
+      fi
+      # Ruling P10 (A4): CloudFront functions are the lab's by name.
+      if json="$(awsq "$r" cloudfront list-functions --stage DEVELOPMENT)"; then
+        while IFS= read -r n; do [ -n "$n" ] && add "$r" cloudfront:function "$n" "" "$n" 0; done < <(jq -r --arg p "$PREFIX" '.FunctionList.Items[]?.Name // empty | select(startswith($p))' <<<"$json")
+      else
+        list_failed "CloudFront functions"
       fi
     fi
   done
@@ -401,6 +432,23 @@ describe() {
     cloudfront:origin-access-control) set -- cloudfront get-origin-access-control --id "$id"; q='.OriginAccessControl' ;;
     route53:hostedzone) set -- route53 get-hosted-zone --id "$id"; q='.HostedZone' ;;
     route53:healthcheck) set -- route53 get-health-check --health-check-id "$id"; q='.HealthCheck' ;;
+    # Batch 4: Global Accelerator is signed in us-west-2 and a CloudFront-scope WAF ACL in us-east-1, where each was found.
+    globalaccelerator:accelerator) set -- globalaccelerator describe-accelerator --accelerator-arn "$x"; q='.Accelerator' ;;
+    wafv2:global/webacl) set -- wafv2 get-web-acl --scope CLOUDFRONT --name "${id%%/*}" --id "${id#*/}"; q='.' ;;
+    cloudfront:function) set -- cloudfront describe-function --name "$id"; q='.' ;;
+    route53resolver:resolver-endpoint) set -- route53resolver get-resolver-endpoint --resolver-endpoint-id "$id"; q='.ResolverEndpoint' ;;
+    route53resolver:resolver-rule) set -- route53resolver get-resolver-rule --resolver-rule-id "$id"; q='.ResolverRule' ;;
+    route53resolver:resolver-query-log-config) set -- route53resolver get-resolver-query-log-config --resolver-query-log-config-id "$id"; q='.ResolverQueryLogConfig' ;;
+    route53resolver:firewall-rule-group) set -- route53resolver get-firewall-rule-group --firewall-rule-group-id "$id"; q='.FirewallRuleGroup' ;;
+    route53resolver:firewall-rule-group-association) set -- route53resolver get-firewall-rule-group-association --firewall-rule-group-association-id "$id"; q='.FirewallRuleGroupAssociation' ;;
+    route53resolver:firewall-domain-list) set -- route53resolver get-firewall-domain-list --firewall-domain-list-id "$id"; q='.FirewallDomainList' ;;
+    vpc-lattice:servicenetwork) set -- vpc-lattice get-service-network --service-network-identifier "$id"; q='.' ;;
+    vpc-lattice:service) set -- vpc-lattice get-service --service-identifier "$id"; q='.' ;;
+    # Judged only: a listener goes with its service (<svc>/listener/<l>).
+    vpc-lattice:listener) set -- vpc-lattice get-listener --service-identifier "${id%%/*}" --listener-identifier "${id##*/}"; q='.' ;;
+    vpc-lattice:targetgroup) set -- vpc-lattice get-target-group --target-group-identifier "$id"; q='.' ;;
+    vpc-lattice:servicenetworkvpcassociation) set -- vpc-lattice get-service-network-vpc-association --service-network-vpc-association-identifier "$id"; q='.' ;;
+    vpc-lattice:servicenetworkserviceassociation) set -- vpc-lattice get-service-network-service-association --service-network-service-association-identifier "$id"; q='.' ;;
     kms:alias)
       [ -n "$x" ] || return 3
       set -- kms list-aliases --key-id "$x"; q='.Aliases[]? | select(.AliasName == $id)' ;;
@@ -478,6 +526,9 @@ judge() {
     states:stateMachine) g='.status == "DELETING"' ;;
     elasticfilesystem:file-system) g='.LifeCycleState == "deleted"' ;;
     ec2:fleet) g='(.FleetState // "") | startswith("deleted")' ;;
+    # Ruling P23: a Lattice association being deleted is clean; everything else of batch 4 (a Resolver endpoint
+    # DELETING too: the sweep waits for it until AWS no longer has it) is there until AWS no longer has it.
+    vpc-lattice:servicenetworkvpcassociation | vpc-lattice:servicenetworkserviceassociation) g='.status == "DELETE_IN_PROGRESS"' ;;
     *) g='false' ;;
   esac
   IFS=$'\x1f' read -r s n < <(jq -r "[ (if ($g) then \"gone\" else \"there\" end), ((.Tags // .TagSet // []) | if type == \"array\" then (map(select(.Key == \"Name\"))[0].Value // \"\") else \"\" end) ] | join(\"\u001f\")" <<<"$DJ" 2>/dev/null)
@@ -820,19 +871,30 @@ del_workgroup() { wr "$1" "delete $(label "$1") and its saved queries" athena de
 # Phase 2, edge and DNS. CloudFront (spec §15, slow deletes): every enabled distribution is disabled; then each is
 # waited for until Deployed (AWS takes minutes; V up to 20, by UNTIL) and deleted with its newest ETag; then the lab's
 # origin access controls, each with its own ETag.
+# cf_disable <i>: asks for the distribution's configuration with Enabled false, with its newest ETag. 0 when AWS took
+# it (or it is already disabled), 1 when AWS refused it, 2 when the configuration could not be read (or it is gone).
+cf_disable() {
+  local i="$1" id="${C_I[$1]}" json
+  if ! json="$(awsq "${C_R[$i]}" cloudfront get-distribution-config --id "$id")"; then
+    gone_err || warn "could not read $(label "$i") ($(code))"
+    return 2
+  fi
+  [ "$(jq -r '.DistributionConfig.Enabled' <<<"$json")" = true ] || return 0
+  jq '.DistributionConfig | .Enabled = false' <<<"$json" >"$TMPD/cf-$id.json"
+  wr "$i" "disable $(label "$i")" cloudfront update-distribution --id "$id" --if-match "$(jq -r '.ETag' <<<"$json")" --distribution-config "file://$TMPD/cf-$id.json" || return 1
+}
 distributions() {
-  local i id json etag s e
+  local i json etag s e
   local -a left next
+  # Ruling P10 (M-4): a disable AWS refused (a stale ETag, a change still deploying) is asked again on each pass
+  # while the distribution is still enabled, rather than leaving it.
+  local -A redo=()
   for i in $(of_type cloudfront:distribution); do
-    id="${C_I[$i]}"
-    if ! json="$(awsq "${C_R[$i]}" cloudfront get-distribution-config --id "$id")"; then
-      gone_err || warn "could not read $(label "$i") ($(code))"
-      continue
-    fi
-    if [ "$(jq -r '.DistributionConfig.Enabled' <<<"$json")" = true ]; then
-      jq '.DistributionConfig | .Enabled = false' <<<"$json" >"$TMPD/cf-$id.json"
-      wr "$i" "disable $(label "$i")" cloudfront update-distribution --id "$id" --if-match "$(jq -r '.ETag' <<<"$json")" --distribution-config "file://$TMPD/cf-$id.json" || continue
-    fi
+    cf_disable "$i"
+    case $? in
+      1) redo[$i]=1 ;;
+      2) continue ;;
+    esac
     left+=("$i")
   done
   while [ "${#left[@]}" -gt 0 ]; do
@@ -848,13 +910,20 @@ distributions() {
         etag="$(jq -r '.ETag' <<<"$json")"
         wr "$i" "delete $(label "$i")" cloudfront delete-distribution --id "${C_I[$i]}" --if-match "$etag"
       else
+        [ -n "${redo[$i]:-}" ] && [ "$e" = true ] && cf_disable "$i" && unset "redo[$i]"
         next+=("$i")
       fi
     done
     left=("${next[@]}")
     [ "${#left[@]}" -eq 0 ] && break
     if past_until; then
-      for i in "${left[@]}"; do warn "left behind: $(label "$i") (still deploying its disabled configuration)"; done
+      for i in "${left[@]}"; do
+        if [ -n "${redo[$i]:-}" ]; then
+          warn "left behind: $(label "$i") (still enabled: AWS refused its disable)"
+        else
+          warn "left behind: $(label "$i") (still deploying its disabled configuration)"
+        fi
+      done
       return 0
     fi
     echo "safety net: waiting for ${#left[@]} CloudFront distribution(s) to finish disabling"
@@ -889,6 +958,123 @@ del_zone() {
   wr "$i" "delete $(label "$i")" route53 delete-hosted-zone --id "$z"
 }
 del_healthcheck() { wr "$1" "delete $(label "$1")" route53 delete-health-check --health-check-id "${C_I[$1]}"; }
+
+# Phase 2, edge and DNS (batch 4).
+# wait_until_none <i> <what> <aws args…> -- <jq count>: poll the listing (in the item's region) until the count is 0,
+# or UNTIL (then a warning and false). A listing AWS refuses is a warning and false (never taken for none), unless the
+# item itself is gone; an empty answer counts as none.
+wait_until_none() {
+  local i="$1" what="$2" json n q
+  local -a args=()
+  shift 2
+  while [ "$1" != -- ]; do args+=("$1"); shift; done
+  q="$2"
+  while :; do
+    if ! json="$(awsq "${C_R[$i]}" "${args[@]}")"; then
+      gone_err && return 0
+      warn "could not list the $what of $(label "$i") ($(code))"
+      return 1
+    fi
+    n="$(jq -r "$q" <<<"$json" 2>/dev/null)"
+    n="${n:-0}"
+    if ! [[ "$n" =~ ^[0-9]+$ ]]; then
+      warn "could not read the $what of $(label "$i")"
+      return 1
+    fi
+    [ "$n" -eq 0 ] && return 0
+    if past_until; then
+      warn "left behind: $(label "$i") ($n $what still there)"
+      return 1
+    fi
+    echo "safety net: waiting for $n $what of $(label "$i")"
+    sleep "$POLL_S"
+  done
+}
+# being_deleted <i> <jq test>: after a delete AWS refused, true when the item reads as already being deleted (review I1:
+# a destroy that ran out of time left it so, and AWS refuses a second delete), so run's poll waits for it all the same.
+being_deleted() {
+  describe "$1"
+  [ $? -eq 0 ] && [ -n "$DJ" ] && jq -e "$2" <<<"$DJ" >/dev/null 2>&1
+}
+# Ruling P10: a function in use by a distribution cannot go, so functions follow the distributions.
+del_function() {
+  local i="$1" etag
+  readable "$i" || return 1
+  etag="$(jq -r '.ETag // empty' <<<"$DJ" 2>/dev/null)"
+  wr "$i" "delete $(label "$i")" cloudfront delete-function --name "${C_I[$i]}" --if-match "$etag"
+}
+# Ruling P10: Global Accelerator, in us-west-2: disable, wait until DEPLOYED and disabled, endpoint groups, listeners,
+# then the accelerator (AWS refuses each step out of this order).
+del_accelerator() {
+  local i="$1" a="${C_A[$1]}" r="${C_R[$1]}" json l g
+  readable "$i" || return 1
+  [ -n "$DJ" ] || return 1
+  [ "$(jq -r '.Enabled' <<<"$DJ" 2>/dev/null)" = true ] && wr "$i" "disable $(label "$i")" globalaccelerator update-accelerator --accelerator-arn "$a" --no-enabled
+  while :; do
+    readable "$i" || return 1
+    [ -n "$DJ" ] || return 1
+    [ "$(jq -r '.Status' <<<"$DJ")" = DEPLOYED ] && [ "$(jq -r '.Enabled' <<<"$DJ")" = false ] && break
+    if past_until; then
+      warn "left behind: $(label "$i") (still disabling)"
+      return 1
+    fi
+    echo "safety net: waiting for $(label "$i") to finish disabling"
+    sleep "$POLL_S"
+  done
+  if json="$(awsq "$r" globalaccelerator list-listeners --accelerator-arn "$a")"; then
+    while IFS= read -r l; do
+      [ -z "$l" ] && continue
+      while IFS= read -r g; do [ -n "$g" ] && wr "$i" "delete endpoint group ${g##*/} of $(label "$i")" globalaccelerator delete-endpoint-group --endpoint-group-arn "$g"; done < <(awsq "$r" globalaccelerator list-endpoint-groups --listener-arn "$l" | jq -r '.EndpointGroups[]?.EndpointGroupArn // empty')
+      wr "$i" "delete listener ${l##*/} of $(label "$i")" globalaccelerator delete-listener --listener-arn "$l"
+    done < <(jq -r '.Listeners[]?.ListenerArn // empty' <<<"$json")
+  else
+    warn "could not list the listeners of $(label "$i") ($(code))"
+  fi
+  wr "$i" "delete $(label "$i")" globalaccelerator delete-accelerator --accelerator-arn "$a"
+}
+# Ruling P10: a web ACL in use by a distribution cannot go, so it follows them; each delete needs the newest lock token.
+del_webacl() {
+  local i="$1" tok
+  readable "$i" || return 1
+  tok="$(jq -r '.LockToken // empty' <<<"$DJ" 2>/dev/null)"
+  wr "$i" "delete $(label "$i")" wafv2 delete-web-acl --scope CLOUDFRONT --name "${C_I[$i]%%/*}" --id "${C_I[$i]#*/}" --lock-token "$tok"
+}
+# Ruling P23: Resolver. A rule's VPC associations, then the rule; a query log config's associations, then it; a
+# firewall rule group's VPC associations (tagged, own handler) and rules, then the group; domain lists; endpoints last,
+# each waited for until gone (a VPC cannot be deleted while an endpoint's interfaces are in it).
+del_resolver_rule() {
+  local i="$1" r="${C_R[$1]}" v
+  while IFS= read -r v; do [ -n "$v" ] && wr "$i" "disassociate $(label "$i") from $v" route53resolver disassociate-resolver-rule --resolver-rule-id "${C_I[$i]}" --vpc-id "$v"; done < <(awsq "$r" route53resolver list-resolver-rule-associations --filters "Name=ResolverRuleId,Values=${C_I[$i]}" | jq -r '.ResolverRuleAssociations[]? | select(.Status != "DELETING") | .VPCId // empty')
+  wait_until_none "$i" "rule associations" route53resolver list-resolver-rule-associations --filters "Name=ResolverRuleId,Values=${C_I[$i]}" -- '.ResolverRuleAssociations // [] | length' || return 1
+  wr "$i" "delete $(label "$i")" route53resolver delete-resolver-rule --resolver-rule-id "${C_I[$i]}"
+}
+del_querylog() {
+  local i="$1" r="${C_R[$1]}" v
+  while IFS= read -r v; do [ -n "$v" ] && wr "$i" "disassociate $(label "$i") from $v" route53resolver disassociate-resolver-query-log-config --resolver-query-log-config-id "${C_I[$i]}" --resource-id "$v"; done < <(awsq "$r" route53resolver list-resolver-query-log-config-associations --filters "Name=ResolverQueryLogConfigId,Values=${C_I[$i]}" | jq -r '.ResolverQueryLogConfigAssociations[]? | select(.Status != "DELETING") | .ResourceId // empty')
+  wait_until_none "$i" "query log associations" route53resolver list-resolver-query-log-config-associations --filters "Name=ResolverQueryLogConfigId,Values=${C_I[$i]}" -- '[.ResolverQueryLogConfigAssociations[]? | select(.Status != "FAILED")] | length' || return 1
+  wr "$i" "delete $(label "$i")" route53resolver delete-resolver-query-log-config --resolver-query-log-config-id "${C_I[$i]}"
+}
+del_fw_assoc() { wr "$1" "disassociate $(label "$1")" route53resolver disassociate-firewall-rule-group --firewall-rule-group-association-id "${C_I[$1]}"; }
+del_fw_group() {
+  local i="$1" r="${C_R[$1]}" d
+  wait_until_none "$i" "VPC associations" route53resolver list-firewall-rule-group-associations --firewall-rule-group-id "${C_I[$i]}" -- '.FirewallRuleGroupAssociations // [] | length' || return 1
+  while IFS= read -r d; do [ -n "$d" ] && wr "$i" "delete the rule for $d in $(label "$i")" route53resolver delete-firewall-rule --firewall-rule-group-id "${C_I[$i]}" --firewall-domain-list-id "$d"; done < <(awsq "$r" route53resolver list-firewall-rules --firewall-rule-group-id "${C_I[$i]}" | jq -r '.FirewallRules[]?.FirewallDomainListId // empty')
+  wr "$i" "delete $(label "$i")" route53resolver delete-firewall-rule-group --firewall-rule-group-id "${C_I[$i]}"
+}
+del_fw_list() { wr "$1" "delete $(label "$1")" route53resolver delete-firewall-domain-list --firewall-domain-list-id "${C_I[$1]}"; }
+del_resolver_endpoint() { wr "$1" "delete $(label "$1")" route53resolver delete-resolver-endpoint --resolver-endpoint-id "${C_I[$1]}" || being_deleted "$1" '.Status == "DELETING"'; }
+# Ruling P23: Lattice. Service associations, VPC associations (waited for), services (their listeners and rules go with
+# them), target groups (targets deregistered first), then service networks.
+del_sn_svc_assoc() { wr "$1" "delete $(label "$1")" vpc-lattice delete-service-network-service-association --service-network-service-association-identifier "${C_I[$1]}"; }
+del_sn_vpc_assoc() { wr "$1" "delete $(label "$1")" vpc-lattice delete-service-network-vpc-association --service-network-vpc-association-identifier "${C_I[$1]}"; }
+del_lattice_service() { wr "$1" "delete $(label "$1")" vpc-lattice delete-service --service-identifier "${C_I[$1]}" || being_deleted "$1" '.status == "DELETE_IN_PROGRESS"'; }
+del_lattice_tg() {
+  local i="$1" r="${C_R[$1]}" t
+  t="$(awsq "$r" vpc-lattice list-targets --target-group-identifier "${C_I[$i]}" | jq -c '[.items[]? | {id: .id, port: .port} | with_entries(select(.value != null))]')"
+  [ -n "$t" ] && [ "$t" != "[]" ] && wr "$i" "deregister the targets of $(label "$i")" vpc-lattice deregister-targets --target-group-identifier "${C_I[$i]}" --targets "$t"
+  wr "$i" "delete $(label "$i")" vpc-lattice delete-target-group --target-group-identifier "${C_I[$i]}" || being_deleted "$i" '.status == "DELETE_IN_PROGRESS"'
+}
+del_service_network() { wr "$1" "delete $(label "$1")" vpc-lattice delete-service-network --service-network-identifier "${C_I[$1]}"; }
 
 # Phase 3, network services.
 del_lb() { wr "$1" "delete $(label "$1")" elbv2 delete-load-balancer --load-balancer-arn "${C_A[$1]}"; }
@@ -1381,7 +1567,12 @@ HANDLED=" autoscaling:autoScalingGroup events:rule config:config-rule config:con
   eks:nodegroup eks:cluster apigateway:apis apigateway:stages states:stateMachine events:event-bus firehose:deliverystream
   kinesis:stream glue:crawler glue:database athena:workgroup elasticache:replicationgroup elasticache:cluster
   elasticache:subnetgroup elasticache:snapshot elasticfilesystem:file-system dynamodb:table cognito-idp:userpool
-  eks:access-entry ec2:fleet "
+  eks:access-entry ec2:fleet
+  globalaccelerator:accelerator wafv2:global/webacl cloudfront:function route53resolver:resolver-endpoint
+  route53resolver:resolver-rule route53resolver:resolver-query-log-config route53resolver:firewall-rule-group
+  route53resolver:firewall-rule-group-association route53resolver:firewall-domain-list vpc-lattice:servicenetwork
+  vpc-lattice:service vpc-lattice:listener vpc-lattice:targetgroup vpc-lattice:servicenetworkvpcassociation
+  vpc-lattice:servicenetworkserviceassociation "
 HANDLED="${HANDLED//$'\n'/ }"
 
 discover
@@ -1420,11 +1611,25 @@ run config:config-rule - del_config_rule
 run config:configuration-recorder - stop_recorder
 run config:delivery-channel - del_channel
 run config:configuration-recorder - del_recorder
-# 2 edge and DNS
+# 2 edge and DNS (a Lattice service's listeners go with it: judged only)
 distributions
 run cloudfront:origin-access-control - del_oac
+run cloudfront:function - del_function
+run globalaccelerator:accelerator poll del_accelerator
+run wafv2:global/webacl - del_webacl
 run route53:hostedzone - del_zone
 run route53:healthcheck - del_healthcheck
+run route53resolver:resolver-rule - del_resolver_rule
+run route53resolver:resolver-query-log-config - del_querylog
+run route53resolver:firewall-rule-group-association poll del_fw_assoc
+run route53resolver:firewall-rule-group - del_fw_group
+run route53resolver:firewall-domain-list - del_fw_list
+run route53resolver:resolver-endpoint poll del_resolver_endpoint
+run vpc-lattice:servicenetworkserviceassociation poll del_sn_svc_assoc
+run vpc-lattice:servicenetworkvpcassociation poll del_sn_vpc_assoc
+run vpc-lattice:service poll del_lattice_service
+run vpc-lattice:targetgroup poll del_lattice_tg
+run vpc-lattice:servicenetwork - del_service_network
 # 3 network services
 run elasticloadbalancing:loadbalancer poll del_lb
 run elasticloadbalancing:listener-rule - del_lb_child

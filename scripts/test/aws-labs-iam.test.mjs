@@ -625,7 +625,7 @@ const CLI_ACTION = {
   "apigatewayv2 get-stage": ["apigateway:GET"],
   "apigatewayv2 delete-api": ["apigateway:DELETE"],
 };
-const SERVICES_RE = /(?:^|[\s(])(ec2|elbv2|rds|autoscaling|events|configservice|s3api|sns|logs|cloudwatch|ssm|backup|resource-groups|kms|iam|resourcegroupstaggingapi|dynamodb|network-firewall|cloudformation|elasticache|eks|ecs|cloudfront|globalaccelerator|vpc-lattice|route53resolver|sqs|secretsmanager|lambda|ecr|accessanalyzer|route53|elb|apigatewayv2|cognito-idp|stepfunctions|efs|kinesis|firehose|glue|athena)\s+"?([a-z0-9]+-[a-z0-9$-]+)"?/g;
+const SERVICES_RE = /(?:^|[\s(])(ec2|elbv2|rds|autoscaling|events|configservice|s3api|sns|logs|cloudwatch|ssm|backup|resource-groups|kms|iam|resourcegroupstaggingapi|dynamodb|network-firewall|cloudformation|elasticache|eks|ecs|cloudfront|globalaccelerator|wafv2|vpc-lattice|route53resolver|sqs|secretsmanager|lambda|ecr|accessanalyzer|route53|elb|apigatewayv2|cognito-idp|stepfunctions|efs|kinesis|firehose|glue|athena)\s+"?([a-z0-9]+-[a-z0-9$-]+)"?/g;
 /** Every "<service> <command>" an aws call names in a script (comments left out), with the region it names. */
 function cliCalls(path) {
   const out = [];
@@ -634,14 +634,15 @@ function cliCalls(path) {
     for (const m of line.matchAll(SERVICES_RE)) {
       const cmds = m[2].includes("$dir") ? [m[2].replace("$dir", "ingress"), m[2].replace("$dir", "egress")] : [m[2]];
       const region = /--region (us-east-1|us-west-2)\b/.exec(line)?.[1];
-      for (const c of cmds) out.push({ cli: `${m[1]} ${c}`, region });
+      const scope = /--scope (CLOUDFRONT|REGIONAL)\b/.exec(line)?.[1];
+      for (const c of cmds) out.push({ cli: `${m[1]} ${c}`, region, scope });
     }
   }
   return out;
 }
 const camel = (c) => c.split("-").map((w) => w[0].toUpperCase() + w.slice(1)).join("");
 /** The IAM request one CLI call makes, on a lab item (tagged, or one of the untaggable named types). */
-function requestsOf({ cli, region }) {
+function requestsOf({ cli, region, scope }) {
   const [svc, cmd] = cli.split(" ");
   const actions = CLI_ACTION[cli] ?? [`${CLI_SERVICE[svc] ?? svc}:${camel(cmd)}`];
   const read = /^(describe|list|get|head)-/.test(cmd);
@@ -653,7 +654,8 @@ function requestsOf({ cli, region }) {
     const resource = what && !/^list-(roles|instance-profiles|policies|users)$/.test(cmd) ? `arn:aws:iam::${A}:${what}/cloudlabs-lab/${name}` : "*";
     return actions.map((action) => ({ action, resource, ctx: { "aws:RequestedRegion": "us-east-1", ...(what === "role" || what === "user" ? BOUNDED : {}) } }));
   }
-  const r = region ?? (["cloudfront", "route53"].includes(svc) ? "us-east-1" : "eu-west-2");
+  // The global APIs in their regions (A65, P9): a CloudFront-scope WAF call in us-east-1, Global Accelerator in us-west-2.
+  const r = region ?? (["cloudfront", "route53"].includes(svc) || (svc === "wafv2" && scope === "CLOUDFRONT") ? "us-east-1" : svc === "globalaccelerator" ? "us-west-2" : "eu-west-2");
   const resource = svc === "s3api" ? "arn:aws:s3:::cloudlabs-a01abcde-logs" : /dashboard|configuration-recorder/.test(cmd) ? namedArn(action0, "lab-soa-01-x-main") : svc === "dynamodb" ? `arn:aws:dynamodb:${r}:${A}:table/lab-soa-01-x-items` : `arn:aws:${CLI_SERVICE[svc] ?? svc}:${r}:${A}:lab-item/x`;
   // Ruling P4: an AMI copy and its snapshots are never tag-checked (deregistering and snapshot deletes are AWS_OWNED_TYPES).
   const untagged = svc === "ec2" && /image|snapshot/.test(cmd);
@@ -667,14 +669,16 @@ test("every AWS CLI call in Unblock, the safety net, Verify clean and the ready 
   const scripts = ["infra/ci/lab-unblock-aws.sh", "infra/ci/lab-aws-safety-net.sh", "infra/ci/lab-ready-aws.sh"];
   const calls = scripts.flatMap((p) => cliCalls(p).map((c) => ({ ...c, p })));
   // The extraction found the calls (a script that stops naming them would make this test vacuous).
-  assert.ok(calls.length > 130, `${calls.length} calls`);
+  assert.ok(calls.length > 160, `${calls.length} calls`);
   for (const must of ["iam delete-role", "configservice stop-configuration-recorder", "cloudwatch delete-dashboards", "ec2 revoke-security-group-egress", "resourcegroupstaggingapi get-resources", "cloudfront get-distribution", "s3api delete-objects",
     // Final review, Important 2: security group rules, listeners and listener rules, read and (when still there) deleted.
     "ec2 describe-security-group-rules", "ec2 revoke-security-group-ingress", "elbv2 describe-listeners", "elbv2 describe-rules", "elbv2 delete-listener", "elbv2 delete-rule",
     // Batch 2 (Task 4): the new types' deletes.
     "cloudformation delete-stack", "cloudfront delete-distribution", "cloudfront delete-origin-access-control", "route53 delete-hosted-zone", "ecs delete-service", "ecs delete-task-definitions", "kms schedule-key-deletion", "iam delete-access-key", "accessanalyzer delete-analyzer",
     // Batch 3 (Task 4): the new types' deletes, Unblock's Kubernetes-made load balancers and EKS deletion protection (pre-flight C9).
-    "eks delete-nodegroup", "eks delete-cluster", "dynamodb update-table", "dynamodb delete-table", "apigatewayv2 delete-api", "cognito-idp delete-user-pool", "efs delete-mount-target", "elasticache delete-replication-group", "kinesis delete-stream", "firehose delete-delivery-stream", "glue stop-crawler", "glue delete-database", "athena delete-work-group", "stepfunctions delete-state-machine", "elbv2 delete-load-balancer", "elb delete-load-balancer", "eks update-cluster-config"]) assert.ok(calls.some((c) => c.cli === must), must);
+    "eks delete-nodegroup", "eks delete-cluster", "dynamodb update-table", "dynamodb delete-table", "apigatewayv2 delete-api", "cognito-idp delete-user-pool", "efs delete-mount-target", "elasticache delete-replication-group", "kinesis delete-stream", "firehose delete-delivery-stream", "glue stop-crawler", "glue delete-database", "athena delete-work-group", "stepfunctions delete-state-machine", "elbv2 delete-load-balancer", "elb delete-load-balancer", "eks update-cluster-config",
+    // Batch 4 (Task 5): edge, DNS and Lattice.
+    "globalaccelerator update-accelerator", "globalaccelerator delete-accelerator", "globalaccelerator delete-endpoint-group", "globalaccelerator delete-listener", "wafv2 delete-web-acl", "cloudfront delete-function", "route53resolver delete-resolver-rule", "route53resolver disassociate-resolver-rule", "route53resolver delete-resolver-endpoint", "route53resolver delete-firewall-rule", "vpc-lattice delete-service", "vpc-lattice deregister-targets", "vpc-lattice delete-service-network"]) assert.ok(calls.some((c) => c.cli === must), must);
   const refused = [];
   for (const c of calls) for (const req of requestsOf(c)) {
     const d = decide(POLICIES.role, req);
