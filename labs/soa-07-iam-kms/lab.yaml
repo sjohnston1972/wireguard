@@ -1,0 +1,33 @@
+# Lab soa-07 (AWS labs batch 2). SOA-C03 ((V) the wording against the current
+# exam guide): Security and Compliance (IAM users and roles, permission
+# boundaries, IAM Access Analyzer, KMS keys and key policies, Secrets Manager
+# rotation); and SAA-C03's Design Secure Architectures.
+# Costs, authored (no hourly list price): a KMS key $1/month prorated hourly
+# (no charge while it waits to delete, spec §15) -> £0.0010; a secret
+# $0.40/month prorated -> £0.0004; Lambda, the account analyzer and IAM free.
+id: soa-07-iam-kms
+version: 1
+cloud: aws
+title: "IAM, permission boundaries and KMS"
+summary: >-
+  A console user and a Lambda role held by a permission boundary, IAM Access Analyzer watching the account, a customer
+  managed KMS key with its own key policy, and a secret encrypted with it that a Lambda function rotates.
+exam: SOA-C03
+skill_areas: [soa.security, saa.secure]
+level: associate
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "KMS customer managed key ($1/month, prorated hourly)", gbp_h: 0.0010 }
+    - { name: "Secrets Manager secret ($0.40/month, prorated)", gbp_h: 0.0004 }
+    - { name: "Lambda rotations, IAM Access Analyzer (account analyzer), IAM", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 3, destroy_min: 3, session_h: 2, max_h: 6 }
+capacity: { instance_types: [] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
+identity:
+  creates: [role, user]
+  roles: []
+  governance: false

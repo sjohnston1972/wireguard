@@ -1053,7 +1053,7 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         if (typeof p === "string" ? !SERVICE_PRINCIPAL.test(p) : plan) no("public", "principal: a lab function is invoked only by AWS services, named at plan (ruling P10)");
         const fua = val.function_url_auth_type;
         if (fua === "NONE") no("public", "a function URL with no auth is open to the internet");
-        else if ((fua !== undefined || res.configured?.has("function_url_auth_type")) && fua !== "AWS_IAM" && !(!plan && fua instanceof Unknown)) no("public", "function_url_auth_type must be AWS_IAM, known at plan (review I-2)");
+        else if ((fua != null || res.configured?.has("function_url_auth_type")) && fua !== "AWS_IAM" && !(!plan && fua instanceof Unknown)) no("public", "function_url_auth_type must be AWS_IAM, known at plan (review I-2)");
       }
       if (type === "aws_ecs_service" && list(val.network_configuration).some((n) => isObj(n) && n.assign_public_ip === true)) no("public", "assign_public_ip: tasks reach out through the lab's NAT gateway, never from a public address");
     }

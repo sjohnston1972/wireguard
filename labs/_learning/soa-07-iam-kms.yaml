@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: See permission boundaries, key policies, Access Analyzer and secret rotation decide what is allowed.
+learn:
+  - Work out a user's effective permissions from an identity policy and a permission boundary
+  - Grant a KMS key through its key policy and IAM; find external access with Access Analyzer
+  - Rotate a Secrets Manager secret with a Lambda function and read its four steps
+learning_min: 60

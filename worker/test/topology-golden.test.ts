@@ -819,6 +819,19 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: [],
   },
+  "soa-07-iam-kms": {
+    nodes: [
+      "generic analyzer-account < lab-soa-07-iam-kms · London",
+      "keyVault key-data < lab-soa-07-iam-kms · London",
+      "keyVault secret-app < lab-soa-07-iam-kms · London",
+      "lambda fn-rotate < lab-soa-07-iam-kms · London",
+      "logAnalytics /cloudlabs/soa-07-iam-kms/rotate < lab-soa-07-iam-kms · London",
+      "managedIdentity lab-soa-07-iam-kms-rotate < lab-soa-07-iam-kms · London",
+      "managedIdentity user-ann < lab-soa-07-iam-kms · London",
+      "resourceGroup lab-soa-07-iam-kms · London",
+    ],
+    edges: [],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);

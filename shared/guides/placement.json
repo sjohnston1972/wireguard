@@ -747,5 +747,14 @@
    "width": 632,
    "height": 220
   }
+ ],
+ "soa-07-iam-kms": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A Lambda function, two KMS keys, a CloudWatch log group, two IAM roles and more.",
+   "width": 952,
+   "height": 580
+  }
  ]
 }
