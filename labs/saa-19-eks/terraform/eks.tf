@@ -11,7 +11,9 @@
 # service can never leave an untagged load balancer behind (ruling P8): reach
 # the sample app by port-forward. One t4g.medium node (at most two) in a
 # managed node group, launched from a template that tags instance, volume and
-# interface at launch and keeps IMDSv2 one hop away from pods. The node role's
+# interface at launch and requires IMDSv2 (hop limit 2, EKS's default, so pods
+# can still reach it: what they get is the node role, inside the lab
+# boundary). The node role's
 # three AWS managed policies are attached one by one, each named in full, so
 # the scope check can read every one (pre-flight C3).
 
