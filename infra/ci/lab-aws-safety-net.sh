@@ -20,6 +20,11 @@
 #                    dashboards, Config recorders and delivery channels, Logs
 #                    query definitions, KMS aliases; and in us-east-1 (a global
 #                    lab's) CloudFront origin access controls
+#   owned by name    in each lab region too (rulings P3, P4, P15): DynamoDB
+#                    tables named lab-<id>-* (a global table's replica before
+#                    its tags arrive), AMIs of its own named lab-<id>-* (a copy
+#                    is tagged only after it is made) and Glue databases named
+#                    lab_<id with _ for -> (Glue takes no hyphens)
 #
 # Never the VPN server's: an item carrying the wg-admin tag is skipped even
 # when it carries the lab's tag too, and so is anything inside a VPC tagged
@@ -27,18 +32,25 @@
 # a VPC is deleted in that region). Verify clean still names such an item when
 # it carries the lab's tag (a person must look), but never scans inside it.
 #
-# Sweep mode deletes, in dependency order (§8.2; batches 1 and 2's handlers,
+# Sweep mode deletes, in dependency order (§8.2; batches 1 to 3's handlers,
 # ruling A36: any other type is a warning, "no handler for <type> yet", left
 # for Verify clean to report):
 #
 #   1 workloads      CloudFormation stacks (ruling P4: deleted and waited for;
 #                    one that ends DELETE_FAILED deleted again with
 #                    FORCE_DELETE_STACK, what it leaves going by its own
-#                    handler), ECS services (scaled to 0, deleted), tasks
-#                    stopped, clusters, task definitions (ruling P12:
-#                    deregistered and deleted), Lambda functions, Auto
-#                    Scaling groups (force), EventBridge rules (targets
-#                    first), Config rules (remediation first), the lab's
+#                    handler), EKS node groups, then clusters (their access
+#                    entries go with them), ECS services (scaled to 0,
+#                    deleted), tasks stopped, clusters, task definitions
+#                    (ruling P12: deregistered and deleted), Lambda functions,
+#                    HTTP APIs (their stages, routes and integrations go with
+#                    them), Step Functions state machines, Auto Scaling groups
+#                    (force; their EC2 Fleets go with them), EventBridge rules
+#                    (targets first), then buses, Firehose streams before the
+#                    Kinesis streams they read, Glue crawlers (ruling P21: a
+#                    running one stopped and waited for), Glue databases (with
+#                    their tables), Athena workgroups (with their saved
+#                    queries), Config rules (remediation first), the lab's
 #                    Config recorder stopped, its delivery channel and recorder
 #   2 edge and DNS   CloudFront distributions (disabled, waited for until
 #                    Deployed, deleted with their newest ETag), then the lab's
@@ -49,6 +61,9 @@
 #                    groups; RDS replicas, then
 #                    instances, subnet groups, parameter groups, snapshots
 #                    (never an automated one: it goes with its database);
+#                    ElastiCache replication groups, clusters of their own
+#                    (never a group's member), subnet groups, snapshots; EFS
+#                    file systems (every mount target first, waited for);
 #                    instances terminated; launch templates; NAT gateways;
 #                    Elastic IPs; VPC peering; VPC endpoints; Instance Connect
 #                    Endpoints; volumes; flow logs
@@ -66,17 +81,23 @@
 #                    first) and vaults, KMS aliases, then keys (ruling P11:
 #                    scheduled for deletion in 7 days), Secrets Manager secrets
 #                    (no recovery window), ECR repositories (with their
-#                    images), Access Analyzer analyzers, AMIs, then snapshots,
-#                    resource groups
+#                    images), Access Analyzer analyzers, DynamoDB tables
+#                    (ruling P21: a global table's replicas in other regions
+#                    removed and waited for first), Cognito user pools (their
+#                    domains first; deletion protection off if Unblock could
+#                    not), AMIs (ruling P4: then the snapshots each names),
+#                    then snapshots, resource groups
 #   6 IAM            instance profiles (roles removed), roles (policies detached
 #                    and deleted), users (login profile, then hand-made access
 #                    keys, MFA devices, SSH keys, signing certificates and
 #                    service credentials, ruling P6, then policies), customer
 #                    policies (old versions first)
 #
-# CloudFormation stacks, ECS services and clusters, CloudFront distributions,
-# Auto Scaling groups, load balancers, RDS instances, instances, NAT gateways,
-# VPC endpoints and Instance Connect Endpoints are polled after the delete,
+# CloudFormation stacks, EKS node groups and clusters, ECS services and
+# clusters, CloudFront distributions, Auto Scaling groups, Firehose and Kinesis
+# streams, load balancers, RDS instances, ElastiCache groups and clusters, EFS
+# file systems, instances, NAT gateways, VPC endpoints, Instance Connect
+# Endpoints and DynamoDB tables are polled after the delete,
 # every LAB_DELETE_POLL_SECONDS (30), until gone or LAB_JOB_DEADLINE less 420 s
 # (what is left then is a warning, "left behind: <name>"). VPC fabric deletes
 # are synchronous (pre-flight ruling C15): one AWS refuses with
@@ -94,8 +115,11 @@
 # found" for (a security group rule, listener or listener rule gone with its
 # group or load balancer too), a stack DELETE_COMPLETE, an ECS cluster or
 # service INACTIVE, a task STOPPED, a task definition DELETE_IN_PROGRESS (an
-# INACTIVE one is a leftover, ruling P12), a secret deleted, and a KMS key
-# pending deletion (ruling P11; an enabled one is a leftover), are clean). A
+# INACTIVE one is a leftover, ruling P12), a secret deleted, a KMS key
+# pending deletion (ruling P11; an enabled one is a leftover), a DynamoDB
+# table or a state machine DELETING (ruling P21), an EFS file system deleted,
+# an EC2 Fleet deleted, and an EKS access entry whose cluster is gone, are
+# clean; every other batch 3 type only once AWS no longer has it). A
 # type with no handler is never clean ("no handler for <type>: <name>"). While a lab VPC
 # still exists, every instance (not terminated) and every network interface
 # (not requester-managed, not attached to an instance, which is judged
@@ -126,6 +150,7 @@ if ! [[ "$LAB_ID" =~ $LAB_ID_RE ]] || [ "${#LAB_ID}" -gt 30 ]; then
   exit 2
 fi
 PREFIX="lab-$LAB_ID-"
+GLUE_DB="lab_${LAB_ID//-/_}"   # ruling P15: Glue takes no hyphens
 IAM_PATH=/cloudlabs-lab/
 REGIONS="${LAB_REGIONS:-eu-west-2 eu-west-1}"
 num() { [[ "${1:-}" =~ ^[0-9]+$ ]] && echo "$1" || echo "$2"; }
@@ -186,6 +211,15 @@ label() {
 split_arn() {
   local service rest head
   IFS=: read -r _ _ service _ _ rest <<<"$1"
+  # Ruling P2: arn:aws:apigateway:<r>::/apis/<id>[/stages/<name>]: the last collection named is the type.
+  if [ "$service" = apigateway ]; then
+    rest="${rest#/}"
+    case "$rest" in
+      apis/*/stages/*) TYPE=apigateway:stages; head="${rest#apis/}"; ID="${head%%/*}/${rest##*/}" ;;
+      *) TYPE="apigateway:${rest%%/*}"; ID="${rest#*/}" ;;
+    esac
+    return
+  fi
   head="${rest%%[/:]*}"
   if [ "$head" = "$rest" ]; then
     # arn:aws:s3:::<bucket>, arn:aws:sns:<r>:<a>:<topic>: no type part.
@@ -243,6 +277,22 @@ discover() {
         while IFS=$'\x1f' read -r n x; do [ -n "$n" ] && add "$r" kms:alias "$n" "$x" "" 0; done < <(jq -r --arg p "alias/$PREFIX" '.Aliases[]? | select((.AliasName // "") | startswith($p)) | [.AliasName, .TargetKeyId // ""] | join("\u001f")' <<<"$json")
       else
         list_failed "KMS aliases in $r"
+      fi
+      # Rulings P3, P4, P15: what the lab also owns by name (a replica before its tags arrive, an AMI copy, a Glue database).
+      if json="$(awsq "$r" dynamodb list-tables)"; then
+        while IFS= read -r n; do [ -n "$n" ] && add "$r" dynamodb:table "$n" "" "" 0; done < <(jq -r --arg p "$PREFIX" '.TableNames[]? | select(startswith($p))' <<<"$json")
+      else
+        list_failed "DynamoDB tables in $r"
+      fi
+      if json="$(awsq "$r" ec2 describe-images --owners self --filters "Name=name,Values=${PREFIX}*")"; then
+        while IFS=$'\x1f' read -r x n; do [ -n "$x" ] && add "$r" ec2:image "$x" "" "$n" 0; done < <(jq -r --arg p "$PREFIX" '.Images[]? | select((.Name // "") | startswith($p)) | [.ImageId, .Name] | join("\u001f")' <<<"$json")
+      else
+        list_failed "AMIs in $r"
+      fi
+      if json="$(awsq "$r" glue get-databases)"; then
+        while IFS= read -r n; do [ -n "$n" ] && add "$r" glue:database "$n" "" "" 0; done < <(jq -r --arg p "$GLUE_DB" '.DatabaseList[]?.Name // empty | select(. == $p or startswith($p + "_"))' <<<"$json")
+      else
+        list_failed "Glue databases in $r"
       fi
     fi
     # CloudFront origin access controls take no tags (A4) and are global, so they are listed by name in us-east-1,
@@ -353,6 +403,27 @@ describe() {
     kms:alias)
       [ -n "$x" ] || return 3
       set -- kms list-aliases --key-id "$x"; q='.Aliases[]? | select(.AliasName == $id)' ;;
+    apigateway:apis) set -- apigatewayv2 get-api --api-id "$id"; q='.' ;;
+    apigateway:stages) set -- apigatewayv2 get-stage --api-id "${id%%/*}" --stage-name "${id#*/}"; q='.' ;;
+    cognito-idp:userpool) set -- cognito-idp describe-user-pool --user-pool-id "$id"; q='.UserPool' ;;
+    dynamodb:table) set -- dynamodb describe-table --table-name "$id"; q='.Table' ;;
+    events:event-bus) set -- events describe-event-bus --name "$id"; q='.' ;;
+    states:stateMachine) set -- stepfunctions describe-state-machine --state-machine-arn "$x"; q='.' ;;
+    elasticfilesystem:file-system) set -- efs describe-file-systems --file-system-id "$id"; q='.FileSystems[]?' ;;
+    elasticache:replicationgroup) set -- elasticache describe-replication-groups --replication-group-id "$id"; q='.ReplicationGroups[]?' ;;
+    elasticache:cluster) set -- elasticache describe-cache-clusters --cache-cluster-id "$id"; q='.CacheClusters[]?' ;;
+    elasticache:subnetgroup) set -- elasticache describe-cache-subnet-groups --cache-subnet-group-name "$id"; q='.CacheSubnetGroups[]?' ;;
+    elasticache:snapshot) set -- elasticache describe-snapshots --snapshot-name "$id"; q='.Snapshots[]?' ;;
+    kinesis:stream) set -- kinesis describe-stream-summary --stream-name "$id"; q='.StreamDescriptionSummary' ;;
+    firehose:deliverystream) set -- firehose describe-delivery-stream --delivery-stream-name "$id"; q='.DeliveryStreamDescription' ;;
+    glue:crawler) set -- glue get-crawler --name "$id"; q='.Crawler' ;;
+    glue:database) set -- glue get-database --name "$id"; q='.Database' ;;
+    athena:workgroup) set -- athena list-work-groups; q='.WorkGroups[]? | select(.Name == $id)' ;;
+    eks:cluster) set -- eks describe-cluster --name "$id"; q='.cluster' ;;
+    eks:nodegroup) set -- eks describe-nodegroup --cluster-name "${id%%/*}" --nodegroup-name "$(cut -d/ -f2 <<<"$id")"; q='.nodegroup' ;;
+    # Pre-flight C11: judged only, each going with its cluster or Auto Scaling group (an access entry by its cluster).
+    eks:access-entry) set -- eks describe-cluster --name "${id%%/*}"; q='.cluster' ;;
+    ec2:fleet) set -- ec2 describe-fleets --fleet-ids "$id"; q='.Fleets[]?' ;;
     iam:role) set -- iam get-role --role-name "$id"; q='.Role' ;;
     iam:instance-profile) set -- iam get-instance-profile --instance-profile-name "$id"; q='.InstanceProfile' ;;
     iam:policy) set -- iam get-policy --policy-arn "$x"; q='.Policy' ;;
@@ -401,6 +472,11 @@ judge() {
     ecs:task) g='.lastStatus == "STOPPED"' ;;
     ecs:task-definition) g='.status == "DELETE_IN_PROGRESS"' ;;
     rds:snapshot) g='.Status == "deleting"' ;;
+    # Ruling P21: everything else of batch 3 is there until AWS no longer has it.
+    dynamodb:table) g='.TableStatus == "DELETING"' ;;
+    states:stateMachine) g='.status == "DELETING"' ;;
+    elasticfilesystem:file-system) g='.LifeCycleState == "deleted"' ;;
+    ec2:fleet) g='(.FleetState // "") | startswith("deleted")' ;;
     *) g='false' ;;
   esac
   IFS=$'\x1f' read -r s n < <(jq -r "[ (if ($g) then \"gone\" else \"there\" end), ((.Tags // .TagSet // []) | if type == \"array\" then (map(select(.Key == \"Name\"))[0].Value // \"\") else \"\" end) ] | join(\"\u001f\")" <<<"$DJ" 2>/dev/null)
@@ -676,6 +752,48 @@ stop_recorder() { wr "$1" "stop $(label "$1")" configservice stop-configuration-
 del_channel() { wr "$1" "delete $(label "$1")" configservice delete-delivery-channel --delivery-channel-name "${C_I[$1]}"; }
 del_recorder() { wr "$1" "delete $(label "$1")" configservice delete-configuration-recorder --configuration-recorder-name "${C_I[$1]}"; }
 
+# Phase 1, workloads (batch 3). EKS: node groups, then clusters (AWS refuses a cluster that still has node groups),
+# each waited for until AWS no longer has it (V: minutes each; Task 17 records them).
+del_nodegroup() { wr "$1" "delete $(label "$1")" eks delete-nodegroup --cluster-name "${C_I[$1]%%/*}" --nodegroup-name "$(cut -d/ -f2 <<<"${C_I[$1]}")"; }
+del_eks() { wr "$1" "delete $(label "$1")" eks delete-cluster --name "${C_I[$1]}"; }
+# An HTTP API takes its stages, routes, integrations and authorisers with it; a stage still listed is only judged.
+del_api() { wr "$1" "delete $(label "$1")" apigatewayv2 delete-api --api-id "${C_I[$1]}"; }
+del_sfn() { wr "$1" "delete $(label "$1")" stepfunctions delete-state-machine --state-machine-arn "${C_A[$1]}"; }
+# A bus's rules go first, by the events:rule handler (bus-qualified); then the bus.
+del_bus() { wr "$1" "delete $(label "$1")" events delete-event-bus --name "${C_I[$1]}"; }
+del_firehose() { wr "$1" "delete $(label "$1")" firehose delete-delivery-stream --delivery-stream-name "${C_I[$1]}" --allow-force-delete; }
+del_stream() { wr "$1" "delete $(label "$1")" kinesis delete-stream --stream-name "${C_I[$1]}" --enforce-consumer-deletion; }
+# Ruling P21: a running crawler is stopped and waited for (AWS refuses to delete one that runs). One that cannot be
+# read is a warning, never a wait (pre-flight C10).
+del_crawler() {
+  local i="$1" s rc k=0
+  while :; do
+    describe "$i"
+    rc=$?
+    [ "$rc" -eq 1 ] && return 1
+    if [ "$rc" -ne 0 ]; then
+      warn "could not read $(label "$i") ($(code))"
+      return 1
+    fi
+    # An empty answer is no crawler (as judge counts it), never a state to wait on.
+    [ -n "$DJ" ] || return 1
+    s="$(jq -r '.State // "READY"' <<<"$DJ" 2>/dev/null)"
+    [ "$s" = READY ] && break
+    [ "$s" = RUNNING ] && [ "$k" -eq 0 ] && wr "$i" "stop $(label "$i")" glue stop-crawler --name "${C_I[$i]}"
+    k=$((k + 1))
+    if past_until; then
+      warn "left behind: $(label "$i") (still $s)"
+      return 1
+    fi
+    echo "safety net: waiting for $(label "$i") to stop"
+    sleep "$POLL_S"
+  done
+  wr "$i" "delete $(label "$i")" glue delete-crawler --name "${C_I[$i]}"
+}
+# A database takes its tables, the crawler's too, with it.
+del_gluedb() { wr "$1" "delete $(label "$1") and its tables" glue delete-database --name "${C_I[$1]}"; }
+del_workgroup() { wr "$1" "delete $(label "$1") and its saved queries" athena delete-work-group --work-group "${C_I[$1]}" --recursive-delete-option; }
+
 # Phase 2, edge and DNS. CloudFront (spec §15, slow deletes): every enabled distribution is disabled; then each is
 # waited for until Deployed (AWS takes minutes; V up to 20, by UNTIL) and deleted with its newest ETag; then the lab's
 # origin access controls, each with its own ETag.
@@ -841,6 +959,41 @@ rds_wait() {
     sleep "$POLL_S"
   done
   for i in "${left[@]}"; do warn "left behind: $(label "$i")"; done
+}
+
+# Phase 3, network services (batch 3): ElastiCache and EFS hold network interfaces in the lab's subnets.
+del_cache_group() { wr "$1" "delete $(label "$1")" elasticache delete-replication-group --replication-group-id "${C_I[$1]}" --no-retain-primary-cluster; }
+# A cluster in a replication group goes with it; only a cluster of its own is deleted here.
+del_cache_cluster() {
+  local i="$1"
+  describe "$i"
+  [ $? -eq 1 ] && return 1
+  [ -n "$(jq -r '.ReplicationGroupId // empty' <<<"$DJ" 2>/dev/null)" ] && return 1
+  wr "$i" "delete $(label "$i")" elasticache delete-cache-cluster --cache-cluster-id "${C_I[$i]}"
+}
+del_cache_subnets() { wr "$1" "delete $(label "$1")" elasticache delete-cache-subnet-group --cache-subnet-group-name "${C_I[$1]}"; }
+del_cache_snapshot() { wr "$1" "delete $(label "$1")" elasticache delete-snapshot --snapshot-name "${C_I[$1]}"; }
+# EFS: every mount target, waited for, then the file system.
+del_efs() {
+  local i="$1" fs="${C_I[$1]}" json m left
+  if ! json="$(awsq "${C_R[$i]}" efs describe-mount-targets --file-system-id "$fs")"; then
+    gone_err && return 1
+    warn "could not list the mount targets of $(label "$i") ($(code))"
+    return 1
+  fi
+  while IFS= read -r m; do [ -n "$m" ] && wr "$i" "delete mount target $m of $(label "$i")" efs delete-mount-target --mount-target-id "$m"; done < <(jq -r '.MountTargets[]?.MountTargetId // empty' <<<"$json")
+  while :; do
+    json="$(awsq "${C_R[$i]}" efs describe-mount-targets --file-system-id "$fs")" || break
+    left="$(jq '.MountTargets // [] | length' <<<"$json" 2>/dev/null)"
+    [ "${left:-0}" -eq 0 ] && break
+    if past_until; then
+      warn "left behind: $(label "$i") ($left mount target(s) still being deleted)"
+      return 1
+    fi
+    echo "safety net: waiting for $left mount target(s) of $(label "$i")"
+    sleep "$POLL_S"
+  done
+  wr "$i" "delete $(label "$i")" efs delete-file-system --file-system-id "$fs"
 }
 
 # Phase 4, VPC fabric: synchronous (ruling C15). FAB_DONE marks an item settled (deleted, gone, skipped
@@ -1028,7 +1181,51 @@ del_plan() {
   wr "$i" "delete $(label "$i")" backup delete-backup-plan --backup-plan-id "${C_I[$i]}"
 }
 del_vault() { wr "$1" "delete $(label "$1")" backup delete-backup-vault --backup-vault-name "${C_I[$1]}"; }
-del_image() { wr "$1" "deregister $(label "$1")" ec2 deregister-image --image-id "${C_I[$1]}"; }
+
+# Phase 5, data and the rest (batch 3). Ruling P21: a global table's replicas in other regions are removed and waited
+# for, then the table.
+del_table() {
+  local i="$1" t="${C_I[$1]}" r="${C_R[$1]}" rep n
+  describe "$i"
+  [ $? -eq 1 ] && return 1
+  [ "$(jq -r '.TableStatus // ""' <<<"$DJ" 2>/dev/null)" = DELETING ] && return 1
+  while IFS= read -r rep; do
+    [ -n "$rep" ] && wr "$i" "remove the $rep replica of $(label "$i")" dynamodb update-table --table-name "$t" --replica-updates "Delete={RegionName=$rep}"
+  done < <(jq -r --arg r "$r" '.Replicas[]?.RegionName // empty | select(. != $r)' <<<"$DJ" 2>/dev/null)
+  while :; do
+    describe "$i"
+    [ $? -eq 1 ] && return 1
+    n="$(jq -r --arg r "$r" '[.Replicas[]? | select(.RegionName != $r)] | length' <<<"$DJ" 2>/dev/null)"
+    [ "${n:-0}" -eq 0 ] && break
+    if past_until; then
+      warn "left behind: $(label "$i") ($n replica(s) still being removed)"
+      return 1
+    fi
+    echo "safety net: waiting for $n replica(s) of $(label "$i") to go"
+    sleep "$POLL_S"
+  done
+  wr "$i" "delete $(label "$i")" dynamodb delete-table --table-name "$t"
+}
+# A pool's domains first (AWS refuses a pool that still has one); deletion protection off if Unblock could not.
+del_userpool() {
+  local i="$1" d
+  describe "$i"
+  [ $? -eq 1 ] && return 1
+  for d in $(jq -r '.Domain // empty, .CustomDomain // empty' <<<"$DJ" 2>/dev/null); do
+    wr "$i" "delete the domain $d of $(label "$i")" cognito-idp delete-user-pool-domain --domain "$d" --user-pool-id "${C_I[$i]}"
+  done
+  [ "$(jq -r '.DeletionProtection // ""' <<<"$DJ" 2>/dev/null)" = ACTIVE ] && wr "$i" "turn off deletion protection on $(label "$i")" cognito-idp update-user-pool --user-pool-id "${C_I[$i]}" --deletion-protection INACTIVE
+  wr "$i" "delete $(label "$i")" cognito-idp delete-user-pool --user-pool-id "${C_I[$i]}"
+}
+# Ruling P4: an AMI copy's snapshots carry no tags, so they are read from the image and deleted after it.
+del_image() {
+  local i="$1" snaps s
+  describe "$i"
+  [ $? -eq 1 ] && return 1
+  snaps="$(jq -r '.BlockDeviceMappings[]?.Ebs.SnapshotId // empty' <<<"$DJ" 2>/dev/null)"
+  wr "$i" "deregister $(label "$i")" ec2 deregister-image --image-id "${C_I[$i]}" || return 1
+  for s in $snaps; do wr "$i" "delete snapshot $s of $(label "$i")" ec2 delete-snapshot --snapshot-id "$s"; done
+}
 del_snapshot() { wr "$1" "delete $(label "$1")" ec2 delete-snapshot --snapshot-id "${C_I[$1]}"; }
 del_group() { wr "$1" "delete $(label "$1")" resource-groups delete-group --group "${C_I[$1]}"; }
 del_queue() {
@@ -1141,7 +1338,11 @@ HANDLED=" autoscaling:autoScalingGroup events:rule config:config-rule config:con
   ec2:image ec2:snapshot resource-groups:group iam:instance-profile iam:role iam:user iam:policy
   cloudformation:stack ecs:service ecs:task ecs:cluster ecs:task-definition lambda:function cloudfront:distribution
   cloudfront:origin-access-control route53:hostedzone route53:healthcheck ec2:vpc-flow-log sqs:queue ssm:parameter
-  kms:alias kms:key secretsmanager:secret ecr:repository access-analyzer:analyzer "
+  kms:alias kms:key secretsmanager:secret ecr:repository access-analyzer:analyzer
+  eks:nodegroup eks:cluster apigateway:apis apigateway:stages states:stateMachine events:event-bus firehose:deliverystream
+  kinesis:stream glue:crawler glue:database athena:workgroup elasticache:replicationgroup elasticache:cluster
+  elasticache:subnetgroup elasticache:snapshot elasticfilesystem:file-system dynamodb:table cognito-idp:userpool
+  eks:access-entry ec2:fleet "
 HANDLED="${HANDLED//$'\n'/ }"
 
 discover
@@ -1157,15 +1358,25 @@ for i in "${!C_T[@]}"; do
 done
 for r in "${!ec2_regions[@]}"; do find_wg_vpcs "$r"; done
 
-# 1 workloads
+# 1 workloads (an API's stages, an EKS cluster's access entries and a group's EC2 Fleets go with them: judged only)
 stacks
+run eks:nodegroup poll del_nodegroup
+run eks:cluster poll del_eks
 run ecs:service poll del_ecs_service
 run ecs:task - del_ecs_task
 ecs_clusters
 run ecs:task-definition - del_taskdef
 run lambda:function - del_lambda
+run apigateway:apis - del_api
+run states:stateMachine - del_sfn
 run autoscaling:autoScalingGroup poll del_asg
 run events:rule - del_rule
+run events:event-bus - del_bus
+run firehose:deliverystream poll del_firehose
+run kinesis:stream poll del_stream
+run glue:crawler - del_crawler
+run glue:database - del_gluedb
+run athena:workgroup - del_workgroup
 run config:config-rule - del_config_rule
 run config:configuration-recorder - stop_recorder
 run config:delivery-channel - del_channel
@@ -1185,6 +1396,11 @@ rds_dbs no
 run rds:subgrp - del_subgrp
 run rds:pg - del_pg
 run rds:snapshot - del_dbsnap
+run elasticache:replicationgroup poll del_cache_group
+run elasticache:cluster poll del_cache_cluster
+run elasticache:subnetgroup - del_cache_subnets
+run elasticache:snapshot - del_cache_snapshot
+run elasticfilesystem:file-system poll del_efs
 run ec2:instance poll del_instance
 run ec2:launch-template - del_lt
 run ec2:natgateway poll del_nat
@@ -1215,6 +1431,8 @@ run kms:key - del_key
 run secretsmanager:secret - del_secret
 run ecr:repository - del_repo
 run access-analyzer:analyzer - del_analyzer
+run dynamodb:table poll del_table
+run cognito-idp:userpool - del_userpool
 run ec2:image - del_image
 run ec2:snapshot - del_snapshot
 run resource-groups:group - del_group

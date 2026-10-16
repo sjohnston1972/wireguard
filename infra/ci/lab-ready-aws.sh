@@ -9,9 +9,13 @@
 # state, every LAB_READY_POLL_SECONDS (default 15), for up to deploy_min:
 #
 #   instances            running with both status checks ok (impaired fails;
-#                        terminated ones are ignored)
+#                        terminated ones are ignored: a Spot instance AWS
+#                        takes back mid-check (shutting-down, terminated) is
+#                        gone, never failed (ruling P9))
 #   load balancers       active (failed fails)
-#   RDS, ElastiCache     available (failed fails)
+#   RDS, ElastiCache     available (failed fails; ElastiCache fails at once on
+#                        create-failed, incompatible-network or restore-failed
+#                        (ruling P17))
 #   NAT gateways, VPC endpoints, transit gateways and their attachments,
 #   VPN connections      available (failed fails)
 #   Client VPN           available
@@ -116,6 +120,8 @@ check() {
     elasticache:cluster)
       json="$(awsq elasticache describe-cache-clusters --cache-cluster-id "$id" --region "$region")" || { unanswered; return; }
       s="$(jq -r '.CacheClusters[0].CacheClusterStatus // ""' <<<"$json")"
+      # Ruling P17: these never recover by waiting.
+      case "$s" in incompatible-network | restore-failed) KIND=failed; STATE="$s"; return ;; esac
       judge "$s" available create-failed ;;
     elasticache:replicationgroup)
       json="$(awsq elasticache describe-replication-groups --replication-group-id "$id" --region "$region")" || { unanswered; return; }

@@ -13,7 +13,18 @@
 #                          modify leaves a database "modifying")
 #   load balancers         deletion_protection.enabled = false (application,
 #                          network and gateway; a classic one has none)
-#   DynamoDB tables        deletion protection off
+#   DynamoDB tables        deletion protection off, only when it is on or
+#                          cannot be read (pre-flight C8: an update on a global
+#                          table's replica blocks the replica removal after it)
+#   Cognito user pools     deletion protection off
+#   EKS clusters           deletion protection off, only when it is on
+#                          (pre-flight C9); every load balancer in the region
+#                          Kubernetes made for the cluster (tagged
+#                          kubernetes.io/cluster/<cluster>, ELBv2 and classic)
+#                          deleted (ruling P8: a Kubernetes LoadBalancer service
+#                          is refused by the cluster role's policy, so this
+#                          only ever finds one a person made through Kubernetes
+#                          some other way)
 #   Network Firewall       delete protection off
 #   EC2 instances          termination protection off, then stop protection off
 #   CloudFormation stacks  termination protection off
@@ -131,6 +142,33 @@ wait_lambda() {
   done
 }
 
+# k8s_lbs <region> <cluster>: delete the load balancers Kubernetes made for the cluster (ruling P8), never one that
+# also carries the VPN server's wg-admin tag.
+K8S_ONLY='[.TagDescriptions[]?.Tags[]?] | any(.Key == $k) and (any(.Key == "wg-admin") | not)'
+k8s_lbs() {
+  local r="$1" key="kubernetes.io/cluster/$2" json tj a n
+  if json="$(awsq "$r" elbv2 describe-load-balancers)"; then
+    while IFS= read -r a; do
+      [ -z "$a" ] && continue
+      if tj="$(awsq "$r" elbv2 describe-tags --resource-arns "$a")" && jq -e --arg k "$key" "$K8S_ONLY" <<<"$tj" >/dev/null 2>&1; then
+        do_write "$r" "delete load balancer ${a##*:loadbalancer/} that Kubernetes made for $2" elbv2 delete-load-balancer --load-balancer-arn "$a"
+      fi
+    done < <(jq -r '.LoadBalancers[]?.LoadBalancerArn // empty' <<<"$json")
+  else
+    warn "could not list the load balancers in $r ($(code))"
+  fi
+  if json="$(awsq "$r" elb describe-load-balancers)"; then
+    while IFS= read -r n; do
+      [ -z "$n" ] && continue
+      if tj="$(awsq "$r" elb describe-tags --load-balancer-names "$n")" && jq -e --arg k "$key" "$K8S_ONLY" <<<"$tj" >/dev/null 2>&1; then
+        do_write "$r" "delete classic load balancer $n that Kubernetes made for $2" elb delete-load-balancer --load-balancer-name "$n"
+      fi
+    done < <(jq -r '.LoadBalancerDescriptions[]?.LoadBalancerName // empty' <<<"$json")
+  else
+    warn "could not list the classic load balancers in $r ($(code))"
+  fi
+}
+
 echo "unblock: everything tagged cloudlabs-lab=$LAB_ID in $REGIONS"
 for r in $REGIONS; do
   if ! listed="$(awsq "$r" resourcegroupstaggingapi get-resources --tag-filters "Key=cloudlabs-lab,Values=$LAB_ID")"; then
@@ -138,6 +176,7 @@ for r in $REGIONS; do
     listed=""
   fi
   vaults=()
+  clusters=()
   lambdas=()
   while IFS=$'\x1f' read -r arn wg; do
     [ -z "$arn" ] && continue
@@ -159,7 +198,21 @@ for r in $REGIONS; do
         [[ "$id" == app/* || "$id" == net/* || "$id" == gwy/* ]] || continue
         do_write "$r" "turn off deletion protection on load balancer $id" elbv2 modify-load-balancer-attributes --load-balancer-arn "$arn" --attributes Key=deletion_protection.enabled,Value=false ;;
       dynamodb:table)
-        do_write "$r" "turn off deletion protection on dynamodb:table $id" dynamodb update-table --table-name "$id" --no-deletion-protection-enabled ;;
+        # Only when it is on (or cannot be read): an update on a global table's replica blocks the replica removal that follows (ruling P21).
+        if tj="$(awsq "$r" dynamodb describe-table --table-name "$id")" && [ "$(jq -r '.Table.DeletionProtectionEnabled // false' <<<"$tj" 2>/dev/null)" = false ]; then
+          echo "unblock: dynamodb:table $id has no deletion protection"
+        else
+          do_write "$r" "turn off deletion protection on dynamodb:table $id" dynamodb update-table --table-name "$id" --no-deletion-protection-enabled
+        fi ;;
+      cognito-idp:userpool)
+        if pj="$(awsq "$r" cognito-idp describe-user-pool --user-pool-id "$id")" && [ "$(jq -r '.UserPool.DeletionProtection // ""' <<<"$pj" 2>/dev/null)" = ACTIVE ]; then
+          do_write "$r" "turn off deletion protection on user pool $id" cognito-idp update-user-pool --user-pool-id "$id" --deletion-protection INACTIVE
+        fi ;;
+      eks:cluster)
+        clusters+=("$id")
+        if ej="$(awsq "$r" eks describe-cluster --name "$id")" && [ "$(jq -r '.cluster.deletionProtection // false' <<<"$ej" 2>/dev/null)" = true ]; then
+          do_write "$r" "turn off deletion protection on eks:cluster $id" eks update-cluster-config --name "$id" --no-deletion-protection
+        fi ;;
       network-firewall:firewall)
         do_write "$r" "turn off delete protection on network firewall $id" network-firewall update-firewall-delete-protection --firewall-arn "$arn" --no-delete-protection ;;
       ec2:instance)
@@ -201,6 +254,7 @@ for r in $REGIONS; do
 
   for v in "${vaults[@]}"; do empty_vault "$r" "$v"; done
   for f in "${lambdas[@]}"; do wait_lambda "$r" "$f"; done
+  for c in "${clusters[@]}"; do k8s_lbs "$r" "$c"; done
 done
 echo "unblock: done"
 exit 0

@@ -112,14 +112,14 @@ test("Verify clean: an untagged instance in a lab VPC is a named leftover (A26),
 
 test("Verify clean: a tagged type with no handler yet is a leftover, never clean (P6)", { skip }, () => {
   const w = world([
-    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:states:eu-west-2:123456789012:stateMachine:lab-x") },
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:sagemaker:eu-west-2:123456789012:notebook-instance/lab-x") },
     ...EMPTY_IAM,
   ]);
   const out = join(w.dir, "gh-output");
   writeFileSync(out, "");
   const r = w.run("infra/ci/lab-aws-safety-net.sh", ["--verify", ID], { ...ENV, GITHUB_OUTPUT: fwd(out) });
   assert.equal(r.status, 1);
-  assert.match(readFileSync(out, "utf8"), /no handler for states:stateMachine: lab-x/);
+  assert.match(readFileSync(out, "utf8"), /no handler for sagemaker:notebook-instance: lab-x/);
   w.cleanup();
 });
 
@@ -332,7 +332,7 @@ test("safety net empties a bucket of every version and delete marker before dele
 
 test("safety net clears the lab's named Config recorder and channel, dashboards and queries, and warns on a type it has no handler for", { skip }, () => {
   const w = world([
-    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:states:eu-west-2:123456789012:stateMachine:lab-x", "arn:aws:events:eu-west-2:123456789012:rule/lab-soa-03-auto-scaling-stop", "arn:aws:autoscaling:eu-west-2:123456789012:autoScalingGroup:0f1e2d3c-aaaa-bbbb-cccc-000000000000:autoScalingGroupName/asg-a03k3x9q") },
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:sagemaker:eu-west-2:123456789012:notebook-instance/lab-x", "arn:aws:events:eu-west-2:123456789012:rule/lab-soa-03-auto-scaling-stop", "arn:aws:autoscaling:eu-west-2:123456789012:autoScalingGroup:0f1e2d3c-aaaa-bbbb-cccc-000000000000:autoScalingGroupName/asg-a03k3x9q") },
     { cmd: "aws", match: "^configservice describe-configuration-recorders", out: `{"ConfigurationRecorders":[{"name":"lab-${ID}-recorder"},{"name":"default"}]}` },
     { cmd: "aws", match: "^configservice describe-delivery-channels", out: `{"DeliveryChannels":[{"name":"lab-${ID}-channel"},{"name":"default"}]}` },
     { cmd: "aws", match: "^cloudwatch list-dashboards", out: `{"DashboardEntries":[{"DashboardName":"lab-${ID}-ops"}]}` },
@@ -353,7 +353,7 @@ test("safety net clears the lab's named Config recorder and channel, dashboards 
   assert.ok(!calls.some((c) => /configservice (stop|delete)-\S+ --\S+ default/.test(c)), "never the account's own recorder or channel");
   assert.ok(at(new RegExp(`^aws cloudwatch delete-dashboards --dashboard-names lab-${ID}-ops`)) >= 0);
   assert.ok(at(/^aws logs delete-query-definition --query-definition-id qd-1/) >= 0);
-  assert.match(r.out, /::warning::.*no handler for states:stateMachine yet: lab-x \(left for Verify clean to report\)/);
+  assert.match(r.out, /::warning::.*no handler for sagemaker:notebook-instance yet: lab-x \(left for Verify clean to report\)/);
   assert.doesNotMatch(r.out, /123456789012/);
   w.cleanup();
 });
@@ -713,5 +713,215 @@ test("Unblock lists Config recorders only in the lab regions (never us-east-1 or
   assert.equal(w.run("infra/ci/lab-unblock-aws.sh", [ID], { ...ENV, LAB_REGIONS: "eu-west-2 us-east-1 us-west-2" }).status, 0);
   const listings = w.calls().filter((c) => /^aws configservice describe-configuration-recorders/.test(c));
   assert.deepEqual(listings.map((c) => /--region (\S+)/.exec(c)[1]), ["eu-west-2"]);
+  w.cleanup();
+});
+
+// ── Batch 3 (Task 4): EKS, global tables, EFS, ElastiCache, API Gateway, Cognito, workflows, buses, streams, Glue, Athena, AMI copies ──
+const ARN3 = (svc, rest) => `arn:aws:${svc}:eu-west-2:123456789012:${rest}`;
+const calls3 = (w, re) => w.calls().filter((c) => re.test(c));
+const idx = (list, re) => list.findIndex((c) => re.test(c));
+
+test("Review Focus 4 / P21: a global table's replicas go first, then the table; a table found only by name goes too", { skip }, () => {
+  const t = "lab-saa-16-dr-pilot-light-orders";
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("dynamodb", `table/${t}`)) },
+    { cmd: "aws", match: "^dynamodb list-tables", out: JSON.stringify({ TableNames: [t, "lab-saa-16-dr-pilot-light-stray", "someone-elses"] }) },
+    // Pre-flight C5: each ends DELETING (the fake AWS repeats its last answer), so the wait reaches "gone".
+    { cmd: "aws", match: `^dynamodb describe-table --table-name ${t} `, out: [JSON.stringify({ Table: { TableStatus: "ACTIVE", Replicas: [{ RegionName: "eu-west-1" }] } }), JSON.stringify({ Table: { TableStatus: "ACTIVE", Replicas: [] } }), JSON.stringify({ Table: { TableStatus: "DELETING" } })] },
+    { cmd: "aws", match: "^dynamodb describe-table --table-name lab-saa-16-dr-pilot-light-stray ", out: [JSON.stringify({ Table: { TableStatus: "ACTIVE" } }), JSON.stringify({ Table: { TableStatus: "ACTIVE" } }), JSON.stringify({ Table: { TableStatus: "DELETING" } })] },
+    ...EMPTY_IAM,
+  ]);
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["saa-16-dr-pilot-light"], ENV).status, 0);
+  const ws = calls3(w, /^aws dynamodb (update-table|delete-table)/);
+  assert.match(ws[0], /^aws dynamodb update-table --table-name lab-saa-16-dr-pilot-light-orders --replica-updates Delete=\{RegionName=eu-west-1\} --region eu-west-2$/);
+  assert.ok(idx(ws, /^aws dynamodb update-table/) < idx(ws, new RegExp(`^aws dynamodb delete-table --table-name ${t} `)), ws.join("\n"));
+  assert.ok(ws.some((c) => c.startsWith("aws dynamodb delete-table --table-name lab-saa-16-dr-pilot-light-stray ")), "found by name (ruling P3)");
+  assert.ok(!ws.some((c) => c.includes("someone-elses")));
+  w.cleanup();
+});
+
+test("Review Focus 4: EKS node groups, then the cluster, each waited for until AWS no longer has it", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("eks", "cluster/lab-saa-19-eks"), ARN3("eks", "nodegroup/lab-saa-19-eks/lab-saa-19-eks-ng/0abc")) },
+    { cmd: "aws", match: "^eks describe-nodegroup", out: ['{"nodegroup":{"status":"DELETING"}}', "{}"] },
+    { cmd: "aws", match: "^eks describe-cluster", out: ['{"cluster":{"status":"DELETING"}}', "{}"] },
+    ...EMPTY_IAM,
+  ]);
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["saa-19-eks"], ENV).status, 0);
+  const ws = calls3(w, /^aws eks /);
+  const ng = idx(ws, /^aws eks delete-nodegroup --cluster-name lab-saa-19-eks --nodegroup-name lab-saa-19-eks-ng --region eu-west-2$/);
+  const cl = idx(ws, /^aws eks delete-cluster --name lab-saa-19-eks --region eu-west-2$/);
+  assert.ok(ng >= 0 && cl > ng, ws.join("\n"));
+  assert.ok(ws.slice(ng, cl).filter((c) => c.startsWith("aws eks describe-nodegroup")).length >= 2, "the node group was waited for until gone");
+  w.cleanup();
+});
+
+test("Review Focus 4: EFS mount targets, then the file system; ElastiCache's group, never its member cluster, then the subnet group", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("elasticfilesystem", "file-system/fs-0abc"), ARN3("elasticache", "replicationgroup:ca11k3x9q"), ARN3("elasticache", "cluster:ca11k3x9q-001"), ARN3("elasticache", "subnetgroup:lab-saa-11-three-tier-cache")) },
+    { cmd: "aws", match: "^efs describe-mount-targets", out: ['{"MountTargets":[{"MountTargetId":"fsmt-1"},{"MountTargetId":"fsmt-2"}]}', '{"MountTargets":[]}'] },
+    { cmd: "aws", match: "^efs describe-file-systems", out: ['{"FileSystems":[{"LifeCycleState":"deleting"}]}', '{"FileSystems":[]}'] },
+    { cmd: "aws", match: "^elasticache describe-replication-groups", out: ['{"ReplicationGroups":[{"Status":"deleting"}]}', '{"ReplicationGroups":[]}'] },
+    { cmd: "aws", match: "^elasticache describe-cache-clusters", out: '{"CacheClusters":[{"CacheClusterId":"ca11k3x9q-001","ReplicationGroupId":"ca11k3x9q"}]}' },
+    ...EMPTY_IAM,
+  ]);
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["saa-11-three-tier"], ENV).status, 0);
+  const efs = calls3(w, /^aws efs delete-/);
+  assert.deepEqual(efs.map((c) => c.split(" --region")[0]), ["aws efs delete-mount-target --mount-target-id fsmt-1", "aws efs delete-mount-target --mount-target-id fsmt-2", "aws efs delete-file-system --file-system-id fs-0abc"]);
+  const ec = calls3(w, /^aws elasticache delete-/);
+  assert.deepEqual(ec.map((c) => c.split(" --region")[0]), ["aws elasticache delete-replication-group --replication-group-id ca11k3x9q --no-retain-primary-cluster", "aws elasticache delete-cache-subnet-group --cache-subnet-group-name lab-saa-11-three-tier-cache"]);
+  w.cleanup();
+});
+
+test("ruling P4: an AMI found by name is deregistered and its snapshots deleted after it", { skip }, () => {
+  const img = JSON.stringify({ Images: [{ ImageId: "ami-0aaa1111bbbb2222c", Name: "lab-saa-16-dr-pilot-light-al2023-a16k3x9q", State: "available", BlockDeviceMappings: [{ DeviceName: "/dev/xvda", Ebs: { SnapshotId: "snap-0ddd3333eeee4444f" } }] }] });
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged() },
+    { cmd: "aws", match: "^ec2 describe-images --owners self", out: img },
+    { cmd: "aws", match: "^ec2 describe-images --image-ids", out: img },
+    ...EMPTY_IAM,
+  ]);
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["saa-16-dr-pilot-light"], ENV).status, 0);
+  assert.ok(w.calls().some((c) => c.startsWith("aws ec2 describe-images --owners self --filters Name=name,Values=lab-saa-16-dr-pilot-light-* ")));
+  const ws = calls3(w, /^aws ec2 (deregister-image|delete-snapshot)/).map((c) => c.split(" --region")[0]);
+  assert.deepEqual(ws, ["aws ec2 deregister-image --image-id ami-0aaa1111bbbb2222c", "aws ec2 delete-snapshot --snapshot-id snap-0ddd3333eeee4444f"]);
+  w.cleanup();
+});
+
+test("batch 3's workloads go by their own handlers: API, pool (domain first), workflow, bus after its rule, Firehose before its stream, a running crawler stopped, workgroup", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:apigateway:eu-west-2::/apis/a1b2c3", "arn:aws:apigateway:eu-west-2::/apis/a1b2c3/stages/$default", ARN3("cognito-idp", "userpool/eu-west-2_AbC"), ARN3("states", "stateMachine:lab-x-orders"), ARN3("events", "event-bus/lab-x-bus"), ARN3("events", "rule/lab-x-bus/lab-x-placed"), ARN3("kinesis", "stream/lab-x-events"), ARN3("firehose", "deliverystream/lab-x-to-s3"), ARN3("glue", "crawler/lab-x-events"), ARN3("athena", "workgroup/lab-x-wg")) },
+    { cmd: "aws", match: "^cognito-idp describe-user-pool", out: '{"UserPool":{"Id":"eu-west-2_AbC","Domain":"lab-x-auth","DeletionProtection":"INACTIVE"}}' },
+    { cmd: "aws", match: "^glue get-crawler", out: ['{"Crawler":{"State":"RUNNING"}}', '{"Crawler":{"State":"READY"}}'] },
+    { cmd: "aws", match: "^kinesis describe-stream-summary", out: ['{"StreamDescriptionSummary":{"StreamStatus":"DELETING"}}', "{}"] },
+    { cmd: "aws", match: "^firehose describe-delivery-stream", out: ['{"DeliveryStreamDescription":{"DeliveryStreamStatus":"DELETING"}}', "{}"] },
+    { cmd: "aws", match: "^events list-targets-by-rule", out: '{"Targets":[{"Id":"sfn"}]}' },
+    ...EMPTY_IAM,
+  ]);
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["saa-13-decoupling"], ENV).status, 0);
+  const ws = calls3(w, /^aws \S+ (delete|stop|remove|update)/).map((c) => c.split(" --region")[0]);
+  for (const c of ["aws apigatewayv2 delete-api --api-id a1b2c3", "aws stepfunctions delete-state-machine --state-machine-arn arn:aws:states:eu-west-2:123456789012:stateMachine:lab-x-orders", "aws athena delete-work-group --work-group lab-x-wg --recursive-delete-option", "aws events delete-event-bus --name lab-x-bus"]) assert.ok(ws.includes(c), c);
+  assert.ok(!ws.some((c) => /delete-stage/.test(c)), "a stage goes with its API");
+  assert.ok(idx(ws, /^aws cognito-idp delete-user-pool-domain --domain lab-x-auth --user-pool-id eu-west-2_AbC$/) < idx(ws, /^aws cognito-idp delete-user-pool --user-pool-id eu-west-2_AbC$/));
+  assert.ok(idx(ws, /^aws events delete-rule --name lab-x-placed --event-bus-name lab-x-bus$/) < idx(ws, /^aws events delete-event-bus/));
+  assert.ok(idx(ws, /^aws firehose delete-delivery-stream --delivery-stream-name lab-x-to-s3 --allow-force-delete$/) < idx(ws, /^aws kinesis delete-stream --stream-name lab-x-events --enforce-consumer-deletion$/));
+  assert.ok(idx(ws, /^aws glue stop-crawler --name lab-x-events$/) < idx(ws, /^aws glue delete-crawler --name lab-x-events$/));
+  w.cleanup();
+});
+
+test("ruling P21: Verify clean judges batch 3's types: a table or workflow DELETING is clean; an EFS or stream being deleted is not", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("dynamodb", "table/t1"), ARN3("states", "stateMachine:s1"), ARN3("elasticfilesystem", "file-system/fs-1"), ARN3("kinesis", "stream/k1"), ARN3("athena", "workgroup/w1"), ARN3("glue", "database/lab_saa_17_data_pipeline")) },
+    { cmd: "aws", match: "^dynamodb describe-table", out: '{"Table":{"TableStatus":"DELETING"}}' },
+    { cmd: "aws", match: "^stepfunctions describe-state-machine", out: '{"status":"DELETING"}' },
+    { cmd: "aws", match: "^efs describe-file-systems", out: '{"FileSystems":[{"LifeCycleState":"deleting"}]}' },
+    { cmd: "aws", match: "^kinesis describe-stream-summary", out: '{"StreamDescriptionSummary":{"StreamStatus":"DELETING"}}' },
+    { cmd: "aws", match: "^athena list-work-groups", out: '{"WorkGroups":[{"Name":"someone-else"}]}' },
+    { cmd: "aws", match: "^glue get-database --name", out: "", code: 254, err: "An error occurred (EntityNotFoundException) when calling the GetDatabase operation: x" },
+    ...EMPTY_IAM,
+  ]);
+  const out = join(w.dir, "gh-output");
+  writeFileSync(out, "");
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["--verify", "saa-17-data-pipeline"], { ...ENV, GITHUB_OUTPUT: fwd(out) }).status, 1);
+  const left = JSON.parse(/^leftovers=(.*)$/m.exec(readFileSync(out, "utf8"))[1]);
+  assert.deepEqual(left.sort(), ["elasticfilesystem:file-system fs-1", "kinesis:stream k1"]);
+  w.cleanup();
+});
+
+test("Review Focus 3 / P8: Unblock deletes only the load balancers Kubernetes made for this lab's cluster, and turns off a pool's protection", { skip }, () => {
+  const k8s = '{"TagDescriptions":[{"Tags":[{"Key":"kubernetes.io/cluster/lab-saa-19-eks","Value":"owned"}]}]}';
+  const other = '{"TagDescriptions":[{"Tags":[{"Key":"kubernetes.io/cluster/someone","Value":"owned"}]}]}';
+  const lb = (n) => `arn:aws:elasticloadbalancing:eu-west-2:123456789012:loadbalancer/net/${n}/0abc`;
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("eks", "cluster/lab-saa-19-eks"), ARN3("cognito-idp", "userpool/eu-west-2_AbC")) },
+    { cmd: "aws", match: "^elbv2 describe-load-balancers", out: JSON.stringify({ LoadBalancers: [{ LoadBalancerArn: lb("k8s") }, { LoadBalancerArn: lb("other") }] }) },
+    { cmd: "aws", match: `^elbv2 describe-tags --resource-arns ${lb("k8s")}`, out: k8s },
+    { cmd: "aws", match: `^elbv2 describe-tags --resource-arns ${lb("other")}`, out: other },
+    { cmd: "aws", match: "^elb describe-load-balancers", out: '{"LoadBalancerDescriptions":[{"LoadBalancerName":"a1b2c3"},{"LoadBalancerName":"web"}]}' },
+    { cmd: "aws", match: "^elb describe-tags --load-balancer-names a1b2c3", out: k8s },
+    { cmd: "aws", match: "^elb describe-tags --load-balancer-names web", out: '{"TagDescriptions":[{"Tags":[]}]}' },
+    { cmd: "aws", match: "^cognito-idp describe-user-pool", out: '{"UserPool":{"DeletionProtection":"ACTIVE"}}' },
+  ]);
+  assert.equal(w.run("infra/ci/lab-unblock-aws.sh", ["saa-19-eks"], ENV).status, 0);
+  const ws = calls3(w, /^aws (elbv2|elb|cognito-idp) (delete|update)/).map((c) => c.split(" --region")[0]);
+  assert.deepEqual(ws.sort(), ["aws cognito-idp update-user-pool --user-pool-id eu-west-2_AbC --deletion-protection INACTIVE", `aws elbv2 delete-load-balancer --load-balancer-arn ${lb("k8s")}`, "aws elb delete-load-balancer --load-balancer-name a1b2c3"].sort());
+  w.cleanup();
+});
+
+test("ruling P8: Unblock never deletes a Kubernetes-made load balancer that also carries the VPN server's wg-admin tag", { skip }, () => {
+  const lb = "arn:aws:elasticloadbalancing:eu-west-2:123456789012:loadbalancer/net/k8s/0abc";
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("eks", "cluster/lab-saa-19-eks")) },
+    { cmd: "aws", match: "^elbv2 describe-load-balancers", out: JSON.stringify({ LoadBalancers: [{ LoadBalancerArn: lb }] }) },
+    { cmd: "aws", match: "^elbv2 describe-tags", out: '{"TagDescriptions":[{"Tags":[{"Key":"kubernetes.io/cluster/lab-saa-19-eks","Value":"owned"},{"Key":"wg-admin","Value":"vpn"}]}]}' },
+  ]);
+  assert.equal(w.run("infra/ci/lab-unblock-aws.sh", ["saa-19-eks"], ENV).status, 0);
+  assert.equal(calls3(w, /^aws (elbv2|elb) delete-load-balancer/).length, 0);
+  w.cleanup();
+});
+
+// Pre-flight C9: a learner can switch on an EKS cluster's deletion protection; Unblock turns it off only when it is on.
+test("pre-flight C9: Unblock turns off an EKS cluster's deletion protection only when it is on", { skip }, () => {
+  for (const [on, n] of [[true, 1], [false, 0]]) {
+    const w = world([
+      { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("eks", "cluster/lab-saa-19-eks")) },
+      { cmd: "aws", match: "^eks describe-cluster --name lab-saa-19-eks", out: JSON.stringify({ cluster: { deletionProtection: on } }) },
+    ]);
+    assert.equal(w.run("infra/ci/lab-unblock-aws.sh", ["saa-19-eks"], ENV).status, 0);
+    const ws = calls3(w, /^aws eks update-cluster-config/).map((c) => c.split(" --region")[0]);
+    assert.deepEqual(ws, n ? ["aws eks update-cluster-config --name lab-saa-19-eks --no-deletion-protection"] : [], String(on));
+    w.cleanup();
+  }
+});
+
+// Pre-flight C8: an update on a global table's replica blocks the replica removal that follows, so only when it is on.
+test("pre-flight C8: Unblock turns off a DynamoDB table's deletion protection only when it is on (or cannot be read)", { skip }, () => {
+  const tbl = ARN3("dynamodb", "table/lab-saa-16-dr-pilot-light-orders");
+  for (const [answer, n] of [[{ out: '{"Table":{"DeletionProtectionEnabled":false}}' }, 0], [{ out: '{"Table":{}}' }, 0], [{ out: '{"Table":{"DeletionProtectionEnabled":true}}' }, 1], [{ out: "", code: 254, err: "An error occurred (ThrottlingException) when calling the DescribeTable operation: x" }, 1]]) {
+    const w = world([
+      { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(tbl) },
+      { cmd: "aws", match: "^dynamodb describe-table --table-name lab-saa-16-dr-pilot-light-orders", ...answer },
+    ]);
+    assert.equal(w.run("infra/ci/lab-unblock-aws.sh", ["saa-16-dr-pilot-light"], ENV).status, 0);
+    const ws = calls3(w, /^aws dynamodb update-table/).map((c) => c.split(" --region")[0]);
+    assert.deepEqual(ws, n ? ["aws dynamodb update-table --table-name lab-saa-16-dr-pilot-light-orders --no-deletion-protection-enabled"] : [], JSON.stringify(answer));
+    w.cleanup();
+  }
+});
+
+// Pre-flight C10: a crawler that cannot be read is a warning, never a wait until the deadline.
+test("pre-flight C10: a crawler AWS will not describe is warned about and left, with no wait", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("glue", "crawler/lab-saa-17-data-pipeline-events")) },
+    { cmd: "aws", match: "^glue get-crawler", out: "", code: 254, err: "An error occurred (AccessDeniedException) when calling the GetCrawler operation: x" },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["saa-17-data-pipeline"], ENV);
+  assert.equal(r.status, 0, r.out);
+  assert.equal(calls3(w, /^aws glue get-crawler/).length, 1, "asked once");
+  assert.equal(calls3(w, /^aws glue (stop|delete)-crawler/).length, 0);
+  assert.match(r.out, /::warning::safety net: could not read glue:crawler lab-saa-17-data-pipeline-events \(AccessDeniedException\)/);
+  w.cleanup();
+});
+
+// Pre-flight C11: EKS access entries and EC2 Fleets (mixed-instances groups) go with their cluster or group; judged only.
+test("pre-flight C11: an access entry whose cluster is gone, and a deleted fleet, are clean", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("eks", "access-entry/lab-saa-19-eks/role/123456789012/lab-saa-19-eks-node/0abc"), ARN3("ec2", "fleet/fleet-0abc"), ARN3("ec2", "fleet/fleet-0live")) },
+    { cmd: "aws", match: "^eks describe-cluster --name lab-saa-19-eks ", out: "", code: 254, err: "An error occurred (ResourceNotFoundException) when calling the DescribeCluster operation: x" },
+    { cmd: "aws", match: "^ec2 describe-fleets --fleet-ids fleet-0abc", out: '{"Fleets":[{"FleetState":"deleted_terminating"}]}' },
+    { cmd: "aws", match: "^ec2 describe-fleets --fleet-ids fleet-0live", out: '{"Fleets":[{"FleetState":"active"}]}' },
+    ...EMPTY_IAM,
+  ]);
+  const out = join(w.dir, "gh-output");
+  writeFileSync(out, "");
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["--verify", "saa-19-eks"], { ...ENV, GITHUB_OUTPUT: fwd(out) }).status, 1);
+  const left = JSON.parse(/^leftovers=(.*)$/m.exec(readFileSync(out, "utf8"))[1]);
+  assert.deepEqual(left, ["ec2:fleet fleet-0live"]);
+  // The sweep deletes neither (each goes with its cluster or group) and warns of no missing handler.
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["saa-19-eks"], ENV);
+  assert.equal(r.status, 0, r.out);
+  assert.doesNotMatch(r.out, /no handler for (eks:access-entry|ec2:fleet)/);
+  assert.equal(calls3(w, /^aws (eks delete-access-entry|ec2 delete-fleets)/).length, 0);
   w.cleanup();
 });
