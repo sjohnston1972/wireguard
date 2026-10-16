@@ -36,6 +36,7 @@ import { KINDS } from "@shared/topology/kinds";
 import { SYNTHETIC_KEYS } from "@shared/topology/keys";
 import type { TopologyLayout } from "@shared/topology/layout";
 import { groupHeaderBits, headerTextWidth, rgChipsFor } from "./words";
+import { FIT_PADDING, MIN_FIT_ZOOM } from "./viewport";
 
 export const CARD_W = 200;
 export const CARD_H = 84;
@@ -85,6 +86,8 @@ const S = SPACING;
  * it reads best there while the wider full screen (about 2.4) and the 2:1 mini still zoom in to fill (fitView).
  */
 export const LAYOUT_ASPECT = 1.8;
+/** The full screen's canvas on a 2000 × 1030 window: every lab should fit it at its readable zoom (60%). */
+export const FULL_SCREEN = { w: 1934, h: 746 } as const;
 
 export interface LaidNode {
   id: string;
@@ -434,7 +437,17 @@ function layoutPass(graph: TopologyGraph, saved: TopologyLayout | null, asked: n
   // With a target shape, containers try a few shapes of their own around it (a tall group can sit beside a wide one);
   // the fixed shelves are tried last. The picture that fits that shape at the largest zoom wins, the shape itself
   // first on a tie.
-  const top = aspect ? closest([...INNER_SHAPES.map((f) => attempt(aspect * f)), attempt(null)], bounds, aspect) : attempt(null);
+  // One exception: a picture the full screen could only show below its readable zoom loses to the best of those it
+  // can (lab saa-16's two regions side by side, 2026-10-16); none fitting, the tab's best stands.
+  const tries = aspect ? [...INNER_SHAPES.map((f) => attempt(aspect * f)), attempt(null)] : [];
+  const fitsFull = (t: (typeof tries)[number]) => {
+    const b = bounds(t);
+    const scale = MIN_FIT_ZOOM.full * (1 + 2 * FIT_PADDING.full);
+    return b.w * scale <= FULL_SCREEN.w && b.h * scale <= FULL_SCREEN.h;
+  };
+  const best = aspect ? closest(tries, bounds, aspect) : null;
+  const readable = tries.filter(fitsFull);
+  const top = !aspect ? attempt(null) : fitsFull(best!) || !readable.length ? best! : closest(readable, bounds, aspect);
 
   const out: LaidNode[] = [];
   const walk = (k: { box: Box; x: number; y: number }, parent: string | null) => {

@@ -12,7 +12,7 @@
 // call leaves the test.
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { readFileSync } from "node:fs";
-import capacity, { AWS_TEST_VM_SIZE, awsCapacityCheck, awsCapacitySizes, normaliseAwsCapacity, readAwsCapacity, runningStandardVcpus } from "../src/insights/aws/feeds/capacity";
+import capacity, { AWS_TEST_VM_SIZE, awsCapacityCheck, awsCapacitySizes, awsLabCapacitySizes, normaliseAwsCapacity, readAwsCapacity, runningStandardVcpus } from "../src/insights/aws/feeds/capacity";
 import prices, { AWS_DISK_GB, awsPriceBodies, awsPriceInfo, normaliseAwsPrices, readAwsPrices } from "../src/insights/aws/feeds/prices";
 import { runAwsInsights } from "../src/insights/aws/runner";
 import { makeBudget, type CapacityDoc } from "../src/insights/types";
@@ -207,7 +207,9 @@ describe("AWS capacity: the feed", () => {
     expect(inst!.params.get("Filter.1.Name")).toBe("instance-state-name");
     expect([inst!.params.get("Filter.1.Value.1"), inst!.params.get("Filter.1.Value.2")]).toEqual(["pending", "running"]);
     const stored = await readAwsCapacity(env.DB, "eu-west-2");
-    expect(stored).toEqual({ doc: doc(), fetchedAt: NOW.toISOString() });
+    // The labs' own sizes follow the server's two; the canned offerings list only those two, so the rest read NotOffered.
+    const labOnly = awsLabCapacitySizes(config(env)).slice(2).map((name) => ({ name, available: false, reason: "NotOffered", vcpus: null, family: "standard" }));
+    expect(stored).toEqual({ doc: doc({ sizes: [...doc().sizes, ...labOnly] }), fetchedAt: NOW.toISOString() });
     expect(awsCapacityCheck(stored!.doc, "eu-west-2", "t4g.micro", true, stored!.fetchedAt).ok).toBe(true);
   });
 
