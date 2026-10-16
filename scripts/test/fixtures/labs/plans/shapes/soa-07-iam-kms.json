@@ -1,0 +1,423 @@
+{
+ "resources": {
+  "aws_accessanalyzer_analyzer.account": {
+   "type": "aws_accessanalyzer_analyzer",
+   "refs": {
+    "analyzer_name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_cloudwatch_log_group.rotate": {
+   "type": "aws_cloudwatch_log_group",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "deletion_protection_enabled",
+    "id",
+    "log_group_class",
+    "name_prefix"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_policy.ann": {
+   "type": "aws_iam_policy",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "policy": [
+     "local.key_alias",
+     "var.region",
+     "data.aws_caller_identity.current.account_id",
+     "data.aws_caller_identity.current",
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "attachment_count",
+    "id",
+    "name_prefix",
+    "policy_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_policy.rotate": {
+   "type": "aws_iam_policy",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "policy": [
+     "var.region",
+     "data.aws_caller_identity.current.account_id",
+     "data.aws_caller_identity.current",
+     "var.lab_id",
+     "var.region",
+     "var.region",
+     "data.aws_caller_identity.current.account_id",
+     "data.aws_caller_identity.current",
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "attachment_count",
+    "id",
+    "name_prefix",
+    "policy_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role.rotate": {
+   "type": "aws_iam_role",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "permissions_boundary": [
+     "local.boundary_arn"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "create_date",
+    "id",
+    "inline_policy",
+    "managed_policy_arns",
+    "name_prefix",
+    "unique_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role_policy_attachment.rotate": {
+   "type": "aws_iam_role_policy_attachment",
+   "refs": {
+    "policy_arn": [
+     "aws_iam_policy.rotate.arn",
+     "aws_iam_policy.rotate"
+    ],
+    "role": [
+     "aws_iam_role.rotate.name",
+     "aws_iam_role.rotate"
+    ]
+   },
+   "unknown": [
+    "id",
+    "policy_arn"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role_policy_attachment.rotate_logs": {
+   "type": "aws_iam_role_policy_attachment",
+   "refs": {
+    "role": [
+     "aws_iam_role.rotate.name",
+     "aws_iam_role.rotate"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_user.ann": {
+   "type": "aws_iam_user",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "permissions_boundary": [
+     "local.boundary_arn"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "unique_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_user_login_profile.ann": {
+   "type": "aws_iam_user_login_profile",
+   "refs": {
+    "user": [
+     "aws_iam_user.ann.name",
+     "aws_iam_user.ann"
+    ]
+   },
+   "unknown": [
+    "encrypted_password",
+    "id",
+    "key_fingerprint",
+    "password"
+   ],
+   "sensitive": [
+    "password"
+   ]
+  },
+  "aws_iam_user_policy_attachment.ann": {
+   "type": "aws_iam_user_policy_attachment",
+   "refs": {
+    "policy_arn": [
+     "aws_iam_policy.ann.arn",
+     "aws_iam_policy.ann"
+    ],
+    "user": [
+     "aws_iam_user.ann.name",
+     "aws_iam_user.ann"
+    ]
+   },
+   "unknown": [
+    "id",
+    "policy_arn"
+   ],
+   "sensitive": []
+  },
+  "aws_kms_alias.data": {
+   "type": "aws_kms_alias",
+   "refs": {
+    "name": [
+     "local.key_alias"
+    ],
+    "target_key_id": [
+     "aws_kms_key.data.key_id",
+     "aws_kms_key.data"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "name_prefix",
+    "target_key_arn",
+    "target_key_id"
+   ],
+   "sensitive": []
+  },
+  "aws_kms_key.data": {
+   "type": "aws_kms_key",
+   "refs": {
+    "description": [
+     "var.lab_id"
+    ],
+    "policy": [
+     "data.aws_caller_identity.current.account_id",
+     "data.aws_caller_identity.current"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "key_id",
+    "multi_region",
+    "rotation_period_in_days"
+   ],
+   "sensitive": []
+  },
+  "aws_lambda_function.rotate": {
+   "type": "aws_lambda_function",
+   "refs": {
+    "filename": [
+     "data.archive_file.rotate.output_path",
+     "data.archive_file.rotate"
+    ],
+    "function_name": [
+     "var.lab_id"
+    ],
+    "logging_config.0.log_group": [
+     "aws_cloudwatch_log_group.rotate.name",
+     "aws_cloudwatch_log_group.rotate"
+    ],
+    "role": [
+     "aws_iam_role.rotate.arn",
+     "aws_iam_role.rotate"
+    ],
+    "source_code_hash": [
+     "data.archive_file.rotate.output_base64sha256",
+     "data.archive_file.rotate"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "code_sha256",
+    "ephemeral_storage",
+    "id",
+    "invoke_arn",
+    "last_modified",
+    "qualified_arn",
+    "qualified_invoke_arn",
+    "response_streaming_invoke_arn",
+    "role",
+    "signing_job_arn",
+    "signing_profile_version_arn",
+    "source_code_size",
+    "tracing_config",
+    "version"
+   ],
+   "sensitive": []
+  },
+  "aws_lambda_permission.secrets_manager": {
+   "type": "aws_lambda_permission",
+   "refs": {
+    "function_name": [
+     "aws_lambda_function.rotate.function_name",
+     "aws_lambda_function.rotate"
+    ],
+    "source_arn": [
+     "aws_secretsmanager_secret.app.arn",
+     "aws_secretsmanager_secret.app"
+    ]
+   },
+   "unknown": [
+    "id",
+    "source_arn",
+    "statement_id_prefix"
+   ],
+   "sensitive": []
+  },
+  "aws_resourcegroups_group.lab": {
+   "type": "aws_resourcegroups_group",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "resource_query.0.query": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_secretsmanager_secret.app": {
+   "type": "aws_secretsmanager_secret",
+   "refs": {
+    "description": [
+     "var.lab_id"
+    ],
+    "kms_key_id": [
+     "aws_kms_key.data.arn",
+     "aws_kms_key.data"
+    ],
+    "name": [
+     "var.lab_id",
+     "var.name_prefix"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "kms_key_id",
+    "name_prefix",
+    "policy"
+   ],
+   "sensitive": []
+  },
+  "aws_secretsmanager_secret_rotation.app": {
+   "type": "aws_secretsmanager_secret_rotation",
+   "refs": {
+    "rotation_lambda_arn": [
+     "aws_lambda_function.rotate.arn",
+     "aws_lambda_function.rotate"
+    ],
+    "secret_id": [
+     "aws_secretsmanager_secret.app.id",
+     "aws_secretsmanager_secret.app"
+    ]
+   },
+   "unknown": [
+    "id",
+    "rotation_enabled",
+    "rotation_lambda_arn",
+    "secret_id"
+   ],
+   "sensitive": []
+  },
+  "aws_secretsmanager_secret_version.app": {
+   "type": "aws_secretsmanager_secret_version",
+   "refs": {
+    "secret_id": [
+     "aws_secretsmanager_secret.app.id",
+     "aws_secretsmanager_secret.app"
+    ],
+    "secret_string": [
+     "random_password.app.result",
+     "random_password.app"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "has_secret_string_wo",
+    "id",
+    "secret_arn",
+    "secret_id",
+    "secret_string",
+    "version_id",
+    "version_stages"
+   ],
+   "sensitive": [
+    "secret_binary",
+    "secret_string",
+    "secret_string_wo"
+   ]
+  },
+  "data.archive_file.rotate": {
+   "type": "archive_file",
+   "refs": {
+    "output_path": [
+     "path.module"
+    ],
+    "source_file": [
+     "path.module"
+    ]
+   },
+   "unknown": [],
+   "sensitive": []
+  },
+  "data.aws_caller_identity.current": {
+   "type": "aws_caller_identity",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  },
+  "data.aws_partition.current": {
+   "type": "aws_partition",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  },
+  "random_password.app": {
+   "type": "random_password",
+   "refs": {},
+   "unknown": [
+    "bcrypt_hash",
+    "id",
+    "result"
+   ],
+   "sensitive": [
+    "bcrypt_hash",
+    "result"
+   ]
+  },
+  "time_sleep.tags": {
+   "type": "time_sleep",
+   "refs": {},
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  }
+ }
+}

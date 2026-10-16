@@ -1,0 +1,138 @@
+{
+ "resources": {
+  "aws_cloudformation_stack.lab": {
+   "type": "aws_cloudformation_stack",
+   "refs": {
+    "iam_role_arn": [
+     "aws_iam_role.cfn.arn",
+     "aws_iam_role.cfn"
+    ],
+    "name": [
+     "local.stack_name"
+    ],
+    "parameters": [
+     "var.lab_id",
+     "var.lab_id",
+     "var.lab_id"
+    ],
+    "template_body": [
+     "path.module"
+    ]
+   },
+   "unknown": [
+    "iam_role_arn",
+    "id",
+    "outputs"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_policy.cfn": {
+   "type": "aws_iam_policy",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "policy": [
+     "var.region",
+     "local.account",
+     "local.stack_name",
+     "var.region",
+     "local.account",
+     "local.stack_name",
+     "var.region",
+     "local.account",
+     "local.stack_name",
+     "var.region",
+     "local.account",
+     "var.lab_id",
+     "var.region",
+     "local.account",
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "attachment_count",
+    "id",
+    "name_prefix",
+    "policy_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role.cfn": {
+   "type": "aws_iam_role",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "permissions_boundary": [
+     "local.boundary_arn"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "create_date",
+    "id",
+    "inline_policy",
+    "managed_policy_arns",
+    "name_prefix",
+    "unique_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role_policy_attachment.cfn": {
+   "type": "aws_iam_role_policy_attachment",
+   "refs": {
+    "policy_arn": [
+     "aws_iam_policy.cfn.arn",
+     "aws_iam_policy.cfn"
+    ],
+    "role": [
+     "aws_iam_role.cfn.name",
+     "aws_iam_role.cfn"
+    ]
+   },
+   "unknown": [
+    "id",
+    "policy_arn"
+   ],
+   "sensitive": []
+  },
+  "aws_resourcegroups_group.lab": {
+   "type": "aws_resourcegroups_group",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "resource_query.0.query": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "data.aws_caller_identity.current": {
+   "type": "aws_caller_identity",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  },
+  "data.aws_partition.current": {
+   "type": "aws_partition",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  },
+  "time_sleep.cfn_role": {
+   "type": "time_sleep",
+   "refs": {},
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  }
+ }
+}
