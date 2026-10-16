@@ -310,6 +310,9 @@ export async function sweepOrphans(env: Env, net: Net, now: Date): Promise<strin
 /** An AWS lab id, or null: a lab's tag value or a name's lab must be a valid id of an AWS exam. */
 const awsLabId = (id: string | null | undefined): string | null => (id && id.length <= LAB_ID_MAX && LAB_ID_RE.test(id) && cloudOfId(id) === "aws" ? id : null);
 
+/** Ruling P11: a lab's KMS key waits 7 days to delete (no charge) and the tagging API lists it all week: never an orphan. */
+const AWS_SWEEP_SKIP = /^arn:aws[a-z-]*:kms:[^:]*:[0-9]*:key\//;
+
 /** The 12 AWS listings, in order; a listing that failed is left out and named in `errors`. */
 async function listAws(env: Env, net: Net): Promise<{ found: Found[]; errors: string[] }> {
   const found: Found[] = [];
@@ -330,7 +333,7 @@ async function listAws(env: Env, net: Net): Promise<{ found: Found[]; errors: st
       // One page only: what it holds counts, but a listing with more is partial (no slot is released on it and
       // earlier entries it may not have seen are kept), never "complete".
       if (page.truncated) errors.push(`tagged resources in ${region} (more than ${page.length})`);
-      return page.map((t) => ({ name: taggedName(t.arn), created: null, lab: awsLabId(t.tags[LAB_TAG]) }));
+      return page.filter((t) => !AWS_SWEEP_SKIP.test(t.arn)).map((t) => ({ name: taggedName(t.arn), created: null, lab: awsLabId(t.tags[LAB_TAG]) }));
     });
   }
   await attempt("IAM roles", async () => named(await iamLabNames(env, net, "roles"), "iam role"));

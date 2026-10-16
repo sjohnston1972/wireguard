@@ -14,7 +14,7 @@
 
 import type { Env } from "../env";
 import { awsQuery, ec2, filters, xmlAll, xmlFirst, xmlItems, xmlOwn, xmlOwnItems } from "../cloud/awsApi";
-import { LAB_TAG } from "../../../shared/labs";
+import { AWS_GLOBAL_LABS, LAB_TAG } from "../../../shared/labs";
 import type { AwsRow } from "../../../shared/topology/awsLive";
 import { arnParts, labTagged, type TaggedArn } from "./awsReads";
 import type { Net } from "./net";
@@ -225,6 +225,13 @@ export async function readAwsTopology(env: Env, net: Net, labId: string, region:
     const [v2, s2, i2] = await Promise.all([describeVpcs(env, net, labId, secondary), describeSubnets(env, net, labId, secondary), describeInstances(env, net, labId, secondary)]);
     rows.push(...joinRows(t2, [...v2, ...s2, ...i2], secondary));
     truncated = truncated || t2.truncated;
+  }
+  // Ruling P7: a global lab's CloudFront and Route 53 items, tagged in us-east-1, sit in the lab's own container (the
+  // planned graph draws them there): one more tagging call, no describes.
+  if (AWS_GLOBAL_LABS.includes(labId)) {
+    const tg = await labTagged(env, net, "us-east-1", labId);
+    rows.push(...joinRows(tg, [], region));
+    truncated = truncated || tg.truncated;
   }
   const own = new Set(vpcs.map((v) => v.id));
   const gatewayVpcIds = [...new Set(peerings.map((p) => p.refs.peerVpc).filter((x): x is string => !!x && !own.has(x)))];

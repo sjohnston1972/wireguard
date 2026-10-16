@@ -104,6 +104,8 @@ export const AWS_TEST_LABS: LabDef[] = [
     connectivity: { peering: "optional", dns_link: false, subnets_used: 1 },
   }),
   base("soa-05-rds", 5, { title: "RDS Multi-AZ and a read replica", connectivity: { peering: "optional", dns_link: false, subnets_used: 1 } }),
+  base("soa-07-iam-kms", 7, { title: "IAM, permission boundaries and KMS", connectivity: { peering: "off", dns_link: false, subnets_used: 0 } }),
+  base("soa-09-route53-cloudfront", 9, { title: "Route 53 routing and CloudFront in front of S3", connectivity: { peering: "off", dns_link: false, subnets_used: 0 } }),
   base("saa-16-dr-pilot-light", 16, { title: "Pilot-light disaster recovery", regions: { secondary: "eu-west-1" }, connectivity: { peering: "optional", dns_link: false, subnets_used: 1 } }),
 ];
 

@@ -270,7 +270,8 @@ function fakeAws(over: { fail?: { status: number; code: string } } = {}) {
     seen.push({ host: u.hostname, action });
     if (over.fail && target) return Response.json({ __type: over.fail.code, message: "no" }, { status: over.fail.status });
     if (over.fail) return new Response(`<Response><Errors><Error><Code>${over.fail.code}</Code><Message>no</Message></Error></Errors></Response>`, { status: over.fail.status });
-    if (target) return Response.json({ ResourceTagMappingList: [{ ResourceARN: `${T}:vpc/vpc-0a`, Tags: [{ Key: "cloudlabs-lab", Value: "soa-03-auto-scaling" }, { Key: "Name", Value: "vpc-lab" }] }, { ResourceARN: `${T}:subnet/subnet-0b`, Tags: [{ Key: "cloudlabs-lab", Value: "soa-03-auto-scaling" }] }] });
+    if (target && u.hostname === "tagging.us-east-1.amazonaws.com") return Response.json({ ResourceTagMappingList: [{ ResourceARN: "arn:aws:cloudfront::123456789012:distribution/E1ABC", Tags: [{ Key: "cloudlabs-lab", Value: "soa-09-route53-cloudfront" }, { Key: "Name", Value: "cdn-site" }] }] });
+    if (target) return Response.json({ ResourceTagMappingList: [{ ResourceARN: `${T}:vpc/vpc-0a`, Tags: [{ Key: "cloudlabs-lab", Value: "soa-03-auto-scaling" }, { Key: "Name", Value: "vpc-lab" }] }, { ResourceARN: `${T}:subnet/subnet-0b`, Tags: [{ Key: "cloudlabs-lab", Value: "soa-03-auto-scaling" }] }, { ResourceARN: "arn:aws:resource-groups:eu-west-2:123456789012:group/lab-soa-09-route53-cloudfront", Tags: [{ Key: "cloudlabs-lab", Value: "soa-09-route53-cloudfront" }] }] });
     switch (action) {
       case "DescribeVpcs":
         return xml(action, "<vpcSet><item><vpcId>vpc-0a</vpcId><cidrBlock>10.71.192.0/20</cidrBlock><cidrBlockAssociationSet><item><cidrBlock>10.71.192.0/20</cidrBlock></item></cidrBlockAssociationSet></item></vpcSet>");
@@ -311,6 +312,21 @@ describe("GET /labs/:id/topology for an AWS lab", () => {
     const n = seen.length;
     await api(env, "GET", "/labs/soa-03-auto-scaling/topology");
     expect(seen.length).toBe(n);
+  });
+
+  it("ruling P7: a global lab's us-east-1 items join its London container, within the call cap", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    resetTopologyCache();
+    await runningLab(env, world, "soa-09-route53-cloudfront");
+    const seen = fakeAws();
+    const r = await api(env, "GET", "/labs/soa-09-route53-cloudfront/topology");
+    expect(seen.length).toBeLessThanOrEqual(AWS_TOPOLOGY_CALLS_MAX);
+    const nodes = r.json.live.nodes as { key: string; kind: string; cloud: string; parent: string | null; id: string }[];
+    const node = nodes.find((n) => n.key === "cloudfront:distribution/cdn-site");
+    expect(node).toMatchObject({ kind: "frontDoor", cloud: "aws" });
+    expect(nodes.find((n) => n.id === node!.parent)!.kind).toBe("resourceGroup");
   });
 
   it("an AWS refusal is failed in plain words; throttling is throttled", async () => {
