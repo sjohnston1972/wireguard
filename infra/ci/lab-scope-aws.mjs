@@ -855,7 +855,7 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
       }
       // A lab function or task runs as a lab role, by reference.
       for (const [t, attr] of [["aws_lambda_function", "role"], ["aws_ecs_task_definition", "execution_role_arn"], ["aws_ecs_task_definition", "task_role_arn"]]) {
-        if (type !== t || (val[attr] === undefined && !res.configured?.has(attr))) continue;
+        if (type !== t || (val[attr] == null && !res.configured?.has(attr))) continue;
         const x = val[attr];
         const refs = x instanceof Unknown ? refsOf(x, res, attr) : [];
         if (!(x instanceof Unknown && (mode === "hcl" || (mode === "mock" && !refs.length) || ownRefs(refs, ["aws_iam_role"])))) refuse("iam", `${attr} must be one of the lab's own roles, by reference (aws_iam_role.<name>.arn)`);

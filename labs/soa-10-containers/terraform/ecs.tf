@@ -6,8 +6,8 @@
 # Insights. A task, lab-<id>-web: nginx from Amazon ECR Public on Fargate
 # ARM64 (Graviton), 0.25 vCPU and 0.5 GB, logging to /cloudlabs/<id>/web (one
 # day; ruling A56), started with the role lab-<id>-exec (pull and log only,
-# AmazonECSTaskExecutionRolePolicy, under the lab boundary; it is also the
-# task role, so the scope check sees no unset role). And the service,
+# AmazonECSTaskExecutionRolePolicy, under the lab boundary; the tasks get no task role,
+# so the container itself holds no credentials). And the service,
 # two tasks in the private subnets behind the load balancer. A 20-second wait
 # lets the repository's tag reach IAM before its lifecycle policy (ruling P15).
 
@@ -79,7 +79,6 @@ resource "aws_ecs_task_definition" "web" {
   cpu                      = "256"
   memory                   = "512"
   execution_role_arn       = aws_iam_role.exec.arn
-  task_role_arn            = aws_iam_role.exec.arn
   runtime_platform {
     operating_system_family = "LINUX"
     cpu_architecture        = "ARM64"

@@ -24,7 +24,7 @@ lab-soa-10-containers (London)
 
 - Stop one task (ECS, the cluster, Tasks, Stop) and watch the service start a new one to get back to two, while `curl` through the load balancer keeps answering. Then set the service's desired count to 3 and back to 2.
 - Open CloudWatch, Container Insights, and look at the cluster's and the service's CPU and memory. Load it with `for i in $(seq 2000); do curl -s -o /dev/null http://<alb>/; done` and watch the numbers move.
-- Push an image of your own (needs Docker on your PC; the third and fourth Connect lines), see its scan findings in ECR, then create a new revision of the task definition with that image and update the service. Watch the deployment replace the tasks one at a time.
+- Push an image of your own (needs Docker on your PC; the third and fourth Connect lines), see its scan findings in ECR, then create a new revision of the task definition with that image (keep the `cloudlabs-lab` tag on it) and update the service. Watch the deployment replace the tasks one at a time.
 - Read the task's logs in `/cloudlabs/soa-10-containers/web`: one stream per task, nginx's access log lines from the load balancer's health checks every 15 seconds.
 - Compare the target group's targets (task IP addresses) with a load balancer in front of instances (soa-03): Fargate tasks register themselves, by address, as they start.
 

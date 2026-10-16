@@ -11,8 +11,8 @@ output "private_ips" {
 output "connect" {
   value = [
     "curl -sI http://${aws_lb.web.dns_name}/",
-    "aws ecs list-tasks --cluster ${aws_ecs_cluster.lab.name} --service-name ${aws_ecs_service.web.name}",
-    "aws ecr get-login-password | docker login --username AWS --password-stdin ${aws_ecr_repository.web.repository_url}",
+    "aws ecs list-tasks --region ${var.region} --cluster ${aws_ecs_cluster.lab.name} --service-name ${aws_ecs_service.web.name}",
+    "aws ecr get-login-password --region ${var.region} | docker login --username AWS --password-stdin ${aws_ecr_repository.web.repository_url}",
     "docker pull --platform linux/arm64 public.ecr.aws/nginx/nginx:stable-alpine && docker tag public.ecr.aws/nginx/nginx:stable-alpine ${aws_ecr_repository.web.repository_url}:v1 && docker push ${aws_ecr_repository.web.repository_url}:v1",
   ]
 }

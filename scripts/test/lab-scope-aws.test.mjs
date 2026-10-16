@@ -513,3 +513,19 @@ test("a Lambda permission's function_url_auth_type: NONE is refused; unset (null
   // An attribute the configuration sets to null is still refused: it is configured and not AWS_IAM (conservative).
   assert.equal(pub(plan7([perm({ function_url_auth_type: null }, { function_url_auth_type: ["var.x"] })])).length, 1, "configured null");
 });
+
+test("an ECS task definition: an unset task role is no role (null passes); an unknown role with no reference, a literal ARN and a non-role reference are refused", () => {
+  const tdLogs = { address: "aws_cloudwatch_log_group.t", values: tagged(c, { name: `/cloudlabs/${ID}/t`, retention_in_days: 1, skip_destroy: false }), refs: {} };
+  const td = (over, unknown = ["execution_role_arn"], refs = { execution_role_arn: ref("aws_iam_role.vm", "arn") }) => ({
+    address: "aws_ecs_task_definition.t",
+    values: tagged(c, { family: `lab-${ID}-t`, requires_compatibilities: ["FARGATE"], network_mode: "awsvpc", cpu: "256", memory: "512", container_definitions: JSON.stringify([{ name: "t", image: "x", logConfiguration: { logDriver: "awslogs", options: { "awslogs-group": `/cloudlabs/${ID}/t` } } }]), ...over }),
+    unknown,
+    refs,
+  });
+  const both = (task) => ({ execution_role_arn: ref("aws_iam_role.vm", "arn"), ...task });
+  assert.deepEqual(rules(plan([role(), tdLogs, td({})])), [], "an unset task role prints as null in a plan");
+  assert.deepEqual(rules(plan([role(), tdLogs, td({}, ["execution_role_arn", "task_role_arn"], both({ task_role_arn: ref("aws_iam_role.vm", "arn") }))])), [], "the lab's own role by reference");
+  assert.deepEqual(rules(plan([role(), tdLogs, td({}, ["execution_role_arn", "task_role_arn"], both({}))])), ["iam: aws_ecs_task_definition.t"], "unknown with no reference");
+  assert.deepEqual(rules(plan([role(), tdLogs, td({ task_role_arn: `arn:aws:iam::${ACCOUNT}:role/someone-else` })])), ["iam: aws_ecs_task_definition.t"], "a foreign role by ARN");
+  assert.deepEqual(rules(plan([role(), tdLogs, td({}, ["execution_role_arn", "task_role_arn"], both({ task_role_arn: ref("aws_iam_user.u", "arn") }))])), ["iam: aws_ecs_task_definition.t"], "a reference that is not a lab role");
+});
