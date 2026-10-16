@@ -55,12 +55,41 @@ const stack = (over = {}, { noRole = false, unknown = [] } = {}) => ({
   refs: noRole ? {} : { iam_role_arn: ref("aws_iam_role.cfn", "arn") },
 });
 const stackPlan = (over, opts) => plan([cfnRole(), stack(over, opts)]);
-/** The template's resources with the lab group's resource_query.query replaced (review C-1). */
+/** The template's resources with the lab group's resource_query.query replaced (review C-1; a string is used as is). */
 const groupBase = (query) => {
   const base = templateResources(c);
-  base[0] = { ...base[0], values: { ...base[0].values, resource_query: [{ type: "TAG_FILTERS_1_0", query: JSON.stringify(query) }] } };
+  base[0] = { ...base[0], values: { ...base[0].values, resource_query: [{ type: "TAG_FILTERS_1_0", query: typeof query === "string" ? query : JSON.stringify(query) }] } };
   return base;
 };
+/** A template with a topic and one alarm whose properties are `props` (re-review N-1). */
+const alarmTpl = (props, extra = {}) => tpl({ T: { Type: "AWS::SNS::Topic" }, A: { Type: "AWS::CloudWatch::Alarm", Properties: { MetricName: "CPUUtilization", Namespace: "AWS/EC2", Statistic: "Average", Period: 60, EvaluationPeriods: 1, Threshold: 1, ComparisonOperator: "GreaterThanThreshold", ...props } }, ...extra });
+const withParams = (Parameters, Resources) => JSON.stringify({ AWSTemplateFormatVersion: "2010-09-09", Parameters, Resources });
+/** Lab 06's template as the plan writes it (Task 7's cfn/stack.yaml, as yamldecode reads it): it must keep passing. */
+const LAB06_TEMPLATE = {
+  AWSTemplateFormatVersion: "2010-09-09",
+  Description: "cloudlabs lab soa-06, a work queue with a dead-letter queue, an alarm and a topic",
+  Parameters: {
+    LabId: { Type: "String", Description: "The lab's id (Terraform passes var.lab_id)" },
+    VisibilityTimeout: { Type: "Number", Default: 30, MinValue: 0, MaxValue: 900, Description: "Seconds a received message stays hidden from other consumers" },
+    MaxReceiveCount: { Type: "Number", Default: 3, MinValue: 1, MaxValue: 10, Description: "Receives before a message moves to the dead-letter queue" },
+    LogGroupName: { Type: "String", AllowedPattern: "^/cloudlabs/.+" },
+    ParameterName: { Type: "String", AllowedPattern: "^/cloudlabs/.+" },
+  },
+  Resources: {
+    DeadLetterQueue: { Type: "AWS::SQS::Queue", Properties: { MessageRetentionPeriod: 3600 } },
+    WorkQueue: { Type: "AWS::SQS::Queue", Properties: { VisibilityTimeout: { Ref: "VisibilityTimeout" }, RedrivePolicy: { deadLetterTargetArn: { "Fn::GetAtt": ["DeadLetterQueue", "Arn"] }, maxReceiveCount: { Ref: "MaxReceiveCount" } } } },
+    AlertTopic: { Type: "AWS::SNS::Topic", Properties: { DisplayName: "lab soa-06 alerts" } },
+    OldestMessageAlarm: {
+      Type: "AWS::CloudWatch::Alarm",
+      Properties: { AlarmDescription: "A message has waited more than five minutes in the work queue", Namespace: "AWS/SQS", MetricName: "ApproximateAgeOfOldestMessage", Dimensions: [{ Name: "QueueName", Value: { "Fn::GetAtt": ["WorkQueue", "QueueName"] } }], Statistic: "Maximum", Period: 60, EvaluationPeriods: 5, Threshold: 300, ComparisonOperator: "GreaterThanThreshold", TreatMissingData: "notBreaching", AlarmActions: [{ Ref: "AlertTopic" }] },
+    },
+    StackLog: { Type: "AWS::Logs::LogGroup", Properties: { LogGroupName: { Ref: "LogGroupName" }, RetentionInDays: 1 } },
+    Greeting: { Type: "AWS::SSM::Parameter", Properties: { Name: { Ref: "ParameterName" }, Type: "String", Value: "hello from CloudFormation", Description: "Change me by hand, then detect drift" } },
+  },
+  Outputs: { WorkQueueUrl: { Value: { Ref: "WorkQueue" } }, DeadLetterQueueUrl: { Value: { Ref: "DeadLetterQueue" } }, AlertTopicArn: { Value: { Ref: "AlertTopic" } } },
+};
+const LAB06_PARAMETERS = { LabId: ID, VisibilityTimeout: "30", MaxReceiveCount: "3", LogGroupName: `/cloudlabs/${ID}/stack`, ParameterName: `/cloudlabs/${ID}/greeting` };
+const ALARM = { address: "aws_cloudwatch_metric_alarm.a", values: tagged(c, { alarm_name: `lab-${ID}-a`, comparison_operator: "GreaterThanThreshold", evaluation_periods: 1, metric_name: "CPUUtilization", namespace: "AWS/EC2", period: 300, statistic: "Average", threshold: 80 }) };
 const fnLogs = { address: "aws_cloudwatch_log_group.f", values: tagged(c, { name: `/cloudlabs/${ID}/f`, retention_in_days: 1, skip_destroy: false }), refs: {} };
 const lambdaFn = (over = {}) => ({ address: "aws_lambda_function.f", values: tagged(c, { function_name: `lab-${ID}-f`, runtime: "python3.13", handler: "f.handler", memory_size: 128, timeout: 30, logging_config: [{ log_format: "Text", log_group: `/cloudlabs/${ID}/f` }], ...over }), unknown: ["role"], refs: { role: ref("aws_iam_role.vm", "arn") } });
 const ecsService = (over = {}) => ({ address: "aws_ecs_service.s", values: tagged(c, { name: `lab-${ID}-s`, desired_count: 2, launch_type: "FARGATE", propagate_tags: "SERVICE", ...over }), unknown: ["cluster", "task_definition"], refs: {} });
@@ -119,7 +148,7 @@ const EVIL = [
   ["gateway", "an EventBridge target running a command on vm-wg by name", () => plan([{ address: "aws_cloudwatch_event_target.run", values: { arn: "arn:aws:ssm:eu-west-2::document/AWS-RunShellScript", run_command_targets: [{ key: "tag:Name", values: ["vm-wg"] }] }, unknown: ["rule", "role_arn"], refs: {} }])],
   ["gateway", "a backup selection naming an existing instance by ARN", () => plan([{ address: "aws_backup_selection.vms", values: { name: "vms", resources: ["arn:aws:ec2:eu-west-2:123456789012:instance/i-0123456789abcdef0"] }, unknown: ["plan_id", "iam_role_arn"], refs: {} }])],
   ["address", "a VPC outside the slot", () => { const base = templateResources(c); base[1] = { ...base[1], values: { ...base[1].values, cidr_block: "10.65.0.0/20" } }; return plan([], { base }); }],
-  ["address", "a route to another lab's slot", () => plan([{ address: "aws_route.other", values: { destination_cidr_block: "10.66.0.0/18" }, unknown: ["route_table_id", "vpc_peering_connection_id"], refs: { route_table_id: ref("aws_route_table.private", "id") } }])],
+  ["address", "a route to another lab's slot", () => plan([{ address: "aws_route.other", values: { destination_cidr_block: "10.66.0.0/18" }, unknown: ["route_table_id", "vpc_peering_connection_id"], refs: { route_table_id: ref("aws_route_table.private", "id"), vpc_peering_connection_id: ref("aws_vpc_peering_connection.other", "id") } }])],
   ["public", "an instance with a public IP", () => { const i = al2023Instance(c, { key: "app", name: "vm-app" }); i.values.associate_public_ip_address = true; return plan([i]); }],
   ["public", "a subnet that maps public IPs", () => { const base = templateResources(c); base[2] = { ...base[2], values: { ...base[2].values, map_public_ip_on_launch: true } }; return plan([], { base }); }],
   ["public", "SSH from the internet", () => plan([{ address: "aws_vpc_security_group_ingress_rule.ssh_world", values: tagged(c, { cidr_ipv4: "0.0.0.0/0", ip_protocol: "tcp", from_port: 22, to_port: 22 }), unknown: ["security_group_id"], refs: { security_group_id: ref("aws_security_group.vms", "id") } }])],
@@ -128,14 +157,14 @@ const EVIL = [
   ["lingering", "a log group kept for 30 days", () => plan([{ address: "aws_cloudwatch_log_group.g", values: tagged(c, { name: `/cloudlabs/${ID}/x`, retention_in_days: 30, skip_destroy: false }), refs: {} }])],
   ["untaggable", "a log group named outside /cloudlabs/<lab id>/ (ruling A56)", () => plan([{ address: "aws_cloudwatch_log_group.g", values: tagged(c, { name: "/aws/lambda/x", retention_in_days: 3, skip_destroy: false }), refs: {} }])],
   ["untaggable", "a log group named for another lab (ruling A56)", () => plan([{ address: "aws_cloudwatch_log_group.g", values: tagged(c, { name: "/cloudlabs/soa-02-systems-manager/x", retention_in_days: 3, skip_destroy: false }), refs: {} }])],
-  ["lingering", "a load balancer with deletion protection", () => plan([{ address: "aws_lb.web", values: tagged(c, { name: "alb-x", internal: false, load_balancer_type: "application", enable_deletion_protection: true }), unknown: ["subnets", "security_groups"], refs: {} }])],
+  ["lingering", "a load balancer with deletion protection", () => plan([{ address: "aws_lb.web", values: tagged(c, { name: "alb-x", internal: false, load_balancer_type: "application", enable_deletion_protection: true }), unknown: ["subnets", "security_groups"], refs: { subnets: ["aws_subnet.private"], security_groups: ref("aws_security_group.vms", "id") } }])],
   ["size", "an m5.large instance", () => plan([al2023Instance(c, { key: "big", name: "vm-big", type: "m5.large" })])],
   ["size", "a 100 GiB volume", () => plan([{ address: "aws_ebs_volume.big", values: tagged(c, { availability_zone: "eu-west-2a", size: 100, type: "gp3" }), refs: {} }])],
-  ["size", "an Auto Scaling group of 10", () => plan([{ address: "aws_autoscaling_group.g", values: { min_size: 2, max_size: 10, desired_capacity: 2, tag: [{ key: "cloudlabs-lab", value: ID, propagate_at_launch: true }] }, unknown: ["vpc_zone_identifier"], refs: {} }])],
-  ["description", "a security group description with an apostrophe", () => plan([{ address: "aws_security_group.apos", values: tagged(c, { name: "lab-apos", description: "SSH out to the lab's instances" }), unknown: ["vpc_id"], refs: {} }])],
-  ["description", "a security group description of 256 characters", () => plan([{ address: "aws_security_group.long", values: tagged(c, { name: "lab-long", description: "a".repeat(256) }), unknown: ["vpc_id"], refs: {} }])],
-  ["description", "an ingress block description with a quote", () => plan([{ address: "aws_security_group.blk", values: tagged(c, { name: "lab-blk", description: "ok", ingress: [{ description: 'say "hi"', protocol: "tcp", from_port: 80, to_port: 80, cidr_blocks: ["10.0.0.0/8"] }] }), unknown: ["vpc_id"], refs: {} }])],
-  ["description", "a VPC security group rule description with a backtick", () => plan([{ address: "aws_vpc_security_group_egress_rule.r", values: tagged(c, { description: "all `out`", ip_protocol: "-1", cidr_ipv4: "10.0.0.0/8" }), unknown: ["security_group_id"], refs: {} }])],
+  ["size", "an Auto Scaling group of 10", () => plan([{ address: "aws_autoscaling_group.g", values: { min_size: 2, max_size: 10, desired_capacity: 2, tag: [{ key: "cloudlabs-lab", value: ID, propagate_at_launch: true }] }, unknown: ["vpc_zone_identifier"], refs: { vpc_zone_identifier: ["aws_subnet.private"] } }])],
+  ["description", "a security group description with an apostrophe", () => plan([{ address: "aws_security_group.apos", values: tagged(c, { name: "lab-apos", description: "SSH out to the lab's instances" }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id") } }])],
+  ["description", "a security group description of 256 characters", () => plan([{ address: "aws_security_group.long", values: tagged(c, { name: "lab-long", description: "a".repeat(256) }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id") } }])],
+  ["description", "an ingress block description with a quote", () => plan([{ address: "aws_security_group.blk", values: tagged(c, { name: "lab-blk", description: "ok", ingress: [{ description: 'say "hi"', protocol: "tcp", from_port: 80, to_port: 80, cidr_blocks: ["10.0.0.0/8"] }] }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id") } }])],
+  ["description", "a VPC security group rule description with a backtick", () => plan([{ address: "aws_vpc_security_group_egress_rule.r", values: tagged(c, { description: "all `out`", ip_protocol: "-1", cidr_ipv4: "10.0.0.0/8" }), unknown: ["security_group_id"], refs: { security_group_id: ref("aws_security_group.vms", "id") } }])],
   // Batch 2 (rulings P4, P6–P10, P14).
   ["type", "an Access Analyzer analyzer outside lab 07", () => plan([{ address: "aws_accessanalyzer_analyzer.a", values: tagged(c, { analyzer_name: `lab-${ID}-a`, type: "ACCOUNT" }), refs: {} }])],
   ["type", "an organization analyzer in lab 07", () => plan7([{ address: "aws_accessanalyzer_analyzer.a", values: tagged(c7, { analyzer_name: "lab-soa-07-iam-kms-a", type: "ORGANIZATION" }), refs: {} }]), "soa-07-iam-kms"],
@@ -183,6 +212,28 @@ const EVIL = [
   ["public", "a bucket policy allowing Principal * with Effect \"allow\" (review M-1)", () => plan([{ address: "aws_s3_bucket_policy.p", values: { policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "allow", Principal: "*", Action: "s3:GetObject", Resource: "*" }] }) }, unknown: ["bucket"], refs: {} }])],
   ["gateway", "a distribution in front of a look-alike domain cloudlabs-<prefix>-x.evil.example.com (review M-3)", () => plan9([{ address: "aws_cloudfront_distribution.d", values: tagged(c9, { enabled: true, price_class: "PriceClass_100", retain_on_delete: false, origin: [{ origin_id: "x", domain_name: `cloudlabs-${c9.prefix}-x.evil.example.com` }] }), refs: {} }]), "soa-09-route53-cloudfront"],
   ["provider", "a resource whose own region is not known until apply, with no references (review M-4)", () => plan([{ address: "aws_sns_topic.far", values: tagged(c, { name: `lab-${ID}-far` }), unknown: ["region"], refs: {} }])],
+  // Fix round 2 (task-3-rereview.md): each passed before its fix.
+  ["template", "an instance id built by Fn::Join (re-review N-1)", () => stackPlan({ template_body: alarmTpl({ Dimensions: [{ Name: "InstanceId", Value: { "Fn::Join": ["", ["i-0123", "456789abcdef0"]] } }], AlarmActions: [{ Ref: "T" }] }) })],
+  ["template", "an instance id built by Fn::Sub (re-review N-1)", () => stackPlan({ template_body: alarmTpl({ Dimensions: [{ Name: "InstanceId", Value: { "Fn::Sub": ["i-${X}", { X: "0123456789abcdef0" }] } }], AlarmActions: [{ Ref: "T" }] }) })],
+  ["template", "an instance id picked by Fn::Select and Fn::Split (re-review N-1)", () => stackPlan({ template_body: alarmTpl({ Dimensions: [{ Name: "InstanceId", Value: { "Fn::Select": [1, { "Fn::Split": [",", "x,i-0123456789abcdef0"] }] } }], AlarmActions: [{ Ref: "T" }] }) })],
+  ["template", "an EC2 alarm action built by Fn::Sub (re-review N-1)", () => stackPlan({ template_body: alarmTpl({ AlarmActions: [{ "Fn::Sub": "arn:${AWS::Partition}:automate:${AWS::Region}:ec2:terminate" }] }) })],
+  ["template", "an instance id passed in through the stack's parameters (re-review N-1)", () => stackPlan({ template_body: withParams({ X: { Type: "String" } }, { T: { Type: "AWS::SNS::Topic" }, A: JSON.parse(alarmTpl({ Dimensions: [{ Name: "InstanceId", Value: { Ref: "X" } }], AlarmActions: [{ Ref: "T" }] })).Resources.A }), parameters: { X: "i-0123456789abcdef0" } })],
+  ["template", "an EC2 alarm action passed in through the stack's parameters (re-review N-1)", () => stackPlan({ template_body: withParams({ X: { Type: "String" } }, { A: JSON.parse(alarmTpl({ AlarmActions: [{ Ref: "X" }] })).Resources.A }), parameters: { X: "arn:aws:automate:eu-west-2:ec2:terminate" } })],
+  ["template", "a stack parameter not known until apply (re-review N-1)", () => stackPlan({ template_body: withParams({ X: { Type: "String" } }, { T: { Type: "AWS::SNS::Topic" } }), parameters: { X: "x" } }, { unknown: ["parameters.X"] })],
+  ["template", "a parameter typed AWS::SSM::Parameter::Value<String> (re-review N-1)", () => stackPlan({ template_body: withParams({ X: { Type: "AWS::SSM::Parameter::Value<String>", Default: "/some/where" } }, { T: { Type: "AWS::SNS::Topic", Properties: { DisplayName: { Ref: "X" } } } }) })],
+  ["template", "a List parameter (re-review N-1)", () => stackPlan({ template_body: withParams({ X: { Type: "CommaDelimitedList", Default: "a,b" } }, { T: { Type: "AWS::SNS::Topic" } }) })],
+  ["template", "a {{resolve:ssm:...}} dynamic reference (re-review N-1)", () => stackPlan({ template_body: alarmTpl({ Dimensions: [{ Name: "InstanceId", Value: "{{resolve:ssm:/some/instance}}" }], AlarmActions: [{ Ref: "T" }] }) })],
+  ["template", "an alarm action that is not a topic of the template's own (re-review N-1)", () => stackPlan({ template_body: alarmTpl({ AlarmActions: [{ Ref: "Q" }] }, { Q: { Type: "AWS::SQS::Queue" } }) })],
+  ["template", "an upper-case EC2 alarm action ARN:AWS:AUTOMATE: (re-review N-1)", () => stackPlan({ template_body: alarmTpl({ OKActions: ["ARN:AWS:AUTOMATE:eu-west-2:ec2:stop"] }) })],
+  ["gateway", "a Terraform alarm action not known until apply, with no references (re-review N-2)", () => plan([{ ...ALARM, unknown: ["alarm_actions"], refs: {} }])],
+  ["gateway", "a Terraform alarm action built from a lab function, not its topic (re-review N-2)", () => plan([{ ...ALARM, unknown: ["alarm_actions"], refs: { alarm_actions: ref("aws_lambda_function.f", "arn") } }])],
+  ["gateway", "a Terraform alarm dimension InstanceId not known until apply, with no references (re-review N-2)", () => plan([{ ...ALARM, values: { ...ALARM.values, dimensions: {} }, unknown: ["dimensions.InstanceId"], refs: {} }])],
+  ["gateway", "an SSM association's InstanceId parameter not known until apply, with no references (re-review N-2)", () => plan([{ address: "aws_ssm_association.stop", values: tagged(c, { name: "AWS-StopEC2Instance", parameters: {} }), unknown: ["parameters.InstanceId"], refs: {} }])],
+  ["gateway", "an EventBridge target's input not known until apply, with no references (re-review N-2)", () => plan([{ address: "aws_cloudwatch_event_target.stop", values: { arn: "arn:aws:events:eu-west-2:123456789012:target/stop-instance" }, unknown: ["rule", "input"], refs: { rule: ref("aws_cloudwatch_event_rule.r", "name") } }])],
+  ["gateway", "a group query with duplicate TagFilters keys (re-review N-3)", () => plan([], { base: groupBase(`{"ResourceTypeFilters":["AWS::AllSupported"],"TagFilters":[{"Key":"Name"}],"TagFilters":[{"Key":"cloudlabs-lab","Values":["${ID}"]}]}`) })],
+  ["gateway", "a group query with duplicate Key keys (re-review N-3)", () => plan([], { base: groupBase(`{"ResourceTypeFilters":["AWS::AllSupported"],"TagFilters":[{"Key":"Name","Key":"cloudlabs-lab","Values":["${ID}"]}]}`) })],
+  ["template", "a template_body with duplicate Type keys (review M-2)", () => stackPlan({ template_body: `{"Resources":{"R":{"Type":"AWS::IAM::Role","Type":"AWS::SQS::Queue"}}}` })],
+  ["public", "a bucket policy with duplicate Principal keys (re-review N-3)", () => plan([{ address: "aws_s3_bucket_policy.p", values: { policy: `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":"*","Principal":{"Service":"cloudfront.amazonaws.com"},"Action":"s3:GetObject","Resource":"*"}]}` }, unknown: ["bucket"], refs: {} }])],
 ];
 for (const [rule, what, make, id = ID] of EVIL) {
   test(`${rule}: refuses ${what}`, () => {
@@ -242,8 +293,8 @@ test("labs 01, 02 and 04's shapes pass: their alarms, associations, run-command 
     { address: "aws_ssm_association.by_id", values: tagged(c, { name: "AWS-RunPatchBaseline", targets: [{ key: "InstanceIds" }] }), unknown: ["targets.0.values"], refs: { "targets.0.values": own } },
     { address: "aws_ssm_association.by_tag", values: tagged(c, { name: "AWS-RunPatchBaseline", targets: [{ key: "tag:cloudlabs-lab", values: [ID] }] }), refs: { "targets.0.values": ["var.lab_id"] } },
     { address: "aws_cloudwatch_event_target.run", values: { arn: "arn:aws:ssm:eu-west-2::document/AWS-RunShellScript", run_command_targets: [{ key: "InstanceIds" }] }, unknown: ["rule", "role_arn", "run_command_targets.0.values"], refs: { "run_command_targets.0.values": own } },
-    { address: "aws_backup_selection.vms", values: { name: "vms", resources: [] }, unknown: ["plan_id", "iam_role_arn", "resources.0"], refs: { resources: ref("aws_instance.web", "arn") } },
-    { address: "aws_backup_selection.tagged", values: { name: "tagged", selection_tag: [{ type: "STRINGEQUALS", key: "cloudlabs-lab", value: ID }] }, unknown: ["plan_id", "iam_role_arn"], refs: { "selection_tag.0.value": ["var.lab_id"] } },
+    { address: "aws_backup_selection.vms", values: { name: "vms", resources: [] }, unknown: ["plan_id", "iam_role_arn", "resources.0"], refs: { plan_id: ref("aws_backup_plan.p", "id"), resources: ref("aws_instance.web", "arn") } },
+    { address: "aws_backup_selection.tagged", values: { name: "tagged", selection_tag: [{ type: "STRINGEQUALS", key: "cloudlabs-lab", value: ID }] }, unknown: ["plan_id", "iam_role_arn"], refs: { plan_id: ref("aws_backup_plan.p", "id"), "selection_tag.0.value": ["var.lab_id"] } },
   ];
   assert.deepEqual(rules(plan(extra)), []);
   // A role's managed_policy_arns may list MANAGED_POLICIES and the lab's own policies.
@@ -431,4 +482,21 @@ test("review I-4: a stack's parameters known at plan are what its template is ju
   const body = JSON.stringify({ Parameters: { N: { Type: "String", Default: `/cloudlabs/${ID}/x` } }, Resources: { L: { Type: "AWS::Logs::LogGroup", Properties: { LogGroupName: { Ref: "N" }, RetentionInDays: 1 } } } });
   assert.deepEqual(rules(stackPlan({ template_body: body, parameters: { N: `/cloudlabs/${ID}/y` } })), []);
   assert.deepEqual(rules(stackPlan({ template_body: body, parameters: { N: "/aws/other" } })), ["template: aws_cloudformation_stack.lab"]);
+});
+
+test("re-review N-1: lab 06's planned template passes, judged by its shape (Ref and Fn::GetAtt only, String and Number parameters, alarm actions its own topic)", () => {
+  assert.deepEqual(scope.cfnTemplateProblems(LAB06_TEMPLATE, { labId: ID, parameters: LAB06_PARAMETERS }), []);
+  assert.deepEqual(rules(stackPlan({ template_body: JSON.stringify(LAB06_TEMPLATE), parameters: LAB06_PARAMETERS })), []);
+  const why = (doc) => scope.cfnTemplateProblems(doc, { labId: ID, parameters: LAB06_PARAMETERS });
+  const withAlarm = (actions) => ({ ...LAB06_TEMPLATE, Resources: { ...LAB06_TEMPLATE.Resources, OldestMessageAlarm: { ...LAB06_TEMPLATE.Resources.OldestMessageAlarm, Properties: { ...LAB06_TEMPLATE.Resources.OldestMessageAlarm.Properties, AlarmActions: actions } } } });
+  assert.equal(why(withAlarm([{ Ref: "WorkQueue" }])).length, 1, "a queue is not a topic");
+  assert.equal(why(withAlarm([{ Ref: "Nowhere" }])).length, 1, "a Ref to nothing in the template");
+  assert.equal(why(withAlarm(["arn:aws:sns:eu-west-2:123456789012:other"])).length, 1, "a literal ARN");
+  assert.deepEqual(why(withAlarm([{ Ref: "AlertTopic" }])), []);
+});
+
+test("re-review N-2: an alarm notifying the lab's own topic passes; its dimension by the lab's own instance passes", () => {
+  const topic = { address: "aws_sns_topic.t", values: tagged(c, { name: `lab-${ID}-t` }), refs: {} };
+  const vm = al2023Instance(c, { key: "web", name: "vm-web" });
+  assert.deepEqual(rules(plan([topic, vm, { ...ALARM, values: { ...ALARM.values, dimensions: {} }, unknown: ["alarm_actions", "ok_actions", "dimensions.InstanceId"], refs: { alarm_actions: ref("aws_sns_topic.t", "arn"), ok_actions: ref("aws_sns_topic.t", "arn"), dimensions: ref("aws_instance.web", "id") } }])), []);
 });

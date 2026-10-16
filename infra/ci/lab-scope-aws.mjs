@@ -46,7 +46,10 @@
 //                Transform, Fn::Transform or Fn::ImportValue, keeps anything after
 //                tear-down, names its topics, queues or alarms, or puts a log group or
 //                parameter outside /cloudlabs/<id>/, names an existing resource by id or
-//                ARN, or gives an alarm an EC2 action
+//                ARN, or gives an alarm an EC2 action; judged by its shape (re-review
+//                N-1): no function but Ref and Fn::GetAtt, no {{resolve:...}}, String
+//                or Number parameters only, every alarm action a Ref to the template's
+//                own SNS topic, and every parameter value known at plan (and scanned)
 //   tag          (plan) tags_all without cloudlabs-lab = <id>, or not known at plan;
 //                an instance's volume_tags (ruling A49), a launch template's tag specifications, an Auto
 //                Scaling group's propagated tag, ECS and RDS tag copying and Backup
@@ -74,7 +77,11 @@
 //                by reference (ruling P8); (plan) the lab's resource group other than
 //                lab-<id> with one tag query known at plan selecting exactly
 //                cloudlabs-lab = <id> (what resource-groups:Name selects); an alarm's EC2
-//                action (stop, terminate, reboot, recover)
+//                action (stop, terminate, reboot, recover), or an action not known at plan
+//                that is not the lab's own topic by reference; (plan) a written value not
+//                known at plan and built from no reference where an id goes (an id key,
+//                alarm dimensions, an SSM association's parameters, an EventBridge
+//                target's input; re-review N-2)
 //   address      (plan) a VPC, secondary CIDR or subnet outside the slot (var.address_space)
 //                or overlapping another; a route other than the slot, var.gateway_cidr or
 //                0.0.0.0/0 (::/0 for IPv6); an IPv6 IPAM pool outside ans-20-vpc-design
@@ -92,6 +99,9 @@
 //   size         instance types, database classes, disks, group sizes and counts above
 //                the labs' caps (ECS tasks, Lambda memory and timeout, CloudFront's
 //                price class, Route 53 health check extras)
+//
+// Every JSON document read from a string (policies, a group's query, a template) is refused when one object
+// holds the same key twice (re-review N-3: which one AWS reads is not certain).
 //
 // In HCL mode the tag and address rules and the known-id part of gateway are left
 // out (values are not known); the others read literal values where the HCL has them.
@@ -282,7 +292,7 @@ const KNOWN_ID_RE = new RegExp(`^${EC2_ID}$`);
 /** An EC2 ARN that embeds a known id (arn:aws:ec2:<region>:<account>:instance/i-…), anywhere in a string (JSON documents too). */
 const EC2_ARN_RE = new RegExp(String.raw`arn:aws[a-z-]*:ec2:[^:"\s]*:[^:"\s]*:[a-z-]+/(${EC2_ID})(?![0-9a-z-])`);
 /** A CloudWatch alarm's EC2 action (stop, terminate, reboot, recover): it acts on the instance its dimensions name (review I-1). */
-const EC2_ACTION_RE = /^arn:aws[a-z-]*:automate:|AWS_EC2\.InstanceId\./;
+const EC2_ACTION_RE = /^arn:aws[a-z-]*:automate:|AWS_EC2\.InstanceId\./i;
 /**
  * The keys that hold ids (preflight ruling C4, as amended by the controller in review round 1): snake case (vpc_id,
  * subnet_ids) and camel case (InstanceId, InstanceIds, as CloudWatch dimensions spell them), never a name, name_prefix,
@@ -339,11 +349,39 @@ function jsonDoc(v) {
   if (v instanceof Unknown) return { unknown: true };
   if (isObj(v)) return { doc: v };
   try {
-    const doc = JSON.parse(String(v));
+    const text = String(v);
+    const doc = JSON.parse(text);
+    // Re-review N-3: JSON.parse keeps a duplicate key's last value; AWS may read the first. Refuse either way.
+    const dup = duplicateKey(text);
+    if (dup !== null) return { bad: true, why: `the key ${JSON.stringify(dup)} appears twice in one object` };
     return isObj(doc) ? { doc } : { bad: true };
   } catch {
     return { bad: true };
   }
+}
+
+/** The first key that appears twice in one object of valid JSON text, or null (re-review N-3). */
+function duplicateKey(text) {
+  const stack = [];
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const top = stack[stack.length - 1];
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"') j += text[j] === "\\" ? 2 : 1;
+      if (top && top.expectKey) {
+        const k = JSON.parse(text.slice(i, j + 1));
+        if (top.keys.has(k)) return k;
+        top.keys.add(k);
+        top.expectKey = false;
+      }
+      i = j;
+    } else if (ch === "{") stack.push({ keys: new Set(), expectKey: true });
+    else if (ch === "[") stack.push(null);
+    else if (ch === "}" || ch === "]") stack.pop();
+    else if (ch === "," && top) top.expectKey = true;
+  }
+  return null;
 }
 
 /** An IAM action pattern that could match an iam: action (the service part as a glob), or "*". */
@@ -450,10 +488,37 @@ export function cfnTemplateProblems(doc, { labId, parameters = {} }) {
       if (typeof n !== "string" || !n.startsWith(own)) out.push(`${name}: Name must start ${own}`);
     }
   }
+  // Re-review N-1: judged by its shape, never by scanning strings that functions build. Parameters are strings or
+  // numbers (no SSM-typed or list parameters); an alarm acts only on a topic of the template's own.
+  for (const [name, p] of Object.entries(isObj(doc.Parameters) ? doc.Parameters : {})) {
+    if (!isObj(p) || (p.Type !== "String" && p.Type !== "Number")) out.push(`Parameters.${name}: Type ${JSON.stringify(isObj(p) ? p.Type : p)}: only String or Number (an SSM-typed or list parameter brings in what this check never sees)`);
+  }
+  const resources = isObj(doc.Resources) ? doc.Resources : {};
+  for (const [name, res] of Object.entries(resources)) {
+    if (!isObj(res) || res.Type !== "AWS::CloudWatch::Alarm") continue;
+    const props = isObj(res.Properties) ? res.Properties : {};
+    for (const k of ["AlarmActions", "OKActions", "InsufficientDataActions"]) {
+      list(props[k]).forEach((a, i) => {
+        const ok = isObj(a) && Object.keys(a).length === 1 && typeof a.Ref === "string" && isObj(resources[a.Ref]) && resources[a.Ref].Type === "AWS::SNS::Topic";
+        if (!ok) out.push(`${name}.${k}.${i}: an alarm acts only on a topic of this template's own ({ Ref: <an AWS::SNS::Topic> })`);
+      });
+    }
+  }
   walk(doc, [], (kind, path, s) => {
-    if (kind === "key" && (s === "Fn::ImportValue" || s === "Fn::Transform")) out.push(`${path.slice(0, -1).join(".")}: ${s} reaches outside this template`);
+    const where = path.slice(0, kind === "key" ? -1 : undefined).join(".");
+    if (kind === "key" && (s === "Fn::ImportValue" || s === "Fn::Transform")) out.push(`${where}: ${s} reaches outside this template`);
+    else if (kind === "key" && s.startsWith("Fn::") && s !== "Fn::GetAtt") out.push(`${where}: ${s}: a lab's template uses only Ref and Fn::GetAtt, so every value it holds can be read`);
+    else if (kind === "string" && s.includes("{{resolve:")) out.push(`${where}: a dynamic reference ({{resolve:...}}) brings in what this check never sees`);
   });
   return [...new Set(out)];
+}
+
+/** Every Unknown under a value, as [path, unknown]. */
+function unknownLeaves(v, path, out = []) {
+  if (v instanceof Unknown) out.push([path, v]);
+  else if (Array.isArray(v)) v.forEach((x, i) => unknownLeaves(x, [...path, i], out));
+  else if (v !== null && typeof v === "object") for (const [k, x] of Object.entries(v)) unknownLeaves(x, [...path, k], out);
+  return out;
 }
 
 /** Every string and object key under a value: visit(kind, path, text). */
@@ -644,7 +709,16 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
       }
       // Review I-1: an alarm's EC2 action acts on instances; a lab's alarms notify (its topics) and never act on one.
       if (type === "aws_cloudwatch_metric_alarm" || type === "aws_cloudwatch_composite_alarm") {
-        for (const a of ["alarm_actions", "ok_actions", "insufficient_data_actions"]) if (list(v[a]).some((x) => typeof x === "string" && EC2_ACTION_RE.test(x))) refuse("gateway", `${a}: an EC2 alarm action (stop, terminate, reboot, recover) acts on an instance; a lab's alarm notifies its own topic (review I-1)`);
+        for (const a of ["alarm_actions", "ok_actions", "insufficient_data_actions"]) {
+          for (const x of list(v[a])) {
+            if (typeof x === "string" && EC2_ACTION_RE.test(x)) refuse("gateway", `${a}: an EC2 alarm action (stop, terminate, reboot, recover) acts on an instance; a lab's alarm notifies its own topic (review I-1)`);
+            else if (plan && x instanceof Unknown) {
+              // Re-review N-2: an action not known at plan is the lab's own topic, by reference.
+              const refs = refsOf(x, r, a);
+              if (!((mode === "mock" && !refs.length) || ownRefs(refs, ["aws_sns_topic"]))) refuse("gateway", `${a}: an action not known at plan must be the lab's own topic, by reference (aws_sns_topic.<name>.arn; re-review N-2)`);
+            } else if (typeof x !== "string" && !(x instanceof Unknown)) refuse("gateway", `${a}: an action this check cannot read`);
+          }
+        }
       }
       if (plan && isManaged) {
         // A known id under an id-holding key (a list inherits its key), a target's values when its key selects ids, or an
@@ -669,6 +743,22 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           }
         };
         for (const [k, y] of Object.entries(v)) scan(y, [k], ID_KEY(k));
+        // Re-review N-2: where an id goes, a value not known until apply and built from no reference (timestamp(),
+        // uuid()) could hide anything; the lab's own items are always references. Only what the lab writes is read
+        // (computed attributes are unknown with no references too).
+        for (const k of Object.keys(v)) {
+          if (!r.configured?.has(k)) continue;
+          const blind = unknownLeaves(v[k], [k]).filter(([, x]) => !(x.refs?.length > 0));
+          const idMap = k === "dimensions" || k === "metric_query" || (type === "aws_ssm_association" && k === "parameters");
+          const input = type === "aws_cloudwatch_event_target" && (k === "input" || k === "input_transformer");
+          for (const [p] of blind) {
+            const last = [...p].reverse().find((x) => typeof x === "string");
+            if (ID_KEY(k) || input || (idMap && (p.length === 1 || last === "dimensions" || ID_KEY(last)))) {
+              refuse("gateway", `${p.join(".")} is not known at plan and built from no reference: where an id goes, a lab names its own items by reference (re-review N-2)`);
+              break;
+            }
+          }
+        }
         // Ruling P9: the instance-target allow-list.
         for (const attr of TARGET_ATTRS[type] ?? []) list(v[attr]).forEach((t, i) => {
           const why = targetWhy(t);
@@ -806,6 +896,7 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
       // Review I-4: what is not known at plan cannot be read, so it is refused (HCL leaves expressions to the plan).
       if (plan && (val.capabilities instanceof Unknown || list(val.capabilities).some((x) => typeof x !== "string"))) no("capabilities must be known at plan (none): a lab's stack makes no IAM and runs no macros");
       if (plan && val.parameters instanceof Unknown && (res.configured?.has("parameters") || opaque(val.parameters))) no("parameters must be known at plan: the template is judged with the values the stack gives it (review I-4)");
+      if (plan && isObj(val.parameters) && Object.values(val.parameters).some((x) => x instanceof Unknown)) no("parameters: every value must be known at plan, so the template can be judged with it (re-review N-1)");
       const role = val.iam_role_arn;
       const roleRefs = role instanceof Unknown ? refsOf(role, res, "iam_role_arn") : [];
       const roleOk = role instanceof Unknown && (mode === "hcl" || (mode === "mock" && !roleRefs.length) || ownRefs(roleRefs, ["aws_iam_role"]));
@@ -816,10 +907,11 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         return;
       }
       const j = jsonDoc(body);
-      if (j.bad) return no("template_body is not JSON: write template_body = jsonencode(yamldecode(file(...)))");
+      if (j.bad) return no(`template_body is not JSON this check can read${j.why ? ` (${j.why})` : ""}: write template_body = jsonencode(yamldecode(file(...)))`);
       for (const m of cfnTemplateProblems(j.doc, { labId, parameters: isObj(val.parameters) ? val.parameters : {} })) no(m);
-      // Review I-1: the template's strings get the known-id check Terraform values get, and no EC2 alarm action.
-      walk(j.doc, [], (kind, path, s) => {
+      // Review I-1: the template's strings, and the parameters' values (re-review N-1), get the known-id check
+      // Terraform values get, and no EC2 alarm action.
+      walk({ ...j.doc, "(parameters)": isObj(val.parameters) ? val.parameters : {} }, [], (kind, path, s) => {
         if (kind !== "string") return;
         const arn = EC2_ARN_RE.exec(s);
         if (KNOWN_ID_RE.test(s) && !dataStrings.has(s)) no(`${path.join(".")} names an existing AWS resource the lab did not make (${s})`);
@@ -835,6 +927,7 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
       const q = list(val.resource_query);
       if (q.length !== 1 || !isObj(q[0]) || q[0].type !== "TAG_FILTERS_1_0") return "resource_query must be one TAG_FILTERS_1_0 query";
       const j = jsonDoc(q[0].query);
+      if (j.why) return `resource_query's query: ${j.why}`;
       const tf = j.doc?.TagFilters;
       const exact = Array.isArray(tf) && tf.length === 1 && isObj(tf[0]) && Object.keys(tf[0]).sort().join() === "Key,Values" && tf[0].Key === LAB_TAG && Array.isArray(tf[0].Values) && tf[0].Values.length === 1 && tf[0].Values[0] === labId;
       return exact ? null : `resource_query's TagFilters must be exactly [{ Key = "${LAB_TAG}", Values = [var.lab_id] }], known at plan`;
@@ -948,7 +1041,7 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         const j = jsonDoc(val[docAttr]);
         if (j.unknown) {
           if (plan) no("public", `${docAttr} must be known at plan, so who it lets in can be read (ruling P10)`);
-        } else if (j.bad) no("public", `${docAttr} is not a policy document this check can read`);
+        } else if (j.bad) no("public", `${docAttr} is not a policy document this check can read${j.why ? ` (${j.why})` : ""}`);
         else {
           const why = resourcePolicyProblem(j.doc, policyAccount);
           if (why) no("public", `${docAttr}: ${why} (ruling P10)`);

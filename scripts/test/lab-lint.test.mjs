@@ -240,3 +240,35 @@ test("cfn (ruling P4): --cloud aws reads terraform/cfn/*.yaml: short-form tags, 
   // An Azure lab's folder never has its cfn/ read.
   assert.deepEqual(lintDir(dir, { cloud: "azure" }).filter((p) => p.file.startsWith("cfn/")), []);
 });
+
+test("re-review N-4 (--cloud aws only): a literal EC2 id, an EC2 alarm action and timestamp()/uuid() are refused in .tf and cfn/ text; Azure labs keep timestamp()", () => {
+  const tf = [
+    'resource "aws_ssm_association" "x" {',
+    '  name = "AWS-StopEC2Instance"',
+    '  parameters = { InstanceId = "i-0123456789abcdef0" }',
+    "}",
+    'resource "aws_cloudwatch_metric_alarm" "a" {',
+    '  alarm_actions = ["arn:aws:automate:eu-west-2:ec2:terminate", "arn:aws:swf:eu-west-2:123456789012:action/actions/AWS_EC2.InstanceId.Stop/1.0"]',
+    '  dimensions    = { InstanceId = timestamp() == "" ? "x" : "y" }',
+    '  alarm_name    = "lab-${uuid()}"',
+    '  ok_actions    = [plantimestamp() == "" ? "x" : "y"]',
+    "}",
+    "# a comment naming vol-0123456789abcdef0 and timestamp() is not read",
+    "",
+  ].join("\n");
+  const got = lintTfText({ "main.tf": tf }, { cloud: "aws" }).filter((p) => ["known-id", "apply-time"].includes(p.rule)).map((p) => `${p.rule}: ${p.line}`);
+  assert.deepEqual(got.sort(), ["apply-time: 7", "apply-time: 8", "apply-time: 9", "known-id: 3", "known-id: 6", "known-id: 6"].sort());
+  for (const id of ["vol-0123456789abcdef0", "snap-0123456789abcdef0", "eni-0123abcd", "sg-0123456789abcdef0", "subnet-0123abcd", "vpc-0a1b2c3d4e5f60718", "rtb-0123abcd", "acl-0123abcd"]) {
+    assert.deepEqual(lintTfText({ "x.tf": `locals { x = "${id}" }\n` }, { cloud: "aws" }).map((p) => p.rule), ["known-id"], id);
+  }
+  // Names that only look like ids pass: sg-vms, lt-a03bc1de, vpc-lab, subnet-private-1.
+  assert.deepEqual(lintTfText({ "x.tf": 'locals {\n  a = "sg-vms"\n  b = "lt-a03bc1de"\n  c = "vpc-lab"\n  d = "snet-private-1"\n}\n' }, { cloud: "aws" }), []);
+  // Azure: timestamp() stays allowed (az104-04-cost's budget start date).
+  assert.deepEqual(lintTfText({ "x.tf": 'locals { t = timestamp() }\n' }, { cloud: "azure" }), []);
+  // cfn/: the same id and action rules.
+  const dir = mkdtempSync(join(tmpdir(), "lint-cfn-id-"));
+  mkdirSync(join(dir, "cfn"));
+  writeFileSync(join(dir, "main.tf"), "# main.tf\n");
+  writeFileSync(join(dir, "cfn", "stack.yaml"), ["Resources:", "  A:", "    Type: AWS::CloudWatch::Alarm", "    Properties:", "      Dimensions:", "        - Name: InstanceId", "          Value: i-0123456789abcdef0", "      AlarmActions:", "        - arn:aws:automate:eu-west-2:ec2:stop", ""].join("\n"));
+  assert.deepEqual(lintDir(dir, { cloud: "aws" }).map((p) => `${p.rule}: ${p.file}:${p.line}`).sort(), ["known-id: cfn/stack.yaml:7", "known-id: cfn/stack.yaml:9"]);
+});

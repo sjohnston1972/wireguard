@@ -40,7 +40,13 @@
 // ruling P4): short-form tags (`!Ref`: Terraform's yamldecode reads none),
 // `Transform`, nested stacks, custom resources, macros, StackSets, SAM, IAM
 // types, `Fn::ImportValue`, and `DeletionPolicy`/`UpdateReplacePolicy` other
-// than Delete; plus the literal-cidr and gateway rules.
+// than Delete; plus the literal-cidr and gateway rules. --cloud aws also
+// refuses, in .tf and cfn/ text, a literal EC2 id (i-, vol-, snap-, eni-, sg-,
+// subnet-, vpc-, rtb-, acl- and 8 to 17 hex digits) and an EC2 alarm action
+// (automate:, AWS_EC2.InstanceId.: rule known-id), and in .tf timestamp(),
+// plantimestamp() and uuid() (rule apply-time): a plan cannot see a literal
+// behind a conditional, nor what an apply-time value chooses (Task 3
+// re-review N-4). Azure labs keep timestamp() (az104-04-cost's budget).
 //
 // A lab's .bicep files (built to ARM JSON after this check, lab.yml step 5)
 // get literal-cidr and gateway too, plus module (a registry or template spec
@@ -164,10 +170,14 @@ const AWS_TEXT_RULES = [
   ...TEXT_RULES.filter((r) => ["provisioner", "module", "import", "backend"].includes(r.rule)),
   { rule: "gateway", re: new RegExp(String.raw`\b(${AWS_GATEWAY_NAMES.join("|")})\b`, "g"), message: (m) => `${m}: lab Terraform never names the VPN server's parts (only var.gateway_cidr)` },
   { rule: "gateway", re: /\bwg-admin[\w-]*/g, ok: (m) => m === AWS_BOUNDARY_NAME, message: (m) => `${m}: lab Terraform never names wg-admin resources (only the ${AWS_BOUNDARY_NAME} permission boundary)` },
+  // Task 3 re-review N-4: a backstop for what a plan cannot see inside an expression (a literal behind a conditional).
+  { rule: "known-id", re: /\b(?:i|vol|snap|eni|sg|subnet|vpc|rtb|acl)-[0-9a-f]{8,17}\b/g, message: (m) => `${m}: an existing AWS resource's id; a lab names its own items by reference` },
+  { rule: "known-id", re: /automate:|AWS_EC2\.InstanceId\./gi, message: (m) => `${m}: an EC2 alarm action acts on an instance; a lab's alarm notifies its own topic` },
+  { rule: "apply-time", re: /\b(?:plan)?timestamp\s*\(\s*\)|\buuid\s*\(\s*\)/g, message: (m) => `${m}: a value not known until apply hides what an expression chooses from the plan check` },
 ];
 /** Ruling P4: a lab's CloudFormation templates (terraform/cfn/*.yaml), read as text before init. */
 const CFN_RULES = [
-  ...AWS_TEXT_RULES.filter((r) => ["literal-cidr", "gateway"].includes(r.rule)),
+  ...AWS_TEXT_RULES.filter((r) => ["literal-cidr", "gateway", "known-id"].includes(r.rule)),
   { rule: "cfn", re: /^\s*Transform\s*:/gm, message: () => "Transform: macros and SAM run code this check never sees" },
   { rule: "cfn", re: /\b(AWS::CloudFormation::(?:Stack|StackSet|CustomResource|Macro|ModuleDefaultVersion|ResourceVersion)|AWS::Serverless::\w+|AWS::IAM::\w+|AWS::Include|Custom::[\w-]+|Fn::Transform|Fn::ImportValue)\b/g, message: (m) => `${m}: a lab's template makes only what lab-scope-aws.mjs CFN_TYPES lists, and reaches nothing outside itself` },
   { rule: "cfn", re: /(?:^|[:\-[,]\s*)!(?:Ref|Sub|GetAtt|Join|If|Equals|Select|Split|FindInMap|Base64|Cidr|GetAZs|ImportValue|Not|And|Or|Condition|Transform|Length|ToJsonString)\b/gm, message: (m) => `${m.trim().replace(/^[:\-[,]\s*/, "")}: write the long form (Ref:, Fn::Sub:): Terraform's yamldecode reads no YAML tags` },
