@@ -9,7 +9,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setCatalogueForTest } from "../src/labs/catalogue";
 import { arnParts, taggedName } from "../src/labs/awsReads";
-import { sweepAwsOrphans, sweepOrphans, readOrphans, AWS_SWEEP_CALLS } from "../src/labs/orphans";
+import { sweepAwsOrphans, sweepOrphans, readOrphans, AWS_CONFIRM_CALLS, AWS_SWEEP_CALLS } from "../src/labs/orphans";
+import { leftoversMessage } from "../src/labs/availability";
 import { fetchAwsLabCostDays } from "../src/labs/cost";
 import { budgetedNet, directNet, BudgetExceeded } from "../src/labs/net";
 import { checkLabPermissions } from "../src/labs/permissions";
@@ -40,6 +41,7 @@ describe("the AWS orphan sweep", () => {
     withAwsLabs();
     await runningLab(env, world, "soa-03-auto-scaling");
     world.labAws.tagged["eu-west-2"] = [tagged("soa-03-auto-scaling", "vpc/vpc-0live"), tagged("soa-05-rds", "instance/i-0left", "vm-client")];
+    world.labAws.ec2 = { "eu-west-2": { instances: [{ id: "i-0left", state: "running" }] } };
     world.labAws.iam.roles = ["lab-soa-05-rds-x", "wg-admin-labs"];
     world.labAws.dashboards["eu-west-2"] = ["lab-soa-05-rds-overview"];
     const t0 = new Date(NOW);
@@ -121,6 +123,110 @@ describe("the AWS orphan sweep", () => {
     expect(o).toHaveLength(1);
     expect(o[0].names.some((n) => n.startsWith("kms:key"))).toBe(false);
     expect(o[0].names.some((n) => n.startsWith("secretsmanager:secret"))).toBe(true);
+  });
+
+  // Live 2026-10-16: the tagging API listed deleted VPC endpoints, terminated instances and an INACTIVE ECS cluster
+  // and service 4-5 hours after they were gone, and the leftovers they made blocked deploying seven AWS labs.
+  const ec2Reads = (world: { calls: { host: string; body?: unknown }[] }, from: number) => world.calls.slice(from).filter((c) => /^ec2\./.test(c.host));
+
+  it("an EC2 instance or VPC endpoint counts only once EC2 confirms it still exists: one read per region and type", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    world.labAws.tagged["eu-west-2"] = [
+      tagged("soa-05-rds", "instance/i-0real"),
+      tagged("soa-05-rds", "instance/i-0term"),
+      tagged("soa-05-rds", "instance/i-0gone"),
+      tagged("soa-05-rds", "vpc-endpoint/vpce-0real"),
+      tagged("soa-05-rds", "vpc-endpoint/vpce-0deleted"),
+      tagged("soa-05-rds", "vpc-endpoint/vpce-0gone"),
+      tagged("saa-16-dr-pilot-light", "instance/i-0shut"),
+      tagged("saa-16-dr-pilot-light", "vpc-endpoint/vpce-0dead"),
+    ];
+    world.labAws.ec2 = {
+      "eu-west-2": {
+        instances: [{ id: "i-0real", state: "stopped" }, { id: "i-0term", state: "terminated" }, { id: "i-0shut", state: "shutting-down" }],
+        endpoints: [{ id: "vpce-0real", state: "available" }, { id: "vpce-0deleted", state: "deleted" }, { id: "vpce-0dead", state: "Deleted" }],
+      },
+    };
+    const t0 = new Date(NOW);
+    await sweepAwsOrphans(env, budgetedNet(20), t0);
+    const before = world.calls.length;
+    expect(await sweepAwsOrphans(env, budgetedNet(20), new Date(t0.getTime() + 91 * MIN))).toMatch(/aws orphans: 1 lab/);
+    expect(await readOrphans(env)).toEqual([{ labId: "soa-05-rds", names: ["ec2:instance i-0real", "ec2:vpc-endpoint vpce-0real"], since: t0.toISOString() }]);
+    // Both labs' instances in one DescribeInstances, both labs' endpoints in one DescribeVpcEndpoints.
+    const reads = ec2Reads(world, before);
+    expect(reads).toHaveLength(2);
+    expect(world.calls.length - before).toBe(AWS_SWEEP_CALLS + 2);
+  });
+
+  it("a ghost-only lab's dirty slot goes back once EC2 says its instance is terminated", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    const { sid } = await runningLab(env, world, "soa-05-rds");
+    await env.DB.prepare("UPDATE lab_sessions SET state = 'ended_dirty', ended_at = ?1 WHERE id = ?2").bind(NOW, sid).run();
+    world.labAws.tagged["eu-west-2"] = [tagged("soa-05-rds", "instance/i-0term")];
+    world.labAws.ec2 = { "eu-west-2": { instances: [{ id: "i-0term", state: "terminated" }] } };
+    const t0 = new Date(NOW);
+    await sweepAwsOrphans(env, budgetedNet(20), t0);
+    expect((await session(env, sid))!.slot).not.toBeNull(); // inside the 90 minutes: still present, as before
+    expect(await sweepAwsOrphans(env, budgetedNet(20), new Date(t0.getTime() + 91 * MIN))).toMatch(/1 slot\(s\) released/);
+    expect((await session(env, sid))!.slot).toBeNull();
+    expect(await readOrphans(env)).toEqual([]);
+  });
+
+  it("a confirm read AWS refuses keeps the item counted: a failed read never hides a real leftover", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    world.labAws.tagged["eu-west-2"] = [tagged("soa-05-rds", "instance/i-0x"), tagged("soa-05-rds", "vpc-endpoint/vpce-0x")];
+    world.labAws.ec2 = { "eu-west-2": { fail: "UnauthorizedOperation" } };
+    const t0 = new Date(NOW);
+    await sweepAwsOrphans(env, budgetedNet(20), t0);
+    await sweepAwsOrphans(env, budgetedNet(20), new Date(t0.getTime() + 91 * MIN));
+    expect((await readOrphans(env))[0]?.names).toEqual(["ec2:instance i-0x", "ec2:vpc-endpoint vpce-0x"]);
+    world.labAws.ec2 = { "eu-west-2": { fail: "RequestLimitExceeded" } };
+    await sweepAwsOrphans(env, budgetedNet(20), new Date(t0.getTime() + 152 * MIN));
+    expect((await readOrphans(env))[0]?.names).toEqual(["ec2:instance i-0x", "ec2:vpc-endpoint vpce-0x"]);
+  });
+
+  it("outside the two lab regions (the Worker may not describe there) an instance is counted unconfirmed, with no read", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    world.labAws.tagged["us-east-1"] = [{ arn: ARN("instance/i-0east", "us-east-1"), tags: { "cloudlabs-lab": "soa-05-rds" } }];
+    const t0 = new Date(NOW);
+    await sweepAwsOrphans(env, budgetedNet(20), t0);
+    const before = world.calls.length;
+    await sweepAwsOrphans(env, budgetedNet(20), new Date(t0.getTime() + 91 * MIN));
+    expect(ec2Reads(world, before)).toHaveLength(0);
+    expect((await readOrphans(env))[0]?.names).toEqual(["ec2:instance i-0east"]);
+  });
+
+  it("with no calls left for the confirm reads the sweep waits, records nothing, and stays due", async () => {
+    freeze();
+    const { env } = await labEnv();
+    withAwsLabs();
+    await expect(sweepAwsOrphans(env, budgetedNet(AWS_SWEEP_CALLS + AWS_CONFIRM_CALLS - 1), new Date(NOW))).rejects.toBeInstanceOf(BudgetExceeded);
+    expect(await env.STATUS.get("labs:sweep-aws")).toBeNull();
+  });
+
+  it("ECS clusters, services and task definitions are never orphans (the Worker cannot describe ECS); other leftovers still are", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    const ecs = (r: string) => ({ arn: `arn:aws:ecs:eu-west-2:123456789012:${r}`, tags: { "cloudlabs-lab": "saa-16-dr-pilot-light" } });
+    world.labAws.tagged["eu-west-2"] = [ecs("cluster/lab-saa-16-dr-pilot-light"), ecs("service/lab-saa-16-dr-pilot-light/web"), ecs("task-definition/lab-saa-16-dr-pilot-light-web:3"), tagged("saa-16-dr-pilot-light", "vpc/vpc-0y")];
+    const t0 = new Date(NOW);
+    await sweepAwsOrphans(env, budgetedNet(20), t0);
+    await sweepAwsOrphans(env, budgetedNet(20), new Date(t0.getTime() + 91 * MIN));
+    expect(await readOrphans(env)).toEqual([{ labId: "saa-16-dr-pilot-light", names: ["ec2:vpc vpc-0y"], since: t0.toISOString() }]);
+  });
+
+  it("an AWS lab's leftovers sentence says AWS; an Azure lab's still says Azure", () => {
+    expect(leftoversMessage({ id: "soa-05-rds", title: "RDS" })).toBe("RDS still has leftovers in AWS from an earlier session. Clean them up from the Labs tab first.");
+    expect(leftoversMessage({ id: "az104-07-files", title: "Azure Files" })).toBe("Azure Files still has leftovers in Azure from an earlier session. Clean them up from the Labs tab first.");
   });
 
   it("the AWS sweep keeps Azure entries and the Azure sweep keeps AWS entries", async () => {

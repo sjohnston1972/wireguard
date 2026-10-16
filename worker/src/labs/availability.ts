@@ -10,7 +10,7 @@
 import type { Env } from "../env";
 import { canDispatch } from "../env";
 import * as db from "../db";
-import { LAB_SLOTS, labNeeds, labsSettingsFrom, type LabDef } from "../../../shared/labs";
+import { LAB_SLOTS, cloudOfId, labNeeds, labsSettingsFrom, type LabDef } from "../../../shared/labs";
 import type { LabBlocker, LabPermissions } from "../../../shared/api";
 import { runningCount, slotsInUse } from "./store";
 
@@ -65,5 +65,6 @@ export function unavailableReason(def: LabDef, a: Availability): string | null {
   return blockersOf(def, a)[0]?.message ?? null;
 }
 
-/** deployLab's refusal when an earlier session left something in Azure (an ended_dirty session holding a slot, or an orphan entry). */
-export const leftoversMessage = (def: Pick<LabDef, "title">): string => `${def.title} still has leftovers in Azure from an earlier session. Clean them up from the Labs tab first.`;
+/** deployLab's refusal when an earlier session left something in the lab's cloud (an ended_dirty session holding a slot, or an orphan entry). */
+export const leftoversMessage = (def: Pick<LabDef, "id" | "title">): string =>
+  `${def.title} still has leftovers in ${cloudOfId(def.id) === "aws" ? "AWS" : "Azure"} from an earlier session. Clean them up from the Labs tab first.`;

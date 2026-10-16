@@ -359,6 +359,11 @@ export interface FakeGraph {
 export interface LabAws {
   /** Resources tagged cloudlabs-lab, by region. */
   tagged: Record<string, { arn: string; tags: Record<string, string> }[]>;
+  /**
+   * What EC2 itself says, by region, for the sweep's confirm reads (DescribeInstances by instance-id, DescribeVpcEndpoints
+   * by vpc-endpoint-id): an id not listed here does not exist. `fail` answers every such read with that error code.
+   */
+  ec2?: Record<string, { instances?: { id: string; state: string }[]; endpoints?: { id: string; state: string }[]; fail?: string }>;
   /** IAM names at path /cloudlabs-lab/ (the fake lists every name given, whatever the path asked). */
   iam: { roles: string[]; instanceProfiles: string[]; policies: string[]; users: string[] };
   /** Config recorders by region. */
@@ -720,6 +725,24 @@ function labAwsAnswer(la: LabAws, u: URL, call: World["calls"][number], text: st
     const page = list.slice(from, from + per);
     const more = from + per < list.length ? String(from + per) : "";
     return json({ ResourceTagMappingList: page.map((t) => ({ ResourceARN: t.arn, Tags: Object.entries(t.tags).map(([Key, Value]) => ({ Key, Value })) })), PaginationToken: more });
+  }
+  const ec2Host = u.hostname.match(/^ec2\.([a-z0-9-]+)\.amazonaws\.com$/);
+  if (ec2Host) {
+    // Only the sweep's confirm reads (filtered by id); every other EC2 call is the gateway's (null).
+    const a = form.get("Action") ?? "";
+    const filterName = a === "DescribeInstances" ? "instance-id" : a === "DescribeVpcEndpoints" ? "vpc-endpoint-id" : "";
+    const n = filterName ? [...form.entries()].find(([k, v]) => /^Filter\.\d+\.Name$/.test(k) && v === filterName)?.[0].split(".")[1] : undefined;
+    if (!n) return null;
+    const ids = [...form.entries()].filter(([k]) => k.startsWith(`Filter.${n}.Value.`)).map(([, v]) => v);
+    const r = la.ec2?.[ec2Host[1]!] ?? {};
+    if (r.fail) return new Response(`<Response><Errors><Error><Code>${r.fail}</Code><Message>fake failure</Message></Error></Errors></Response>`, { status: r.fail === "UnauthorizedOperation" ? 403 : 400 });
+    const ok = (b: string) => new Response(`<${a}Response><requestId>req-1</requestId>${b}</${a}Response>`, { status: 200 });
+    if (a === "DescribeInstances") {
+      const items = (r.instances ?? []).filter((x) => ids.includes(x.id)).map((x) => `<item><reservationId>r-${x.id}</reservationId><groupSet/><instancesSet><item><instanceId>${x.id}</instanceId><instanceState><code>0</code><name>${x.state}</name></instanceState><placement><availabilityZone>${ec2Host[1]}a</availabilityZone><groupName/></placement><tagSet><item><key>Name</key><value>vm</value></item></tagSet></item></instancesSet></item>`);
+      return ok(items.length ? `<reservationSet>${items.join("")}</reservationSet>` : "<reservationSet/>");
+    }
+    const items = (r.endpoints ?? []).filter((x) => ids.includes(x.id)).map((x) => `<item><vpcEndpointId>${x.id}</vpcEndpointId><vpcEndpointType>Interface</vpcEndpointType><vpcId>vpc-1</vpcId><serviceName>com.amazonaws.${ec2Host[1]}.ssm</serviceName><state>${x.state}</state><tagSet/></item>`);
+    return ok(items.length ? `<vpcEndpointSet>${items.join("")}</vpcEndpointSet>` : "<vpcEndpointSet/>");
   }
   if (u.hostname === "iam.amazonaws.com") {
     const a = form.get("Action") ?? "";

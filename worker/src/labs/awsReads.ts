@@ -5,13 +5,14 @@
 // under /cloudlabs-lab/, the Config recorders and lab dashboards of a
 // region, the account id, whether the wg-admin-labs role and the
 // wg-admin-lab-boundary policy exist, whether the cloudlabs-lab cost tag is
-// active, and Cost Explorer's daily cost grouped by that tag. Each takes one
+// active, Cost Explorer's daily cost grouped by that tag, and whether EC2
+// instances or VPC endpoints the tagging API lists still exist. Each takes one
 // call from the Net first (AWS's signed client fetches by itself, so the
 // call is counted before it is made) and then asks once, one page; AWS's
 // refusals come back as AwsError. Nothing here writes to AWS.
 
 import type { Env } from "../env";
-import { AwsError, awsJson, awsQuery, xmlAll, xmlFirst } from "../cloud/awsApi";
+import { AwsError, awsJson, awsQuery, ec2, filters, xmlAll, xmlFirst, xmlItems, xmlOwn, xmlOwnItems } from "../cloud/awsApi";
 import { AWS_IAM_PATH, LAB_TAG } from "../../../shared/labs";
 import type { Net } from "./net";
 
@@ -105,6 +106,56 @@ export async function dashboardNames(env: Env, net: Net, region: string): Promis
   net.take(1);
   const xml = await awsQuery(env, "monitoring", "ListDashboards", { DashboardNamePrefix: "lab-" }, "2010-08-01", { region });
   return xmlAll(xml, "DashboardName");
+}
+
+/** The EC2 kinds the orphan sweep can confirm: the Describe call, the filter that names ids, and the states that mean gone. */
+const EC2_CONFIRM = {
+  instance: { action: "DescribeInstances", filter: "instance-id", gone: ["terminated", "shutting-down"] },
+  "vpc-endpoint": { action: "DescribeVpcEndpoints", filter: "vpc-endpoint-id", gone: ["deleted"] },
+} as const;
+export type Ec2ConfirmKind = keyof typeof EC2_CONFIRM;
+/** EC2 takes at most 200 values in one filter; ids past that are left unconfirmed (still counted). */
+export const EC2_CONFIRM_MAX = 200;
+
+/**
+ * Of `ids` (EC2 instances or VPC endpoints in `region`), the ones EC2 says are really gone: not listed at all, or
+ * listed as terminated / shutting-down (an instance) or deleted (an endpoint). One call, filtered by id (so an id
+ * EC2 no longer knows is simply absent rather than failing the whole call). When EC2 says there is another page,
+ * only the ids it listed as gone count: an absent id might be on the next page. Any refusal throws (AwsError), so
+ * the caller keeps those items counted.
+ */
+export async function ec2Gone(env: Env, net: Net, region: string, kind: Ec2ConfirmKind, ids: string[]): Promise<Set<string>> {
+  const c = EC2_CONFIRM[kind];
+  const asked = [...new Set(ids)].slice(0, EC2_CONFIRM_MAX);
+  if (!asked.length) return new Set();
+  net.take(1);
+  let xml: string;
+  try {
+    xml = await ec2(env, c.action, filters([[c.filter, asked]]), region);
+  } catch (e) {
+    // A NotFound names no one id among many, so it can only clear an id that was asked alone.
+    if (asked.length === 1 && e instanceof AwsError && /\.NotFound$/.test(e.code)) return new Set(asked);
+    throw e;
+  }
+  const states = new Map<string, string>();
+  if (kind === "instance") {
+    for (const r of xmlItems(xml, "reservationSet"))
+      for (const i of xmlOwnItems(r, "instancesSet")) {
+        const own = xmlOwn(i);
+        const id = xmlFirst(own, "instanceId");
+        const state = xmlFirst(own.match(/<instanceState>[\s\S]*?<\/instanceState>/)?.[0] ?? "", "name");
+        if (id) states.set(id, (state ?? "").toLowerCase());
+      }
+  } else {
+    for (const it of xmlItems(xml, "vpcEndpointSet")) {
+      const own = xmlOwn(it);
+      const id = xmlFirst(own, "vpcEndpointId");
+      if (id) states.set(id, (xmlFirst(own, "state") ?? "").toLowerCase());
+    }
+  }
+  const more = !!xmlFirst(xml, "nextToken");
+  const gone: readonly string[] = c.gone;
+  return new Set(asked.filter((id) => (states.has(id) ? gone.includes(states.get(id)!) : !more)));
 }
 
 /** The account the Worker's AWS user belongs to (STS GetCallerIdentity, which needs no permission). */
