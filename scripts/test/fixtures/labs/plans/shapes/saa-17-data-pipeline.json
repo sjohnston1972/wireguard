@@ -1,0 +1,530 @@
+{
+ "resources": {
+  "aws_athena_workgroup.wg": {
+   "type": "aws_athena_workgroup",
+   "refs": {
+    "configuration.0.result_configuration.0.output_location": [
+     "aws_s3_bucket.lake.bucket",
+     "aws_s3_bucket.lake"
+    ],
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "configuration.0.enable_minimum_encryption_configuration",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_cloudwatch_event_rule.every_minute": {
+   "type": "aws_cloudwatch_event_rule",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "name_prefix"
+   ],
+   "sensitive": []
+  },
+  "aws_cloudwatch_event_target.producer": {
+   "type": "aws_cloudwatch_event_target",
+   "refs": {
+    "arn": [
+     "aws_lambda_function.producer.arn",
+     "aws_lambda_function.producer"
+    ],
+    "rule": [
+     "aws_cloudwatch_event_rule.every_minute.name",
+     "aws_cloudwatch_event_rule.every_minute"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_cloudwatch_log_group.producer": {
+   "type": "aws_cloudwatch_log_group",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "deletion_protection_enabled",
+    "id",
+    "log_group_class",
+    "name_prefix"
+   ],
+   "sensitive": []
+  },
+  "aws_glue_catalog_database.lake": {
+   "type": "aws_glue_catalog_database",
+   "refs": {
+    "description": [
+     "var.lab_id"
+    ],
+    "name": [
+     "local.glue_db"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "catalog_id",
+    "create_table_default_permission",
+    "id",
+    "location_uri"
+   ],
+   "sensitive": []
+  },
+  "aws_glue_crawler.events": {
+   "type": "aws_glue_crawler",
+   "refs": {
+    "database_name": [
+     "aws_glue_catalog_database.lake.name",
+     "aws_glue_catalog_database.lake"
+    ],
+    "name": [
+     "var.lab_id"
+    ],
+    "role": [
+     "aws_iam_role.crawler.arn",
+     "aws_iam_role.crawler"
+    ],
+    "s3_target.0.path": [
+     "aws_s3_bucket.lake.bucket",
+     "aws_s3_bucket.lake"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "role"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_policy.crawler": {
+   "type": "aws_iam_policy",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "policy": [
+     "local.glue_arn",
+     "local.glue_arn",
+     "local.glue_db",
+     "local.glue_arn",
+     "local.glue_db",
+     "var.name_prefix",
+     "var.name_prefix"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "attachment_count",
+    "id",
+    "name_prefix",
+    "policy_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_policy.firehose": {
+   "type": "aws_iam_policy",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "policy": [
+     "local.stream_arn",
+     "var.name_prefix",
+     "var.name_prefix"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "attachment_count",
+    "id",
+    "name_prefix",
+    "policy_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_policy.producer": {
+   "type": "aws_iam_policy",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "policy": [
+     "local.stream_arn"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "attachment_count",
+    "id",
+    "name_prefix",
+    "policy_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role.crawler": {
+   "type": "aws_iam_role",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "permissions_boundary": [
+     "local.boundary_arn"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "create_date",
+    "id",
+    "inline_policy",
+    "managed_policy_arns",
+    "name_prefix",
+    "unique_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role.firehose": {
+   "type": "aws_iam_role",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "permissions_boundary": [
+     "local.boundary_arn"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "create_date",
+    "id",
+    "inline_policy",
+    "managed_policy_arns",
+    "name_prefix",
+    "unique_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role.producer": {
+   "type": "aws_iam_role",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "permissions_boundary": [
+     "local.boundary_arn"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "create_date",
+    "id",
+    "inline_policy",
+    "managed_policy_arns",
+    "name_prefix",
+    "unique_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role_policy_attachment.crawler": {
+   "type": "aws_iam_role_policy_attachment",
+   "refs": {
+    "policy_arn": [
+     "aws_iam_policy.crawler.arn",
+     "aws_iam_policy.crawler"
+    ],
+    "role": [
+     "aws_iam_role.crawler.name",
+     "aws_iam_role.crawler"
+    ]
+   },
+   "unknown": [
+    "id",
+    "policy_arn"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role_policy_attachment.firehose": {
+   "type": "aws_iam_role_policy_attachment",
+   "refs": {
+    "policy_arn": [
+     "aws_iam_policy.firehose.arn",
+     "aws_iam_policy.firehose"
+    ],
+    "role": [
+     "aws_iam_role.firehose.name",
+     "aws_iam_role.firehose"
+    ]
+   },
+   "unknown": [
+    "id",
+    "policy_arn"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role_policy_attachment.producer": {
+   "type": "aws_iam_role_policy_attachment",
+   "refs": {
+    "policy_arn": [
+     "aws_iam_policy.producer.arn",
+     "aws_iam_policy.producer"
+    ],
+    "role": [
+     "aws_iam_role.producer.name",
+     "aws_iam_role.producer"
+    ]
+   },
+   "unknown": [
+    "id",
+    "policy_arn"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role_policy_attachment.producer_logs": {
+   "type": "aws_iam_role_policy_attachment",
+   "refs": {
+    "role": [
+     "aws_iam_role.producer.name",
+     "aws_iam_role.producer"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_kinesis_firehose_delivery_stream.to_s3": {
+   "type": "aws_kinesis_firehose_delivery_stream",
+   "refs": {
+    "extended_s3_configuration.0.bucket_arn": [
+     "aws_s3_bucket.lake.arn",
+     "aws_s3_bucket.lake"
+    ],
+    "extended_s3_configuration.0.role_arn": [
+     "aws_iam_role.firehose.arn",
+     "aws_iam_role.firehose"
+    ],
+    "kinesis_source_configuration.0.kinesis_stream_arn": [
+     "aws_kinesis_stream.events.arn",
+     "aws_kinesis_stream.events"
+    ],
+    "kinesis_source_configuration.0.role_arn": [
+     "aws_iam_role.firehose.arn",
+     "aws_iam_role.firehose"
+    ],
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "destination_id",
+    "extended_s3_configuration.0.bucket_arn",
+    "extended_s3_configuration.0.role_arn",
+    "id",
+    "kinesis_source_configuration.0.kinesis_stream_arn",
+    "kinesis_source_configuration.0.role_arn",
+    "version_id"
+   ],
+   "sensitive": []
+  },
+  "aws_kinesis_stream.events": {
+   "type": "aws_kinesis_stream",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "max_record_size_in_kib"
+   ],
+   "sensitive": []
+  },
+  "aws_lambda_function.producer": {
+   "type": "aws_lambda_function",
+   "refs": {
+    "environment.0.variables": [
+     "aws_kinesis_stream.events.name",
+     "aws_kinesis_stream.events"
+    ],
+    "filename": [
+     "data.archive_file.producer.output_path",
+     "data.archive_file.producer"
+    ],
+    "function_name": [
+     "var.lab_id"
+    ],
+    "logging_config.0.log_group": [
+     "aws_cloudwatch_log_group.producer.name",
+     "aws_cloudwatch_log_group.producer"
+    ],
+    "role": [
+     "aws_iam_role.producer.arn",
+     "aws_iam_role.producer"
+    ],
+    "source_code_hash": [
+     "data.archive_file.producer.output_base64sha256",
+     "data.archive_file.producer"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "code_sha256",
+    "ephemeral_storage",
+    "id",
+    "invoke_arn",
+    "last_modified",
+    "qualified_arn",
+    "qualified_invoke_arn",
+    "response_streaming_invoke_arn",
+    "role",
+    "signing_job_arn",
+    "signing_profile_version_arn",
+    "source_code_size",
+    "tracing_config",
+    "version"
+   ],
+   "sensitive": []
+  },
+  "aws_lambda_permission.every_minute": {
+   "type": "aws_lambda_permission",
+   "refs": {
+    "function_name": [
+     "aws_lambda_function.producer.function_name",
+     "aws_lambda_function.producer"
+    ],
+    "source_arn": [
+     "aws_cloudwatch_event_rule.every_minute.arn",
+     "aws_cloudwatch_event_rule.every_minute"
+    ]
+   },
+   "unknown": [
+    "id",
+    "source_arn",
+    "statement_id_prefix"
+   ],
+   "sensitive": []
+  },
+  "aws_resourcegroups_group.lab": {
+   "type": "aws_resourcegroups_group",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "resource_query.0.query": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_s3_bucket.lake": {
+   "type": "aws_s3_bucket",
+   "refs": {
+    "bucket": [
+     "var.name_prefix"
+    ]
+   },
+   "unknown": [
+    "acceleration_status",
+    "acl",
+    "arn",
+    "bucket_domain_name",
+    "bucket_namespace",
+    "bucket_prefix",
+    "bucket_region",
+    "bucket_regional_domain_name",
+    "cors_rule",
+    "grant",
+    "hosted_zone_id",
+    "id",
+    "lifecycle_rule",
+    "logging",
+    "object_lock_configuration",
+    "object_lock_enabled",
+    "policy",
+    "replication_configuration",
+    "request_payer",
+    "server_side_encryption_configuration",
+    "versioning",
+    "website",
+    "website_domain",
+    "website_endpoint"
+   ],
+   "sensitive": []
+  },
+  "aws_s3_bucket_public_access_block.lake": {
+   "type": "aws_s3_bucket_public_access_block",
+   "refs": {
+    "bucket": [
+     "aws_s3_bucket.lake.id",
+     "aws_s3_bucket.lake"
+    ]
+   },
+   "unknown": [
+    "bucket",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "data.archive_file.producer": {
+   "type": "archive_file",
+   "refs": {
+    "output_path": [
+     "path.module"
+    ],
+    "source_file": [
+     "path.module"
+    ]
+   },
+   "unknown": [],
+   "sensitive": []
+  },
+  "data.aws_caller_identity.current": {
+   "type": "aws_caller_identity",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  },
+  "data.aws_partition.current": {
+   "type": "aws_partition",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  },
+  "time_sleep.firehose_role": {
+   "type": "time_sleep",
+   "refs": {},
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "time_sleep.producer_tags": {
+   "type": "time_sleep",
+   "refs": {},
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  }
+ }
+}

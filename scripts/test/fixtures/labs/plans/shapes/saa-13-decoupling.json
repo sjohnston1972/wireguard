@@ -1,0 +1,547 @@
+{
+ "resources": {
+  "aws_cloudwatch_event_bus.orders": {
+   "type": "aws_cloudwatch_event_bus",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_cloudwatch_event_rule.placed": {
+   "type": "aws_cloudwatch_event_rule",
+   "refs": {
+    "event_bus_name": [
+     "aws_cloudwatch_event_bus.orders.name",
+     "aws_cloudwatch_event_bus.orders"
+    ],
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "name_prefix"
+   ],
+   "sensitive": []
+  },
+  "aws_cloudwatch_event_target.workflow": {
+   "type": "aws_cloudwatch_event_target",
+   "refs": {
+    "arn": [
+     "aws_sfn_state_machine.orders.arn",
+     "aws_sfn_state_machine.orders"
+    ],
+    "event_bus_name": [
+     "aws_cloudwatch_event_bus.orders.name",
+     "aws_cloudwatch_event_bus.orders"
+    ],
+    "role_arn": [
+     "aws_iam_role.events.arn",
+     "aws_iam_role.events"
+    ],
+    "rule": [
+     "aws_cloudwatch_event_rule.placed.name",
+     "aws_cloudwatch_event_rule.placed"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "role_arn"
+   ],
+   "sensitive": []
+  },
+  "aws_cloudwatch_log_group.validate": {
+   "type": "aws_cloudwatch_log_group",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "deletion_protection_enabled",
+    "id",
+    "log_group_class",
+    "name_prefix"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_policy.events": {
+   "type": "aws_iam_policy",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "policy": [
+     "local.workflow_arn"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "attachment_count",
+    "id",
+    "name_prefix",
+    "policy_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_policy.sfn": {
+   "type": "aws_iam_policy",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "policy": [
+     "local.validate_arn",
+     "local.validate_arn",
+     "local.topic_arn"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "attachment_count",
+    "id",
+    "name_prefix",
+    "policy_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role.events": {
+   "type": "aws_iam_role",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "permissions_boundary": [
+     "local.boundary_arn"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "create_date",
+    "id",
+    "inline_policy",
+    "managed_policy_arns",
+    "name_prefix",
+    "unique_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role.sfn": {
+   "type": "aws_iam_role",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "permissions_boundary": [
+     "local.boundary_arn"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "create_date",
+    "id",
+    "inline_policy",
+    "managed_policy_arns",
+    "name_prefix",
+    "unique_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role.validate": {
+   "type": "aws_iam_role",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "permissions_boundary": [
+     "local.boundary_arn"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "create_date",
+    "id",
+    "inline_policy",
+    "managed_policy_arns",
+    "name_prefix",
+    "unique_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role_policy_attachment.events": {
+   "type": "aws_iam_role_policy_attachment",
+   "refs": {
+    "policy_arn": [
+     "aws_iam_policy.events.arn",
+     "aws_iam_policy.events"
+    ],
+    "role": [
+     "aws_iam_role.events.name",
+     "aws_iam_role.events"
+    ]
+   },
+   "unknown": [
+    "id",
+    "policy_arn"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role_policy_attachment.sfn": {
+   "type": "aws_iam_role_policy_attachment",
+   "refs": {
+    "policy_arn": [
+     "aws_iam_policy.sfn.arn",
+     "aws_iam_policy.sfn"
+    ],
+    "role": [
+     "aws_iam_role.sfn.name",
+     "aws_iam_role.sfn"
+    ]
+   },
+   "unknown": [
+    "id",
+    "policy_arn"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role_policy_attachment.validate_logs": {
+   "type": "aws_iam_role_policy_attachment",
+   "refs": {
+    "role": [
+     "aws_iam_role.validate.name",
+     "aws_iam_role.validate"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_lambda_function.validate": {
+   "type": "aws_lambda_function",
+   "refs": {
+    "filename": [
+     "data.archive_file.validate.output_path",
+     "data.archive_file.validate"
+    ],
+    "function_name": [
+     "var.lab_id"
+    ],
+    "logging_config.0.log_group": [
+     "aws_cloudwatch_log_group.validate.name",
+     "aws_cloudwatch_log_group.validate"
+    ],
+    "role": [
+     "aws_iam_role.validate.arn",
+     "aws_iam_role.validate"
+    ],
+    "source_code_hash": [
+     "data.archive_file.validate.output_base64sha256",
+     "data.archive_file.validate"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "code_sha256",
+    "ephemeral_storage",
+    "id",
+    "invoke_arn",
+    "last_modified",
+    "qualified_arn",
+    "qualified_invoke_arn",
+    "response_streaming_invoke_arn",
+    "role",
+    "signing_job_arn",
+    "signing_profile_version_arn",
+    "source_code_size",
+    "tracing_config",
+    "version"
+   ],
+   "sensitive": []
+  },
+  "aws_resourcegroups_group.lab": {
+   "type": "aws_resourcegroups_group",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "resource_query.0.query": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_sfn_state_machine.orders": {
+   "type": "aws_sfn_state_machine",
+   "refs": {
+    "definition": [
+     "var.lab_id",
+     "local.validate_arn",
+     "local.topic_arn"
+    ],
+    "name": [
+     "var.lab_id"
+    ],
+    "role_arn": [
+     "aws_iam_role.sfn.arn",
+     "aws_iam_role.sfn"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "creation_date",
+    "description",
+    "encryption_configuration",
+    "id",
+    "logging_configuration",
+    "name_prefix",
+    "revision_id",
+    "role_arn",
+    "state_machine_version_arn",
+    "status",
+    "tracing_configuration",
+    "version_description"
+   ],
+   "sensitive": []
+  },
+  "aws_sns_topic.orders": {
+   "type": "aws_sns_topic",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "beginning_archive_time",
+    "fifo_throughput_scope",
+    "id",
+    "maximum_message_size",
+    "name_prefix",
+    "owner",
+    "policy",
+    "signature_version",
+    "tracing_config"
+   ],
+   "sensitive": []
+  },
+  "aws_sns_topic_subscription.orders[\"billing\"]": {
+   "type": "aws_sns_topic_subscription",
+   "refs": {
+    "endpoint": [
+     "aws_sqs_queue.orders",
+     "each.key"
+    ],
+    "topic_arn": [
+     "aws_sns_topic.orders.arn",
+     "aws_sns_topic.orders"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "confirmation_was_authenticated",
+    "endpoint",
+    "filter_policy_scope",
+    "id",
+    "owner_id",
+    "pending_confirmation",
+    "topic_arn"
+   ],
+   "sensitive": []
+  },
+  "aws_sns_topic_subscription.orders[\"shipping\"]": {
+   "type": "aws_sns_topic_subscription",
+   "refs": {
+    "endpoint": [
+     "aws_sqs_queue.orders",
+     "each.key"
+    ],
+    "topic_arn": [
+     "aws_sns_topic.orders.arn",
+     "aws_sns_topic.orders"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "confirmation_was_authenticated",
+    "endpoint",
+    "filter_policy_scope",
+    "id",
+    "owner_id",
+    "pending_confirmation",
+    "topic_arn"
+   ],
+   "sensitive": []
+  },
+  "aws_sqs_queue.billing_dlq": {
+   "type": "aws_sqs_queue",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "deduplication_scope",
+    "fifo_throughput_limit",
+    "id",
+    "name_prefix",
+    "policy",
+    "redrive_allow_policy",
+    "redrive_policy",
+    "url"
+   ],
+   "sensitive": []
+  },
+  "aws_sqs_queue.orders[\"billing\"]": {
+   "type": "aws_sqs_queue",
+   "refs": {
+    "name": [
+     "var.lab_id",
+     "each.key"
+    ],
+    "redrive_policy": [
+     "each.key",
+     "aws_sqs_queue.billing_dlq.arn",
+     "aws_sqs_queue.billing_dlq"
+    ],
+    "tags": [
+     "each.key"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "deduplication_scope",
+    "fifo_throughput_limit",
+    "id",
+    "name_prefix",
+    "policy",
+    "redrive_allow_policy",
+    "redrive_policy",
+    "url"
+   ],
+   "sensitive": []
+  },
+  "aws_sqs_queue.orders[\"shipping\"]": {
+   "type": "aws_sqs_queue",
+   "refs": {
+    "name": [
+     "var.lab_id",
+     "each.key"
+    ],
+    "redrive_policy": [
+     "each.key",
+     "aws_sqs_queue.billing_dlq.arn",
+     "aws_sqs_queue.billing_dlq"
+    ],
+    "tags": [
+     "each.key"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "deduplication_scope",
+    "fifo_throughput_limit",
+    "id",
+    "name_prefix",
+    "policy",
+    "redrive_allow_policy",
+    "redrive_policy",
+    "url"
+   ],
+   "sensitive": []
+  },
+  "aws_sqs_queue_policy.orders[\"billing\"]": {
+   "type": "aws_sqs_queue_policy",
+   "refs": {
+    "policy": [
+     "data.aws_partition.current.partition",
+     "data.aws_partition.current",
+     "var.region",
+     "local.account",
+     "var.lab_id",
+     "each.key",
+     "local.topic_arn"
+    ],
+    "queue_url": [
+     "aws_sqs_queue.orders",
+     "each.key"
+    ]
+   },
+   "unknown": [
+    "id",
+    "queue_url"
+   ],
+   "sensitive": []
+  },
+  "aws_sqs_queue_policy.orders[\"shipping\"]": {
+   "type": "aws_sqs_queue_policy",
+   "refs": {
+    "policy": [
+     "data.aws_partition.current.partition",
+     "data.aws_partition.current",
+     "var.region",
+     "local.account",
+     "var.lab_id",
+     "each.key",
+     "local.topic_arn"
+    ],
+    "queue_url": [
+     "aws_sqs_queue.orders",
+     "each.key"
+    ]
+   },
+   "unknown": [
+    "id",
+    "queue_url"
+   ],
+   "sensitive": []
+  },
+  "data.archive_file.validate": {
+   "type": "archive_file",
+   "refs": {
+    "output_path": [
+     "path.module"
+    ],
+    "source_file": [
+     "path.module"
+    ]
+   },
+   "unknown": [],
+   "sensitive": []
+  },
+  "data.aws_caller_identity.current": {
+   "type": "aws_caller_identity",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  },
+  "data.aws_partition.current": {
+   "type": "aws_partition",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  },
+  "time_sleep.messaging_tags": {
+   "type": "time_sleep",
+   "refs": {},
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  }
+ }
+}

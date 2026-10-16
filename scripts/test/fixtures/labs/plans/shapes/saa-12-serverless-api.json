@@ -1,0 +1,473 @@
+{
+ "resources": {
+  "aws_apigatewayv2_api.lab": {
+   "type": "aws_apigatewayv2_api",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "api_endpoint",
+    "arn",
+    "execution_arn",
+    "id",
+    "ip_address_type"
+   ],
+   "sensitive": []
+  },
+  "aws_apigatewayv2_authorizer.cognito": {
+   "type": "aws_apigatewayv2_authorizer",
+   "refs": {
+    "api_id": [
+     "aws_apigatewayv2_api.lab.id",
+     "aws_apigatewayv2_api.lab"
+    ],
+    "jwt_configuration.0.audience": [
+     "aws_cognito_user_pool_client.cli.id",
+     "aws_cognito_user_pool_client.cli"
+    ],
+    "jwt_configuration.0.issuer": [
+     "aws_cognito_user_pool.users.endpoint",
+     "aws_cognito_user_pool.users"
+    ]
+   },
+   "unknown": [
+    "api_id",
+    "authorizer_result_ttl_in_seconds",
+    "id",
+    "jwt_configuration.0.audience",
+    "jwt_configuration.0.issuer"
+   ],
+   "sensitive": []
+  },
+  "aws_apigatewayv2_integration.api": {
+   "type": "aws_apigatewayv2_integration",
+   "refs": {
+    "api_id": [
+     "aws_apigatewayv2_api.lab.id",
+     "aws_apigatewayv2_api.lab"
+    ],
+    "integration_uri": [
+     "aws_lambda_function.api.invoke_arn",
+     "aws_lambda_function.api"
+    ]
+   },
+   "unknown": [
+    "api_id",
+    "id",
+    "integration_response_selection_expression",
+    "integration_uri",
+    "timeout_milliseconds"
+   ],
+   "sensitive": []
+  },
+  "aws_apigatewayv2_route.health": {
+   "type": "aws_apigatewayv2_route",
+   "refs": {
+    "api_id": [
+     "aws_apigatewayv2_api.lab.id",
+     "aws_apigatewayv2_api.lab"
+    ],
+    "target": [
+     "aws_apigatewayv2_integration.api.id",
+     "aws_apigatewayv2_integration.api"
+    ]
+   },
+   "unknown": [
+    "api_id",
+    "id",
+    "target"
+   ],
+   "sensitive": []
+  },
+  "aws_apigatewayv2_route.items_get": {
+   "type": "aws_apigatewayv2_route",
+   "refs": {
+    "api_id": [
+     "aws_apigatewayv2_api.lab.id",
+     "aws_apigatewayv2_api.lab"
+    ],
+    "authorizer_id": [
+     "aws_apigatewayv2_authorizer.cognito.id",
+     "aws_apigatewayv2_authorizer.cognito"
+    ],
+    "target": [
+     "aws_apigatewayv2_integration.api.id",
+     "aws_apigatewayv2_integration.api"
+    ]
+   },
+   "unknown": [
+    "api_id",
+    "authorizer_id",
+    "id",
+    "target"
+   ],
+   "sensitive": []
+  },
+  "aws_apigatewayv2_route.items_post": {
+   "type": "aws_apigatewayv2_route",
+   "refs": {
+    "api_id": [
+     "aws_apigatewayv2_api.lab.id",
+     "aws_apigatewayv2_api.lab"
+    ],
+    "authorizer_id": [
+     "aws_apigatewayv2_authorizer.cognito.id",
+     "aws_apigatewayv2_authorizer.cognito"
+    ],
+    "target": [
+     "aws_apigatewayv2_integration.api.id",
+     "aws_apigatewayv2_integration.api"
+    ]
+   },
+   "unknown": [
+    "api_id",
+    "authorizer_id",
+    "id",
+    "target"
+   ],
+   "sensitive": []
+  },
+  "aws_apigatewayv2_stage.default": {
+   "type": "aws_apigatewayv2_stage",
+   "refs": {
+    "api_id": [
+     "aws_apigatewayv2_api.lab.id",
+     "aws_apigatewayv2_api.lab"
+    ]
+   },
+   "unknown": [
+    "api_id",
+    "arn",
+    "default_route_settings.0.logging_level",
+    "deployment_id",
+    "execution_arn",
+    "id",
+    "invoke_url"
+   ],
+   "sensitive": []
+  },
+  "aws_cloudwatch_log_group.api": {
+   "type": "aws_cloudwatch_log_group",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "deletion_protection_enabled",
+    "id",
+    "log_group_class",
+    "name_prefix"
+   ],
+   "sensitive": []
+  },
+  "aws_cognito_user.labuser": {
+   "type": "aws_cognito_user",
+   "refs": {
+    "password": [
+     "var.admin_password"
+    ],
+    "user_pool_id": [
+     "aws_cognito_user_pool.users.id",
+     "aws_cognito_user_pool.users"
+    ]
+   },
+   "unknown": [
+    "creation_date",
+    "id",
+    "last_modified_date",
+    "mfa_setting_list",
+    "preferred_mfa_setting",
+    "status",
+    "sub",
+    "user_pool_id"
+   ],
+   "sensitive": [
+    "password",
+    "temporary_password"
+   ]
+  },
+  "aws_cognito_user_pool.users": {
+   "type": "aws_cognito_user_pool",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "creation_date",
+    "custom_domain",
+    "domain",
+    "email_verification_message",
+    "email_verification_subject",
+    "endpoint",
+    "estimated_number_of_users",
+    "id",
+    "last_modified_date",
+    "password_policy.0.temporary_password_validity_days",
+    "sign_in_policy",
+    "sms_configuration",
+    "sms_verification_message",
+    "username_configuration",
+    "verification_message_template"
+   ],
+   "sensitive": []
+  },
+  "aws_cognito_user_pool_client.cli": {
+   "type": "aws_cognito_user_pool_client",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "user_pool_id": [
+     "aws_cognito_user_pool.users.id",
+     "aws_cognito_user_pool.users"
+    ]
+   },
+   "unknown": [
+    "access_token_validity",
+    "allowed_oauth_flows",
+    "allowed_oauth_flows_user_pool_client",
+    "allowed_oauth_scopes",
+    "auth_session_validity",
+    "callback_urls",
+    "client_secret",
+    "default_redirect_uri",
+    "enable_propagate_additional_user_context_data",
+    "enable_token_revocation",
+    "id",
+    "id_token_validity",
+    "logout_urls",
+    "read_attributes",
+    "refresh_token_validity",
+    "supported_identity_providers",
+    "user_pool_id",
+    "write_attributes"
+   ],
+   "sensitive": [
+    "client_secret"
+   ]
+  },
+  "aws_dynamodb_table.items": {
+   "type": "aws_dynamodb_table",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "global_secondary_index",
+    "global_table_witness",
+    "id",
+    "point_in_time_recovery",
+    "read_capacity",
+    "server_side_encryption",
+    "stream_arn",
+    "stream_label",
+    "stream_view_type",
+    "ttl",
+    "warm_throughput",
+    "write_capacity"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_policy.api": {
+   "type": "aws_iam_policy",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "policy": [
+     "local.table_arn"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "attachment_count",
+    "id",
+    "name_prefix",
+    "policy_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role.api": {
+   "type": "aws_iam_role",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "permissions_boundary": [
+     "local.boundary_arn"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "create_date",
+    "id",
+    "inline_policy",
+    "managed_policy_arns",
+    "name_prefix",
+    "unique_id"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role_policy_attachment.api": {
+   "type": "aws_iam_role_policy_attachment",
+   "refs": {
+    "policy_arn": [
+     "aws_iam_policy.api.arn",
+     "aws_iam_policy.api"
+    ],
+    "role": [
+     "aws_iam_role.api.name",
+     "aws_iam_role.api"
+    ]
+   },
+   "unknown": [
+    "id",
+    "policy_arn"
+   ],
+   "sensitive": []
+  },
+  "aws_iam_role_policy_attachment.api_logs": {
+   "type": "aws_iam_role_policy_attachment",
+   "refs": {
+    "role": [
+     "aws_iam_role.api.name",
+     "aws_iam_role.api"
+    ]
+   },
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_lambda_function.api": {
+   "type": "aws_lambda_function",
+   "refs": {
+    "environment.0.variables": [
+     "aws_dynamodb_table.items.name",
+     "aws_dynamodb_table.items"
+    ],
+    "filename": [
+     "data.archive_file.api.output_path",
+     "data.archive_file.api"
+    ],
+    "function_name": [
+     "var.lab_id"
+    ],
+    "logging_config.0.log_group": [
+     "aws_cloudwatch_log_group.api.name",
+     "aws_cloudwatch_log_group.api"
+    ],
+    "role": [
+     "aws_iam_role.api.arn",
+     "aws_iam_role.api"
+    ],
+    "source_code_hash": [
+     "data.archive_file.api.output_base64sha256",
+     "data.archive_file.api"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "code_sha256",
+    "ephemeral_storage",
+    "id",
+    "invoke_arn",
+    "last_modified",
+    "qualified_arn",
+    "qualified_invoke_arn",
+    "response_streaming_invoke_arn",
+    "role",
+    "signing_job_arn",
+    "signing_profile_version_arn",
+    "source_code_size",
+    "tracing_config",
+    "version"
+   ],
+   "sensitive": []
+  },
+  "aws_lambda_permission.api": {
+   "type": "aws_lambda_permission",
+   "refs": {
+    "function_name": [
+     "aws_lambda_function.api.function_name",
+     "aws_lambda_function.api"
+    ],
+    "source_arn": [
+     "aws_apigatewayv2_api.lab.execution_arn",
+     "aws_apigatewayv2_api.lab"
+    ]
+   },
+   "unknown": [
+    "id",
+    "source_arn",
+    "statement_id_prefix"
+   ],
+   "sensitive": []
+  },
+  "aws_resourcegroups_group.lab": {
+   "type": "aws_resourcegroups_group",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "resource_query.0.query": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "data.archive_file.api": {
+   "type": "archive_file",
+   "refs": {
+    "output_path": [
+     "path.module"
+    ],
+    "source_file": [
+     "path.module"
+    ]
+   },
+   "unknown": [],
+   "sensitive": []
+  },
+  "data.aws_caller_identity.current": {
+   "type": "aws_caller_identity",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  },
+  "data.aws_partition.current": {
+   "type": "aws_partition",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  },
+  "time_sleep.function_tags": {
+   "type": "time_sleep",
+   "refs": {},
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  },
+  "time_sleep.pool_tags": {
+   "type": "time_sleep",
+   "refs": {},
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  }
+ }
+}
