@@ -974,6 +974,24 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: [],
   },
+  "saa-15-data-security": {
+    nodes: [
+      "bastion eice-lab < snet-private-1",
+      "keyVault key-data < lab-saa-15-data-security · London",
+      "managedIdentity lab-saa-15-data-security-client < lab-saa-15-data-security · London",
+      "nsg sg-eice < vpc-lab",
+      "nsg sg-vms < vpc-lab",
+      "privateEndpoint vpce-s3 < vpc-lab",
+      "resourceGroup lab-saa-15-data-security · London",
+      "routeTable rt-private < vpc-lab",
+      "storage data < lab-saa-15-data-security · London",
+      "subnet snet-private-1 < vpc-lab",
+      "subnet snet-private-2 < vpc-lab",
+      "vm vm-client < snet-private-1",
+      "vnet vpc-lab < lab-saa-15-data-security · London",
+    ],
+    edges: [],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);

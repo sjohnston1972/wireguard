@@ -730,6 +730,15 @@
    "height": 928
   }
  ],
+ "saa-15-data-security": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. An EC2 Instance Connect Endpoint, an EC2 instance, an S3 bucket, a KMS key and more, in one VPC with two subnets.",
+   "width": 1387,
+   "height": 928
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",

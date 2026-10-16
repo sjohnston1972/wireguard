@@ -548,6 +548,13 @@
    "kind": "architecture"
   }
  ],
+ "saa-15-data-security": [
+  {
+   "file": "architecture.svg",
+   "title": "Data security: KMS, bucket and endpoint policies: architecture",
+   "kind": "architecture"
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",
