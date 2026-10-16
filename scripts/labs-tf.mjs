@@ -99,6 +99,9 @@ const MOCK_TENANT = "11111111-1111-4111-8111-111111111111";
  */
 const MOCK_SSH_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH03BQA5/AQUCJHTD+mOsPkEaHYZJ/1Dhlg2VWSBcxxC labs-tf-mock";
 
+/** The name_prefix a mocked AWS plan uses: a + the lab number + k3x9q (the tfvars and the plan variables agree). */
+const mockNamePrefix = (labId) => `a${/^[a-z0-9]+-(\d{2})-/.exec(labId)?.[1] ?? "00"}k3x9q`;
+
 /** The aws mock: the data sources the labs and the template read, answered with fake but well-formed values. */
 const AWS_MOCK = [
   'mock_provider "aws" {',
@@ -135,7 +138,7 @@ export function mockPlanFile(labId, providers) {
       "",
       "variables {",
       `  lab_id           = "${labId}"`,
-      `  name_prefix      = "a${n}k3x9q"`,
+      `  name_prefix      = "${mockNamePrefix(labId)}"`,
       '  region           = "eu-west-2"',
       '  secondary_region = "eu-west-1"',
       `  address_space    = "${slotCidr(LAB_SLOTS - 1)}"`,
@@ -239,7 +242,7 @@ export async function withTfRunner({ maxBuffer } = {}, work) {
 
 /** The contract variables the AWS mock sets, as a plan holds them (the test_plan message carries none). */
 const AWS_MOCK_VARIABLES = (labId) => ({
-  name_prefix: { value: `a${/^[a-z0-9]+-(\d{2})-/.exec(labId)?.[1] ?? "00"}k3x9q` },
+  name_prefix: { value: mockNamePrefix(labId) },
   region: { value: "eu-west-2" },
   secondary_region: { value: "eu-west-1" },
   address_space: { value: slotCidr(LAB_SLOTS - 1) },

@@ -5,8 +5,8 @@
 # APIs the aws provider signs for us-east-1 itself (ruling P7).
 # Costs, authored (no hourly list price): a hosted zone $0.50/month, not
 # charged when deleted within 12 hours (V, spec §15); one HTTP health check
-# $0.50-0.75/month (V: whether a partial month is prorated; worst case
-# about 56p a session, ruling P8 keeps it to one); CloudFront and S3 requests
+# $0.75/month (prorated, Route 53 pricing, about 0.2p a session; ruling P8
+# keeps it to one); CloudFront and S3 requests
 # for a few test pages: pennies a month.
 id: soa-09-route53-cloudfront
 version: 1

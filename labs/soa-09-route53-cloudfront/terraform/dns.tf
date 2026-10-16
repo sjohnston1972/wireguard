@@ -7,7 +7,7 @@
 # the distribution); app answers blue 70% of the time and green 30%
 # (weighted); www answers blue while the health check of /health.html passes,
 # and sorry when it fails (failover); cdn is an alias straight to the
-# distribution. One health check (ruling P8: Route 53 may bill a whole month).
+# distribution. One health check (ruling P8).
 
 locals {
   zone = "${var.name_prefix}.labs.clydeford.net"

@@ -34,7 +34,7 @@ export default () => {
     forEach: { references: [], constant_value: ["blue", "green", "sorry"] },
     values: { name: `${key}.${zone}`, type: "CNAME", ttl: 60 },
     unknown: ["zone_id", "records"],
-    refs: { zone_id: zoneRef, name: ["each.key", "local.zone"], records: ["local.cdn", ...ref(dist, "domain_name")] },
+    refs: { zone_id: zoneRef, name: ["each.key", "local.zone"], records: ["local.cdn"] },
   });
   const app = (key, weight) => ({
     address: `aws_route53_record.app["${key}"]`,
