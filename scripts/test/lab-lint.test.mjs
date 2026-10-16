@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -210,4 +210,33 @@ test("the command line: exit 1 with one line per problem before Terraform starts
   const good = spawnSync(process.execPath, [SCRIPT, join(LABS, "az104-06-blob-security", "terraform")], { encoding: "utf8" });
   assert.equal(good.status, 0, good.stdout + good.stderr);
   assert.equal(spawnSync(process.execPath, [SCRIPT], { encoding: "utf8" }).status, 2);
+});
+
+test("cfn (ruling P4): --cloud aws reads terraform/cfn/*.yaml: short-form tags, Transform, IAM types, custom resources, Retain and literal CIDRs are refused; the long form passes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lint-cfn-"));
+  mkdirSync(join(dir, "cfn"));
+  writeFileSync(join(dir, "main.tf"), "# main.tf\n");
+  const good = ["# cfn/stack.yaml", "# Short forms such as !Ref are not read here.", "Resources:", "  Q:", "    Type: AWS::SQS::Queue", "    Properties:", "      VisibilityTimeout:", "        Ref: Timeout", "    DeletionPolicy: Delete", ""].join("\n");
+  writeFileSync(join(dir, "cfn", "stack.yaml"), good);
+  assert.deepEqual(lintDir(dir, { cloud: "aws" }), []);
+  const bad = [
+    "Transform: AWS::Serverless-2016-10-31",
+    "Resources:",
+    "  R:",
+    "    Type: AWS::IAM::Role",
+    "  C:",
+    "    Type: Custom::Thing",
+    "    DeletionPolicy: Retain",
+    "  Q:",
+    "    Type: AWS::SQS::Queue",
+    "    Properties:",
+    "      VisibilityTimeout: !Ref Timeout",
+    "      Cidr: 10.1.0.0/16",
+    "",
+  ].join("\n");
+  writeFileSync(join(dir, "cfn", "stack.yaml"), bad);
+  const got = lintDir(dir, { cloud: "aws" }).map((p) => `${p.rule}: ${p.file}:${p.line}`);
+  assert.deepEqual(got.sort(), ["cfn: cfn/stack.yaml:1", "cfn: cfn/stack.yaml:11", "cfn: cfn/stack.yaml:4", "cfn: cfn/stack.yaml:6", "cfn: cfn/stack.yaml:7", "literal-cidr: cfn/stack.yaml:12"].sort());
+  // An Azure lab's folder never has its cfn/ read.
+  assert.deepEqual(lintDir(dir, { cloud: "azure" }).filter((p) => p.file.startsWith("cfn/")), []);
 });

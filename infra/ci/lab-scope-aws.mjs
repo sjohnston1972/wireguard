@@ -23,15 +23,28 @@
 //                a plan only when secondary_region is set and differs from region), or
 //                us-east-1 / us-west-2 (AWS_GLOBAL_LABS only), the provider's or a
 //                resource's own (aws provider 6's per-resource region); default_tags
-//                other than tags = var.tags
+//                other than tags = var.tags; (plan) a resource whose own region is a
+//                global one but not on GLOBAL_REGION_TYPES (us-east-1: a WAF web ACL
+//                for CloudFront; us-west-2: Global Accelerator; ruling P7); a secret's
+//                replica or a multi-Region KMS key (copies outside the lab's regions)
 //   provisioner  any provisioner (it would run commands with the pipeline's keys)
 //   import       adopting an object that already exists: a lab only ever creates
 //   type         a resource type not on AWS_TYPES, a data source not on AWS_DATA or
 //                breaking its condition (no lookups of VPCs, subnets, route tables,
 //                security groups or instances), a Config recorder or delivery channel
 //                outside AWS_CONFIG_LABS (one per region per account), a VPC's untagged
-//                defaults or aws_ec2_tag (UNTAGGED_DEFAULT_TYPES, ruling A48)
-//   never        what a lab only explains in its readme (NEVER_TYPES; dedicated or host tenancy)
+//                defaults or aws_ec2_tag (UNTAGGED_DEFAULT_TYPES, ruling A48); an Access
+//                Analyzer analyzer outside ACCESS_ANALYZER_LABS or of a type other than
+//                ACCOUNT (ruling P14)
+//   never        what a lab only explains in its readme (NEVER_TYPES; dedicated or host
+//                tenancy; StackSets and registered CloudFormation types)
+//   template     a CloudFormation stack (ruling P4) from a template_url, not named
+//                lab-<id>-*, with capabilities, without the lab's own service role by
+//                reference, with a template_body not known at plan or not JSON, or whose
+//                template (cfnTemplateProblems) makes a type off CFN_TYPES, has a
+//                Transform, Fn::Transform or Fn::ImportValue, keeps anything after
+//                tear-down, names its topics, queues or alarms, or puts a log group or
+//                parameter outside /cloudlabs/<id>/
 //   tag          (plan) tags_all without cloudlabs-lab = <id>, or not known at plan;
 //                an instance's volume_tags (ruling A49), a launch template's tag specifications, an Auto
 //                Scaling group's propagated tag, ECS and RDS tag copying and Backup
@@ -43,22 +56,36 @@
 //                MANAGED_POLICIES and the lab's own; policy documents with "*", iam: or
 //                NotAction; trust policies naming anyone but AWS services and the lab's
 //                own roles in the lab's own account (no wildcard; ruling A52); a
-//                document not known at plan (ruling A42)
+//                document not known at plan (ruling A42); a login profile for a user
+//                not the lab's own or with password_reset_required (ruling P5); a Lambda
+//                function or ECS task running as a role not the lab's own, by reference
 //   gateway      the VPN server's names (vpc-wg, vm-wg, ...: GATEWAY_NAME_LIST), the wg-admin
 //                key or value, a peering accepter, a peering not between the lab's own VPCs,
 //                and (plan) an id of an existing AWS resource under an id-holding key, or an
 //                instance target selecting every instance (a wildcard id, tag-key, a wildcard
-//                tag value; ruling A50)
+//                tag value; ruling A50); an instance target off the allow-list (ruling P9:
+//                InstanceIds or WindowTargetIds of the lab's own by reference, tag:cloudlabs-lab
+//                = the lab id, another tag valued lab-<id>-*, resource-groups:Name = lab-<id>);
+//                lab 09's public zone not named <name_prefix>.labs.clydeford.net (ruling A27)
+//                or on a delegation set, and records, health checks and distributions that
+//                name anything but the lab's own zone, distribution, bucket or load balancer
+//                by reference (ruling P8)
 //   address      (plan) a VPC, secondary CIDR or subnet outside the slot (var.address_space)
 //                or overlapping another; a route other than the slot, var.gateway_cidr or
 //                0.0.0.0/0 (::/0 for IPv6); an IPv6 IPAM pool outside ans-20-vpc-design
 //   public       a public IPv4 on an instance, launch template or Elastic IP outside
 //                PUBLIC_INSTANCE_LABS (spec §7.4); a subnet mapping public IPs; SSH (TCP
-//                22) admitted from the internet
+//                22) admitted from the internet; a resource policy (RESOURCE_POLICIES, and
+//                a topic's or secret's own policy) not known at plan or whose Allow names
+//                everyone or another account; a Lambda permission for anything but an
+//                AWS service, or a function URL with no auth; ECS tasks with public IPs
+//                (ruling P10)
 //   lingering    a resource that would outlive tear-down: deletion protection, final
-//                snapshots, retained buckets, keys, vaults, log groups and locks
+//                snapshots, retained buckets, keys, vaults, log groups and locks; an IAM
+//                user without force_destroy (ruling P6)
 //   size         instance types, database classes, disks, group sizes and counts above
-//                the labs' caps
+//                the labs' caps (ECS tasks, Lambda memory and timeout, CloudFront's
+//                price class, Route 53 health check extras)
 //
 // In HCL mode the tag and address rules and the known-id part of gateway are left
 // out (values are not known); the others read literal values where the HCL has them.
@@ -92,7 +119,7 @@ export const AWS_MEDIUM_LABS = ["saa-19-eks"];
 
 /** One character AWS allows in a security group or rule description. */
 export const SG_DESCRIPTION_CHAR = /^[a-zA-Z0-9. _:/()#,@\[\]+=&;{}!$*-]$/;
-export const AWS_RULES = ["provider", "provisioner", "import", "type", "never", "tag", "untaggable", "iam", "gateway", "address", "public", "lingering", "size", "description"];
+export const AWS_RULES = ["provider", "provisioner", "import", "type", "never", "template", "tag", "untaggable", "iam", "gateway", "address", "public", "lingering", "size", "description"];
 export const AWS_PROVIDER_SOURCES = ["registry.terraform.io/hashicorp/aws", "registry.terraform.io/hashicorp/random", "registry.terraform.io/hashicorp/time", "registry.terraform.io/hashicorp/tls", "registry.terraform.io/hashicorp/archive"];
 const AWS_SOURCE = AWS_PROVIDER_SOURCES[0];
 /** The only settings an aws provider block may carry (AWS labs spec §4). */
@@ -122,6 +149,21 @@ export const AWS_TYPES = new Map([
   ...["aws_s3_bucket", "aws_s3_bucket_versioning", "aws_s3_bucket_lifecycle_configuration", "aws_s3_bucket_replication_configuration", "aws_s3_bucket_public_access_block", "aws_s3_bucket_policy", "aws_s3_object"].map((t) => [t, "lab buckets named cloudlabs-<name_prefix>-*"]),
   ...["aws_backup_vault", "aws_backup_plan", "aws_backup_selection"].map((t) => [t, "lab 04's backups"]),
   ...["aws_db_instance", "aws_db_subnet_group", "aws_db_parameter_group"].map((t) => [t, "lab 05's database"]),
+  ["random_password", "a lab secret's first value (hashicorp/random), never leaves the lab's state"],
+  ["aws_cloudformation_stack", "lab 06's stack: its template is read against CFN_TYPES (rule template) and it runs as the lab's own bounded service role"],
+  ...["aws_iam_user", "aws_iam_user_login_profile", "aws_iam_user_policy_attachment"].map((t) => [t, "lab 07's console user under the boundary (AWS_IAM_USER_LABS only, rule iam)"]),
+  ...["aws_kms_key", "aws_kms_alias"].map((t) => [t, "a lab key (7-day deletion window, the account root granted kms:*) and its alias/lab-<id>-* name"]),
+  ...["aws_secretsmanager_secret", "aws_secretsmanager_secret_version", "aws_secretsmanager_secret_rotation"].map((t) => [t, "a lab secret, deleted without recovery, rotated by the lab's own function"]),
+  ...["aws_lambda_function", "aws_lambda_permission"].map((t) => [t, "a lab function writing to the lab's own log group, invoked only by AWS services (rule public)"]),
+  ["aws_accessanalyzer_analyzer", "lab 07's account analyzer (ACCESS_ANALYZER_LABS only: one per region per account)"],
+  ["aws_vpc_peering_connection", "peering between two of the lab's own VPCs, by reference (rule gateway)"],
+  ...["aws_network_acl", "aws_network_acl_rule", "aws_network_acl_association"].map((t) => [t, "the lab's own network ACLs on its own subnets"]),
+  ["aws_flow_log", "flow logs of the lab's VPCs to the lab's own log group (rule lingering)"],
+  ...["aws_route53_zone", "aws_route53_record", "aws_route53_health_check"].map((t) => [t, "lab 09's public zone <name_prefix>.labs.clydeford.net (never delegated, A27), its records and a health check of its own site"]),
+  ...["aws_cloudfront_distribution", "aws_cloudfront_origin_access_control"].map((t) => [t, "lab 09's distribution in front of the lab's own private bucket"]),
+  ...["aws_eip", "aws_nat_gateway"].map((t) => [t, "a lab NAT gateway and its address (public by nature, §7.4); at most 2 (rule size)"]),
+  ...["aws_ecr_repository", "aws_ecr_lifecycle_policy"].map((t) => [t, "lab 10's image repository, deleted with its images"]),
+  ...["aws_ecs_cluster", "aws_ecs_task_definition", "aws_ecs_service"].map((t) => [t, "lab 10's Fargate cluster, task and service (0.5 vCPU a task, at most 4 tasks)"]),
 ]);
 
 /** The data sources an AWS lab may read, each with why (and the condition dataProblem checks). None looks up a lab-made-elsewhere VPC, subnet, route table, security group or instance. */
@@ -143,6 +185,8 @@ export const NEVER_TYPES = [
   /^aws_route53domains_/, /^aws_ec2_host$/, /^aws_ec2_capacity_reservation$/, /^aws_ec2_capacity_block_reservation$/, /^aws_guardduty_/,
   /^aws_securityhub_/, /^aws_macie2_/, /^aws_iam_service_linked_role$/, /^aws_iam_access_key$/, /^aws_iam_account_/, /^aws_budgets_/, /^aws_ce_/,
   /^aws_ec2_byoip_/, /^aws_vpc_ipam_pool_cidr$/,
+  // StackSets are readme-only (spec §12.2); registering a CloudFormation type changes the whole account.
+  /^aws_cloudformation_stack_set/, /^aws_cloudformation_stack_instances$/, /^aws_cloudformation_type$/,
 ];
 /** The one lab that may make an IPAM pool CIDR and an IPv6 pool of its own. */
 const IPAM_LAB = "ans-20-vpc-design";
@@ -157,8 +201,28 @@ export const UNTAGGED_DEFAULT_TYPES = new Map([
   ["aws_default_route_table", "a VPC's main route table"],
   ["aws_ec2_tag", "a tag on an item that is already there"],
 ]);
-const DEFERRED = { aws_iam_user: "iam", aws_iam_user_login_profile: "iam", aws_iam_user_policy_attachment: "iam", aws_vpc_peering_connection_accepter: "gateway" };
+const DEFERRED = { aws_vpc_peering_connection_accepter: "gateway" };
 const CONFIG_TYPES = new Set(["aws_config_configuration_recorder", "aws_config_delivery_channel", "aws_config_configuration_recorder_status"]);
+/** Ruling P14: the one lab that may make an Access Analyzer analyzer (one account analyzer per region per account). */
+export const ACCESS_ANALYZER_LABS = ["soa-07-iam-kms"];
+/** Ruling P7: in AWS_GLOBAL_LABS, the only types whose own region may be a global one. */
+export const GLOBAL_REGION_TYPES = { "us-east-1": [/^aws_wafv2_/], "us-west-2": [/^aws_globalaccelerator_/] };
+/** Ruling A27: lab 09's public zone is <name_prefix> under this, never delegated. */
+export const LAB_ZONE_SUFFIX = ".labs.clydeford.net";
+/** Ruling P4: what a lab's CloudFormation stack may make, each with why it stays inside the lab. */
+export const CFN_TYPES = new Map([
+  ["AWS::SNS::Topic", "named by CloudFormation from the stack's name, lab-<id>-..."],
+  ["AWS::SQS::Queue", "named by CloudFormation from the stack's name"],
+  ["AWS::CloudWatch::Alarm", "named by CloudFormation from the stack's name"],
+  ["AWS::Logs::LogGroup", "named /cloudlabs/<id>/..., kept at most 7 days (A56)"],
+  ["AWS::SSM::Parameter", "named /cloudlabs/<id>/..."],
+]);
+/** Ruling P10: resource policy documents a lab may write (type -> attribute), read for who they let in. */
+export const RESOURCE_POLICIES = new Map([["aws_s3_bucket_policy", "policy"], ["aws_sns_topic_policy", "policy"], ["aws_sqs_queue_policy", "policy"], ["aws_ecr_repository_policy", "policy"], ["aws_secretsmanager_secret_policy", "policy"], ["aws_kms_key", "policy"]]);
+/** An AWS service principal (events.amazonaws.com). */
+const SERVICE_PRINCIPAL = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.amazonaws\.com(\.cn)?$/;
+/** Ruling P9: the resources whose { key, values } blocks select instances. */
+const TARGET_ATTRS = { aws_ssm_association: ["targets"], aws_ssm_maintenance_window_target: ["targets"], aws_ssm_maintenance_window_task: ["targets"], aws_cloudwatch_event_target: ["run_command_targets"] };
 
 /** untaggable: types that cannot carry tags, owned by name instead (ruling A4): type -> the attribute that must start lab-<id>-. */
 export const UNTAGGABLE = new Map([
@@ -319,11 +383,68 @@ function trustProblem(doc, labId, account) {
   return null;
 }
 
+/** Ruling P10: why a resource policy lets in too much, or null. An Allow never names everyone or another account. */
+function resourcePolicyProblem(doc, account) {
+  for (const s of list(doc.Statement)) {
+    if (!isObj(s)) return "it has a statement this check cannot read";
+    if (s.Effect !== "Allow") continue;
+    if ("NotPrincipal" in s) return "an Allow with NotPrincipal lets in everyone else";
+    const p = s.Principal;
+    if (p === "*") return 'it allows Principal "*"';
+    if (!isObj(p)) return "it has a principal this check cannot read";
+    for (const [k, v] of Object.entries(p)) {
+      if (k === "Service" && list(v).every((x) => typeof x === "string" && SERVICE_PRINCIPAL.test(x))) continue;
+      if (k === "AWS" && account && list(v).every((x) => typeof x === "string" && (x === account || x.startsWith(`arn:aws:iam::${account}:`)))) continue;
+      return `it allows ${k} ${JSON.stringify(v).replace(/\d{12}/g, "<account>")}: only AWS services and the lab's own account`;
+    }
+  }
+  return null;
+}
+
 /** Whether a key policy grants the account root kms:* (so the account can always delete the key). */
 function grantsRoot(doc) {
   return list(doc.Statement).some(
     (s) => isObj(s) && s.Effect === "Allow" && isObj(s.Principal) && list(s.Principal.AWS).some((a) => typeof a === "string" && /^arn:aws:iam::\d{12}:root$/.test(a)) && list(s.Action).includes("kms:*"),
   );
+}
+
+/**
+ * Ruling P4: why a lab's CloudFormation template (as JSON) may not run, as sentences. Types only from CFN_TYPES; no
+ * Transform, Fn::Transform or Fn::ImportValue; nothing kept after tear-down; no names CloudFormation would otherwise
+ * make from the stack; log groups and parameters under /cloudlabs/<id>/ (a literal, or a Ref to a stack parameter).
+ */
+export function cfnTemplateProblems(doc, { labId, parameters = {} }) {
+  if (!isObj(doc)) return ["the template is not a JSON object"];
+  const out = [];
+  const own = `/cloudlabs/${labId}/`;
+  if ("Transform" in doc) out.push("Transform runs a macro (SAM and the like) this check never sees");
+  /** A literal, or a Ref to a parameter: the stack's value for it, else the parameter's default. */
+  const value = (x) => (isObj(x) && Object.keys(x).length === 1 && typeof x.Ref === "string" ? (parameters[x.Ref] ?? doc.Parameters?.[x.Ref]?.Default) : x);
+  for (const [name, res] of Object.entries(isObj(doc.Resources) ? doc.Resources : {})) {
+    if (!isObj(res)) {
+      out.push(`${name}: not a resource this check can read`);
+      continue;
+    }
+    const t = res.Type;
+    if (!CFN_TYPES.has(t)) out.push(`${name}: ${t} is not on CFN_TYPES (${[...CFN_TYPES.keys()].join(", ")}); nested stacks, custom resources, macros and IAM never are`);
+    for (const p of ["DeletionPolicy", "UpdateReplacePolicy"]) if (res[p] !== undefined && res[p] !== "Delete") out.push(`${name}: ${p} ${JSON.stringify(res[p])} would keep it after tear-down (only Delete)`);
+    const props = isObj(res.Properties) ? res.Properties : {};
+    for (const k of ["TopicName", "QueueName", "AlarmName"]) if (k in props) out.push(`${name}: ${k} is set: leave it out, so CloudFormation names it from the stack (lab-${labId}-...)`);
+    if (t === "AWS::Logs::LogGroup") {
+      const n = value(props.LogGroupName);
+      if (typeof n !== "string" || !n.startsWith(own)) out.push(`${name}: LogGroupName must start ${own} (a literal or a Ref to a stack parameter; ruling A56)`);
+      const d = Number(value(props.RetentionInDays));
+      if (!(d >= 1 && d <= 7)) out.push(`${name}: RetentionInDays must be 1 to 7`);
+    }
+    if (t === "AWS::SSM::Parameter") {
+      const n = value(props.Name);
+      if (typeof n !== "string" || !n.startsWith(own)) out.push(`${name}: Name must start ${own}`);
+    }
+  }
+  walk(doc, [], (kind, path, s) => {
+    if (kind === "key" && (s === "Fn::ImportValue" || s === "Fn::Transform")) out.push(`${path.slice(0, -1).join(".")}: ${s} reaches outside this template`);
+  });
+  return [...new Set(out)];
 }
 
 /** Every string and object key under a value: visit(kind, path, text). */
@@ -374,6 +495,8 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
   const data = resources.filter((r) => r.mode === "data");
   /** The lab's own account: the caller identity the plan read (main.tf's data.aws_caller_identity.current), if known. */
   const callerAccount = data.filter((d) => d.type === "aws_caller_identity").map((d) => d.values?.account_id).find((a) => typeof a === "string" && /^\d{12}$/.test(a)) ?? null;
+  /** The account in the lab's roles' and users' known permission boundary, if any (a mocked plan's stand-in for callerAccount). */
+  const boundaryAccount = [...managed.values()].map((m) => m.values?.permissions_boundary).filter((b) => typeof b === "string" && BOUNDARY_RE.test(b)).map((b) => /^arn:aws:iam::(\d{12}):/.exec(b)[1])[0] ?? null;
   /** The managed resource a reference names, if it is in this configuration. */
   const target = (ref) => (ref.startsWith("data.") ? null : managed.get(ref.replace(/\[[^\]]*\]/g, "").split(".").slice(0, 2).join(".")) ?? null);
   /** References (instance keys aside) that all name resources of `types` in this configuration, and at least one. */
@@ -441,6 +564,14 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         if (why) refuse("provider", `its own ${why}`);
       }
     }
+    // Ruling P7: what may live in a global region, judged per resource (a plan knows each resource's own region).
+    if (mode === "plan" && isManaged && r.provider === AWS_SOURCE && GLOBAL_REGIONS.includes(v.region)) {
+      const ok = globalLab && GLOBAL_REGION_TYPES[v.region].some((re) => re.test(type)) && (type !== "aws_wafv2_web_acl" || v.scope === "CLOUDFRONT");
+      if (!ok) refuse("provider", `${type} in ${v.region}: only ${v.region === "us-east-1" ? "a WAF web ACL for CloudFront (aws_wafv2_*, scope CLOUDFRONT)" : "Global Accelerator (aws_globalaccelerator_*)"} lives there, and only in ${AWS_GLOBAL_LABS.join(", ")} (ruling P7)`);
+    }
+    // A replica written in the configuration, or one the plan shows (an unset replica block is computed: unknown).
+    if (isManaged && type === "aws_secretsmanager_secret" && (r.configured?.has("replica") || list(v.replica).some(isObj))) refuse("provider", "replica: a secret copied to another region is outside the lab's regions");
+    if (isManaged && type === "aws_kms_key" && v.multi_region === true) refuse("provider", "multi_region: a key's replicas live outside the lab's regions");
 
     // 2. provisioner, 3. import
     if (r.provisioners > 0) refuse("provisioner", "a provisioner would run commands with the pipeline's keys");
@@ -453,12 +584,17 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
       else if (UNTAGGED_DEFAULT_TYPES.has(type)) refuse("type", `${type}: ${UNTAGGED_DEFAULT_TYPES.get(type)} carries no lab tag, and wg-admin-labs may change VPC network items and add tags only on what carries cloudlabs-lab (ruling A48); make the lab's own security group, network ACL or route table instead`);
       else if (!DEFERRED[type] && !AWS_TYPES.has(type)) refuse("type", `${type} is not on AWS_TYPES: add it with its reason (ruling 21)`);
       else if (CONFIG_TYPES.has(type) && !AWS_CONFIG_LABS.includes(labId)) refuse("type", `${type} only in ${AWS_CONFIG_LABS.join(", ")} (one Config recorder per region per account)`);
+      else if (type === "aws_accessanalyzer_analyzer" && !ACCESS_ANALYZER_LABS.includes(labId)) refuse("type", `an Access Analyzer analyzer only in ${ACCESS_ANALYZER_LABS.join(", ")} (one account analyzer per region per account; ruling P14)`);
+      else if (type === "aws_accessanalyzer_analyzer" && typeof v.type === "string" && v.type !== "ACCOUNT") refuse("type", `analyzer type ${v.type}: only ACCOUNT (organization analyzers need Organizations; unused-access analyzers are paid; ruling P14)`);
       const tenancies = [v.tenancy, v.instance_tenancy, ...list(v.placement).map((p) => (isObj(p) ? p.tenancy : undefined))];
       if (tenancies.some((t) => t === "dedicated" || t === "host")) refuse("never", "dedicated or host tenancy is only explained in a readme (Not built here)");
     } else {
       const why = dataProblem(r);
       if (why) refuse("type", why);
     }
+
+    // template (ruling P4)
+    if (isManaged && type === "aws_cloudformation_stack") stackProblems(r, v);
 
     // 6. tag (plan mode only: tags_all and the rest are known only in a real plan)
     if (mode === "plan" && isManaged) tagProblems(r, v, labId, refuse);
@@ -515,6 +651,35 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           }
         };
         for (const [k, y] of Object.entries(v)) scan(y, [k], ID_KEY(k));
+        // Ruling P9: the instance-target allow-list.
+        for (const attr of TARGET_ATTRS[type] ?? []) list(v[attr]).forEach((t, i) => {
+          const why = targetWhy(t);
+          if (why) refuse("gateway", `${attr}.${i}: ${why} (ruling P9)`);
+        });
+        if (type === "aws_ssm_association" && (r.configured?.has("instance_id") || nonEmpty(v.instance_id)) && !(v.instance_id instanceof Unknown && (ownRefs(refsOf(v.instance_id, r, "instance_id"), ["aws_instance"]) || (mode === "mock" && !refsOf(v.instance_id, r, "instance_id").length)))) refuse("gateway", "instance_id must be one of the lab's own instances, by reference (ruling P9)");
+        // Ruling P8: lab 09's zone, records, health checks and distributions name only the lab's own.
+        const ownRef = (attr, types) => v[attr] instanceof Unknown && (ownRefs(refsOf(v[attr], r, attr), types) || (mode === "mock" && !refsOf(v[attr], r, attr).length));
+        // A private zone has a vpc block (an object); anything else is public and must be the lab's own name.
+        if (type === "aws_route53_zone" && !list(v.vpc).some(isObj)) {
+          const want = nonEmpty(variables.name_prefix) ? `${variables.name_prefix}${LAB_ZONE_SUFFIX}` : null;
+          if (!(typeof v.name === "string" && want && v.name.replace(/\.$/, "") === want)) refuse("gateway", `a public zone is named ${want ?? `<name_prefix>${LAB_ZONE_SUFFIX}`} only (never delegated; ruling A27): another name could answer for a domain someone else owns`);
+        }
+        if (type === "aws_route53_zone" && (r.configured?.has("delegation_set_id") || nonEmpty(v.delegation_set_id))) refuse("gateway", "delegation_set_id: a reusable delegation set outlives the lab");
+        if (type === "aws_route53_record" && !ownRef("zone_id", ["aws_route53_zone"])) refuse("gateway", "zone_id must be the lab's own zone, by reference (ruling P8)");
+        if (type === "aws_route53_health_check") {
+          if (r.configured?.has("ip_address") || nonEmpty(v.ip_address)) refuse("gateway", "a health check probes the lab's own endpoint by name, never an address (ruling P8)");
+          else if (v.type !== "CALCULATED" && !ownRef("fqdn", ["aws_cloudfront_distribution", "aws_lb"])) refuse("gateway", "fqdn must be the lab's own distribution or load balancer, by reference (ruling P8)");
+        }
+        if (type === "aws_cloudfront_distribution") {
+          list(v.origin).forEach((o, i) => {
+            const d = isObj(o) ? o.domain_name : undefined;
+            // Preflight C2: the domain's own references (origin is a set block: its whole-block references hold the
+            // origin access control's too).
+            const refs = d instanceof Unknown ? (d.refs ?? []) : [];
+            const ok = d instanceof Unknown ? (mode === "mock" && !refs.length) || ownRefs(refs, ["aws_s3_bucket", "aws_lb"]) : typeof d === "string" && d.startsWith(`cloudlabs-${variables.name_prefix}-`);
+            if (!ok) refuse("gateway", `origin ${i}: a distribution fronts only the lab's own bucket or load balancer, by reference (ruling P8)`);
+          });
+        }
       }
     }
 
@@ -538,7 +703,7 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
     // ── the rules' details, closing over this resource's context ──
 
     function iamProblems(res, val) {
-      if (["aws_iam_role", "aws_iam_instance_profile", "aws_iam_policy"].includes(type)) {
+      if (["aws_iam_role", "aws_iam_instance_profile", "aws_iam_policy", "aws_iam_user"].includes(type)) {
         if (!skip(val.path) && val.path !== IAM_PATH) refuse("iam", `${type} must be at path ${IAM_PATH} (it is ${val.path instanceof Unknown ? "not known at plan" : JSON.stringify(val.path ?? "/")})`);
         if (!startsKnown(val.name, prefix)) refuse("iam", `${type}'s name must start ${prefix}`);
       }
@@ -566,6 +731,19 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         const bad = arns instanceof Unknown ? (entryOk(arns) ? undefined : arns) : list(arns).find((a) => !entryOk(a));
         if (bad !== undefined) refuse("iam", `managed_policy_arns: ${typeof bad === "string" ? bad : "(not known)"} is neither on MANAGED_POLICIES nor one of the lab's own aws_iam_policy`);
       }
+      if (type === "aws_iam_user_login_profile") {
+        const u = val.user;
+        const ownUser = typeof u === "string" ? u.startsWith(prefix) : u instanceof Unknown && (ownRefs(refsOf(u, res, "user"), ["aws_iam_user"]) || (mode === "mock" && !refsOf(u, res, "user").length));
+        if (!ownUser) refuse("iam", `user must be one of the lab's own (aws_iam_user.<name>.name, named ${prefix}*)`);
+        if (val.password_reset_required === true) refuse("iam", "password_reset_required: the boundary allows the user no IAM, so it could never set a new password (ruling P5)");
+      }
+      // A lab function or task runs as a lab role, by reference.
+      for (const [t, attr] of [["aws_lambda_function", "role"], ["aws_ecs_task_definition", "execution_role_arn"], ["aws_ecs_task_definition", "task_role_arn"]]) {
+        if (type !== t || (val[attr] === undefined && !res.configured?.has(attr))) continue;
+        const x = val[attr];
+        const refs = x instanceof Unknown ? refsOf(x, res, attr) : [];
+        if (!(x instanceof Unknown && (mode === "hcl" || (mode === "mock" && !refs.length) || ownRefs(refs, ["aws_iam_role"])))) refuse("iam", `${attr} must be one of the lab's own roles, by reference (aws_iam_role.<name>.arn)`);
+      }
       // Identity policy documents.
       const docs = [];
       if (["aws_iam_policy", "aws_iam_role_policy", "aws_iam_user_policy"].includes(type)) docs.push(["policy", val.policy]);
@@ -591,6 +769,47 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           if (why) refuse("iam", `assume_role_policy: ${why}`);
         }
       }
+    }
+
+    function stackProblems(res, val) {
+      const no = (m) => refuse("template", m);
+      if (res.configured?.has("template_url") || nonEmpty(val.template_url)) no('template_url: the template is the lab\'s own, template_body = jsonencode(yamldecode(file("${path.module}/cfn/stack.yaml")))');
+      if (!startsKnown(val.name, prefix)) no(`the stack's name must start ${prefix} (CloudFormation names what it makes from it)`);
+      const caps = list(val.capabilities).filter((x) => typeof x === "string");
+      if (caps.length) no(`capabilities ${caps.join(", ")}: a lab's stack makes no IAM and runs no macros`);
+      const role = val.iam_role_arn;
+      const roleRefs = role instanceof Unknown ? refsOf(role, res, "iam_role_arn") : [];
+      const roleOk = role instanceof Unknown && (mode === "hcl" || (mode === "mock" && !roleRefs.length) || ownRefs(roleRefs, ["aws_iam_role"]));
+      if (!roleOk) no("iam_role_arn must be the lab's own service role, by reference (aws_iam_role.<name>.arn; ruling P4)");
+      const body = val.template_body;
+      if (body instanceof Unknown) {
+        if (plan) no("template_body must be known at plan: jsonencode(yamldecode(file(...)))");
+        return;
+      }
+      const j = jsonDoc(body);
+      if (j.bad) return no("template_body is not JSON: write template_body = jsonencode(yamldecode(file(...)))");
+      for (const m of cfnTemplateProblems(j.doc, { labId, parameters: isObj(val.parameters) ? val.parameters : {} })) no(m);
+    }
+
+    /** Ruling P9: why one { key, values } target may not be used, or null. */
+    function targetWhy(t) {
+      if (!isObj(t) || typeof t.key !== "string") return "a target this check cannot read";
+      const key = t.key;
+      const known = list(t.values).filter((x) => typeof x === "string");
+      // A tag or group selector is read only when every value is known (one not known until apply could be anything).
+      const allKnown = known.length > 0 && known.length === list(t.values).length;
+      // Preflight C1: the values' own references (planResources keys r.refs by top-level attribute only).
+      const vals = t.values;
+      const refs = vals instanceof Unknown ? (vals.refs ?? []) : list(vals).flatMap((x) => (x instanceof Unknown ? (x.refs ?? []) : []));
+      if (key === "InstanceIds" || key === "WindowTargetIds") {
+        const own = key === "InstanceIds" ? ["aws_instance"] : ["aws_ssm_maintenance_window_target"];
+        if (known.length) return `${key} must name the lab's own by reference, never a literal`;
+        return (mode === "mock" && !refs.length) || ownRefs(refs, own) ? null : `${key} must name the lab's own ${own[0]} by reference`;
+      }
+      if (key === `tag:${LAB_TAG}`) return allKnown && known.every((x) => x === labId) ? null : `tag:${LAB_TAG} must be exactly the lab's id`;
+      if (/^tag:/i.test(key)) return allKnown && known.every((x) => x.startsWith(prefix) && !/[*?]/.test(x)) ? null : `${key}'s values must each start ${prefix}, a tag value only the lab gives`;
+      if (key === "resource-groups:Name") return allKnown && known.length === 1 && known[0] === `lab-${labId}` ? null : `resource-groups:Name must be the lab's own group, lab-${labId}`;
+      return `${key} is not a target a lab may use: InstanceIds or WindowTargetIds by reference, tag:${LAB_TAG} = the lab id, a tag valued ${prefix}*, or resource-groups:Name = lab-${labId}`;
     }
 
     function addressProblems(res, val, no) {
@@ -668,6 +887,29 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         const open = x.cidrs.find(fromInternet);
         if (open && ssh(x.proto, x.from, x.to)) no("public", `it admits SSH (TCP 22) from ${open}: never from the internet (AWS labs spec §7.4)`);
       }
+      // Ruling P10: who a resource policy lets in, and who may invoke a lab function. A topic's or secret's own policy
+      // is read too when the lab writes one (preflight C12; left unset it is computed). An unset key policy is AWS's
+      // default (computed: unknown with no references), which grants the account root only.
+      const inline = (type === "aws_sns_topic" || type === "aws_secretsmanager_secret") && res.configured?.has("policy") ? "policy" : null;
+      const docAttr = RESOURCE_POLICIES.get(type) ?? inline;
+      // A mocked plan's stream holds no data sources (no caller identity): there the lab's own account is the one in
+      // its roles' boundary. A real plan always reads the caller identity (the template's main.tf).
+      const policyAccount = callerAccount ?? (mode === "mock" ? boundaryAccount : null);
+      if (docAttr && !(type === "aws_kms_key" && (val.policy === undefined || skip(val.policy)))) {
+        const j = jsonDoc(val[docAttr]);
+        if (j.unknown) {
+          if (plan) no("public", `${docAttr} must be known at plan, so who it lets in can be read (ruling P10)`);
+        } else if (j.bad) no("public", `${docAttr} is not a policy document this check can read`);
+        else {
+          const why = resourcePolicyProblem(j.doc, policyAccount);
+          if (why) no("public", `${docAttr}: ${why} (ruling P10)`);
+        }
+      }
+      if (type === "aws_lambda_permission") {
+        if (typeof val.principal === "string" && !SERVICE_PRINCIPAL.test(val.principal)) no("public", "principal: a lab function is invoked only by AWS services (ruling P10)");
+        if (val.function_url_auth_type === "NONE") no("public", "a function URL with no auth is open to the internet");
+      }
+      if (type === "aws_ecs_service" && list(val.network_configuration).some((n) => isObj(n) && n.assign_public_ip === true)) no("public", "assign_public_ip: tasks reach out through the lab's NAT gateway, never from a public address");
     }
 
     function lingeringProblems(res, val, no) {
@@ -793,6 +1035,10 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         case "aws_route53_zone":
           must("force_destroy", true, false);
           break;
+        case "aws_iam_user":
+          // Ruling P6: a user with hand-made keys or devices can always be deleted.
+          must("force_destroy", true, false);
+          break;
         case "aws_s3_bucket_object_lock_configuration":
         case "aws_backup_vault_lock_configuration":
         case "aws_glacier_vault_lock":
@@ -848,6 +1094,16 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
       }
       if (type === "aws_networkfirewall_firewall" && Array.isArray(val.subnet_mapping) && val.subnet_mapping.length !== 1) no("size", "a Network Firewall has one subnet_mapping");
       if (type === "aws_nat_gateway" && ++natGateways > 2) no("size", "at most 2 NAT gateways in a lab");
+      if (type === "aws_ecs_service") max(val.desired_count, 4, "desired_count");
+      if (type === "aws_lambda_function") {
+        max(val.memory_size, 512, "memory_size (MB)");
+        max(val.timeout, 300, "timeout (s)");
+      }
+      if (type === "aws_cloudfront_distribution" && !skip(val.price_class) && val.price_class !== "PriceClass_100") no("size", `price_class ${JSON.stringify(val.price_class ?? "PriceClass_All")}: only PriceClass_100 (ruling P8)`);
+      if (type === "aws_route53_health_check") {
+        if (typeof val.request_interval === "number" && val.request_interval !== 30) no("size", "request_interval: a 10-second check costs more; 30 only");
+        if (val.measure_latency === true) no("size", "measure_latency costs more: leave it off");
+      }
     }
 
     function dataProblem(res) {

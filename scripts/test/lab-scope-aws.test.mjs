@@ -15,7 +15,7 @@ import { AWS_CONFIG_LABS, AWS_GLOBAL_LABS, AWS_IAM_USER_LABS, AWS_INSTANCE_TYPES
 import * as scope from "../../infra/ci/lab-scope-aws.mjs";
 import { planResources } from "../../infra/ci/lab-scope.mjs";
 import { realisticPlan } from "./fixtures/labs/plans/realistic.mjs";
-import { ACCOUNT, al2023Instance, AMI, AWS_PROVIDER_CONFIG, awsData, BOUNDARY, ctxAws, ref, tagged, templateResources } from "./fixtures/labs/plans/common-aws.mjs";
+import { ACCOUNT, al2023Instance, AMI, AWS_PROVIDER_CONFIG, awsData, BOUNDARY, ctxAws, ref, tagged, templateMainResources, templateResources } from "./fixtures/labs/plans/common-aws.mjs";
 
 const ID = "soa-01-cloudwatch";
 const c = ctxAws(ID, "01");
@@ -40,6 +40,24 @@ const role = (over = {}) => ({
 });
 const trustAws = (principal) => JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { AWS: principal }, Action: "sts:AssumeRole" }] });
 const policy = (doc) => ({ address: "aws_iam_policy.extra", values: tagged(c, { name: `lab-${ID}-extra`, path: "/cloudlabs-lab/", policy: JSON.stringify(doc) }), refs: {} });
+const c7 = ctxAws("soa-07-iam-kms", "07");
+const c9 = ctxAws("soa-09-route53-cloudfront", "09");
+const planFor = (cx) => (extra = []) => realisticPlan({ resources: [...templateMainResources(cx), ...extra], data: awsData(), providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: cx.variables });
+const plan7 = planFor(c7);
+const plan9 = planFor(c9);
+const user7 = (over = {}) => ({ address: "aws_iam_user.ann", values: tagged(c7, { name: "lab-soa-07-iam-kms-ann", path: "/cloudlabs-lab/", permissions_boundary: BOUNDARY, force_destroy: true, ...over }), refs: {} });
+const tpl = (Resources) => JSON.stringify({ AWSTemplateFormatVersion: "2010-09-09", Resources });
+const cfnRole = () => ({ ...role({ name: `lab-${ID}-cfn`, assume_role_policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: "cloudformation.amazonaws.com" }, Action: "sts:AssumeRole" }] }) }), address: "aws_iam_role.cfn" });
+const stack = (over = {}, { noRole = false } = {}) => ({
+  address: "aws_cloudformation_stack.lab",
+  values: tagged(c, { name: `lab-${ID}-stack`, template_body: tpl({ Q: { Type: "AWS::SQS::Queue" } }), parameters: {}, ...over }),
+  unknown: noRole ? [] : ["iam_role_arn"],
+  refs: noRole ? {} : { iam_role_arn: ref("aws_iam_role.cfn", "arn") },
+});
+const stackPlan = (over, opts) => plan([cfnRole(), stack(over, opts)]);
+const fnLogs = { address: "aws_cloudwatch_log_group.f", values: tagged(c, { name: `/cloudlabs/${ID}/f`, retention_in_days: 1, skip_destroy: false }), refs: {} };
+const lambdaFn = (over = {}) => ({ address: "aws_lambda_function.f", values: tagged(c, { function_name: `lab-${ID}-f`, runtime: "python3.13", handler: "f.handler", memory_size: 128, timeout: 30, logging_config: [{ log_format: "Text", log_group: `/cloudlabs/${ID}/f` }], ...over }), unknown: ["role"], refs: { role: ref("aws_iam_role.vm", "arn") } });
+const ecsService = (over = {}) => ({ address: "aws_ecs_service.s", values: tagged(c, { name: `lab-${ID}-s`, desired_count: 2, launch_type: "FARGATE", propagate_tags: "SERVICE", ...over }), unknown: ["cluster", "task_definition"], refs: {} });
 
 // [rule, what, a change to the clean plan]
 const EVIL = [
@@ -49,7 +67,7 @@ const EVIL = [
   ["provider", "a resource in another region (aws provider 6's own region)", () => plan([{ address: "aws_sns_topic.far", values: tagged(c, { name: "far", region: "us-east-1" }), refs: {} }])],
   ["provisioner", "a provisioner", () => { const p = plan(); p.configuration.root_module.resources.find((r) => r.address === "aws_vpc.lab").provisioners = [{ type: "local-exec" }]; return p; }],
   ["import", "adopting an existing VPC", () => plan([{ ...templateResources(c)[1], address: "aws_vpc.adopted", importing: { id: "vpc-0123456789abcdef0" } }])],
-  ["type", "a type not on the allow-list", () => plan([{ address: "aws_lambda_function.x", values: tagged(c, { function_name: "x" }), refs: {} }])],
+  ["type", "a type not on the allow-list", () => plan([{ address: "aws_eks_cluster.x", values: tagged(c, { name: "x" }), refs: {} }])],
   ["type", "a data source that looks up a VPC", () => realisticPlan({ resources: templateResources(c), data: [...awsData(), { address: "data.aws_vpc.wg", values: { tags: { Name: "vpc-x" } }, refs: {} }], providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: c.variables })],
   ["type", "a Config recorder outside lab 02", () => plan([{ address: "aws_config_configuration_recorder.r", values: { name: `lab-${ID}-recorder` }, unknown: ["role_arn"], refs: {} }])],
   // Ruling A48: what AWS made untagged with a VPC, or tags on an item that is already there: wg-admin-labs may not.
@@ -112,10 +130,43 @@ const EVIL = [
   ["description", "a security group description of 256 characters", () => plan([{ address: "aws_security_group.long", values: tagged(c, { name: "lab-long", description: "a".repeat(256) }), unknown: ["vpc_id"], refs: {} }])],
   ["description", "an ingress block description with a quote", () => plan([{ address: "aws_security_group.blk", values: tagged(c, { name: "lab-blk", description: "ok", ingress: [{ description: 'say "hi"', protocol: "tcp", from_port: 80, to_port: 80, cidr_blocks: ["10.0.0.0/8"] }] }), unknown: ["vpc_id"], refs: {} }])],
   ["description", "a VPC security group rule description with a backtick", () => plan([{ address: "aws_vpc_security_group_egress_rule.r", values: tagged(c, { description: "all `out`", ip_protocol: "-1", cidr_ipv4: "10.0.0.0/8" }), unknown: ["security_group_id"], refs: {} }])],
+  // Batch 2 (rulings P4, P6–P10, P14).
+  ["type", "an Access Analyzer analyzer outside lab 07", () => plan([{ address: "aws_accessanalyzer_analyzer.a", values: tagged(c, { analyzer_name: `lab-${ID}-a`, type: "ACCOUNT" }), refs: {} }])],
+  ["type", "an organization analyzer in lab 07", () => plan7([{ address: "aws_accessanalyzer_analyzer.a", values: tagged(c7, { analyzer_name: "lab-soa-07-iam-kms-a", type: "ORGANIZATION" }), refs: {} }]), "soa-07-iam-kms"],
+  ["never", "a StackSet", () => plan([{ address: "aws_cloudformation_stack_set.s", values: tagged(c, { name: `lab-${ID}-set` }), refs: {} }])],
+  ["template", "a stack from a template URL", () => stackPlan({ template_url: "https://example.com/t.json" })],
+  ["template", "a stack without its own service role", () => stackPlan({}, { noRole: true })],
+  ["template", "a stack with IAM capabilities", () => stackPlan({ capabilities: ["CAPABILITY_NAMED_IAM"] })],
+  ["template", "a template with an IAM role", () => stackPlan({ template_body: tpl({ R: { Type: "AWS::IAM::Role", Properties: {} } }) })],
+  ["template", "a template with a nested stack", () => stackPlan({ template_body: tpl({ N: { Type: "AWS::CloudFormation::Stack", Properties: { TemplateURL: "https://example.com/n.json" } } }) })],
+  ["template", "a template with a custom resource", () => stackPlan({ template_body: tpl({ C: { Type: "Custom::Thing", Properties: { ServiceToken: "arn:aws:lambda:eu-west-2:123456789012:function:x" } } }) })],
+  ["template", "a template with a Transform", () => stackPlan({ template_body: JSON.stringify({ Transform: "AWS::Serverless-2016-10-31", Resources: { Q: { Type: "AWS::SQS::Queue" } } }) })],
+  ["template", "a template that keeps a queue after tear-down (Retain)", () => stackPlan({ template_body: tpl({ Q: { Type: "AWS::SQS::Queue", DeletionPolicy: "Retain" } }) })],
+  ["template", "a template that names its queue", () => stackPlan({ template_body: tpl({ Q: { Type: "AWS::SQS::Queue", Properties: { QueueName: "orders" } } }) })],
+  ["template", "a template with a log group outside /cloudlabs/<id>/", () => stackPlan({ template_body: tpl({ L: { Type: "AWS::Logs::LogGroup", Properties: { LogGroupName: "/aws/other", RetentionInDays: 1 } } }) })],
+  ["template", "a template importing another stack's output", () => stackPlan({ template_body: tpl({ T: { Type: "AWS::SNS::Topic", Properties: { DisplayName: { "Fn::ImportValue": "other-export" } } } }) })],
+  ["provider", "a bucket in us-east-1 in lab 09 (only WAF for CloudFront lives there)", () => plan9([{ address: "aws_s3_bucket.far", values: tagged(c9, { bucket: `cloudlabs-${c9.prefix}-far`, force_destroy: true, region: "us-east-1" }), refs: {} }]), "soa-09-route53-cloudfront"],
+  ["provider", "a secret replicated to Ireland", () => plan([{ address: "aws_secretsmanager_secret.s", values: tagged(c, { name: `lab-${ID}-s`, recovery_window_in_days: 0, replica: [{ region: "eu-west-1" }] }), refs: {} }])],
+  ["iam", "a login profile that forces a password reset", () => plan7([user7(), { address: "aws_iam_user_login_profile.ann", values: { user: "lab-soa-07-iam-kms-ann", password_reset_required: true }, refs: { user: ref("aws_iam_user.ann", "name") } }]), "soa-07-iam-kms"],
+  ["iam", "a function running as a role the lab did not make", () => plan([fnLogs, { ...lambdaFn({ role: "arn:aws:iam::123456789012:role/wg-admin-labs" }), unknown: [], refs: {} }])],
+  ["lingering", "a user that hand-made keys would keep (force_destroy false)", () => plan7([user7({ force_destroy: false })]), "soa-07-iam-kms"],
+  ["gateway", "an SSM association on tag:managed = terraform (ruling P9)", () => plan([{ address: "aws_ssm_association.x", values: tagged(c, { name: "AWS-RunShellScript", targets: [{ key: "tag:managed", values: ["terraform"] }] }), refs: {} }])],
+  ["gateway", "an SSM association on someone else's resource group", () => plan([{ address: "aws_ssm_association.rg", values: tagged(c, { name: "AWS-RunShellScript", targets: [{ key: "resource-groups:Name", values: ["everything"] }] }), refs: {} }])],
+  ["gateway", "a public zone not named <name_prefix>.labs.clydeford.net", () => plan9([{ address: "aws_route53_zone.z", values: tagged(c9, { name: "example.com", force_destroy: true }), refs: {} }]), "soa-09-route53-cloudfront"],
+  ["gateway", "a health check on a site the lab does not own", () => plan9([{ address: "aws_route53_health_check.h", values: tagged(c9, { fqdn: "www.example.com", type: "HTTP", port: 80, resource_path: "/", request_interval: 30, failure_threshold: 3 }), refs: {} }]), "soa-09-route53-cloudfront"],
+  ["public", "a bucket policy allowing Principal *", () => plan([{ address: "aws_s3_bucket_policy.p", values: { policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: "*", Action: "s3:GetObject", Resource: `arn:aws:s3:::cloudlabs-${c.prefix}-x/*` }] }) }, unknown: ["bucket"], refs: {} }])],
+  ["public", "a topic policy allowing another account", () => plan([{ address: "aws_sns_topic_policy.p", values: { policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { AWS: "arn:aws:iam::999999999999:root" }, Action: "sns:Publish", Resource: "*" }] }) }, unknown: ["arn"], refs: {} }])],
+  // Preflight C12: a topic's own (inline) policy is read too.
+  ["public", "a topic whose own policy allows Principal *", () => plan([{ address: "aws_sns_topic.open", values: tagged(c, { name: `lab-${ID}-open`, policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: "*", Action: "sns:Publish", Resource: "*" }] }) }), refs: {} }])],
+  ["public", "a Lambda permission for anyone (principal *)", () => plan([{ address: "aws_lambda_permission.p", values: { action: "lambda:InvokeFunction", principal: "*", statement_id: "all" }, unknown: ["function_name"], refs: {} }])],
+  ["public", "an ECS service giving its tasks public IPs", () => plan([ecsService({ network_configuration: [{ assign_public_ip: true }] })])],
+  ["size", "a distribution in every edge location (PriceClass_All)", () => plan9([{ address: "aws_cloudfront_distribution.d", values: tagged(c9, { enabled: true, price_class: "PriceClass_All", retain_on_delete: false }), refs: {} }]), "soa-09-route53-cloudfront"],
+  ["size", "an ECS service of 10 tasks", () => plan([ecsService({ desired_count: 10 })])],
+  ["size", "a Lambda function with 3 GB of memory", () => plan([role(), fnLogs, lambdaFn({ memory_size: 3008 })])],
 ];
-for (const [rule, what, make] of EVIL) {
+for (const [rule, what, make, id = ID] of EVIL) {
   test(`${rule}: refuses ${what}`, () => {
-    const got = scope.checkPlanAws(make(), ID);
+    const got = scope.checkPlanAws(make(), id);
     assert.ok(got.some((p) => p.rule === rule), `${rule} expected, got ${JSON.stringify(got.map((p) => `${p.rule}: ${p.address} (${p.message})`))}`);
   });
 }
@@ -192,7 +243,7 @@ test("rule 4 hands IAM users to rule 8 and the peering accepter to rule 9 (prefl
   const user = { address: "aws_iam_user.u", values: tagged(c, { name: `lab-${ID}-u`, path: "/cloudlabs-lab/", permissions_boundary: BOUNDARY }), refs: {} };
   assert.deepEqual(rules(plan([user])), ["iam: aws_iam_user.u"]);
   const c7 = ctxAws("soa-07-iam-kms", "07");
-  const user7 = { ...user, values: tagged(c7, { name: "lab-soa-07-iam-kms-u", path: "/cloudlabs-lab/", permissions_boundary: BOUNDARY }) };
+  const user7 = { ...user, values: tagged(c7, { name: "lab-soa-07-iam-kms-u", path: "/cloudlabs-lab/", permissions_boundary: BOUNDARY, force_destroy: true }) };
   assert.deepEqual(rules(realisticPlan({ resources: [...templateResources(c7), user7], data: awsData(), providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: c7.variables }), c7.id), [], "soa-07 may make a bounded user");
   assert.deepEqual(rules(realisticPlan({ resources: [...templateResources(c7), { ...user7, values: { ...user7.values, permissions_boundary: null } }], data: awsData(), providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: c7.variables }), c7.id), ["iam: aws_iam_user.u"]);
 });
@@ -279,4 +330,64 @@ test("an instance tags its volumes with volume_tags (var.tags alone is enough); 
   rootOnly.values.root_block_device[0].tags = { ...c.tags, Name: "vm-data" };
   assert.deepEqual(rules(plan([rootOnly])), ["tag: aws_instance.data"]);
   assert.match(scope.checkPlanAws(plan([rootOnly]), ID)[0].message, /volume_tags must carry cloudlabs-lab/);
+});
+
+test("ruling P9: the instance-target allow-list passes soa-02's targets and refuses every other selector", () => {
+  const own = (targets) => rules(plan([{ address: "aws_ssm_association.x", values: tagged(c, { name: "AWS-RunShellScript", targets }), refs: {} }]));
+  for (const t of [[{ key: "tag:cloudlabs-lab", values: [ID] }], [{ key: "tag:Patch Group", values: [`lab-${ID}-web`] }], [{ key: "resource-groups:Name", values: [`lab-${ID}`] }]]) assert.deepEqual(own(t), [], JSON.stringify(t));
+  for (const t of [[{ key: "tag:Patch Group", values: ["web"] }], [{ key: "tag:cloudlabs-lab", values: ["soa-02-systems-manager"] }], [{ key: "tag:Name", values: [`lab-${ID}-*`] }], [{ key: "resource-groups:Name", values: ["lab-soa-02-systems-manager"] }], [{ key: "ParameterValues", values: ["x"] }]]) assert.deepEqual(own(t), ["gateway: aws_ssm_association.x"], JSON.stringify(t));
+});
+
+test("ruling P7: in lab 09 only a WAF web ACL for CloudFront may live in us-east-1; CloudFront and Route 53 carry no region", () => {
+  const waf = (aclScope) => scope.checkPlanAws(plan9([{ address: "aws_wafv2_web_acl.w", values: tagged(c9, { name: "lab-soa-09-route53-cloudfront-w", scope: aclScope, region: "us-east-1" }), refs: {} }]), c9.id).map((x) => x.rule);
+  assert.ok(!waf("CLOUDFRONT").includes("provider"), "a CloudFront WAF may be in us-east-1 (its type is batch 4's to list)");
+  assert.ok(waf("REGIONAL").includes("provider"));
+  const cf = realisticPlan({ resources: [{ address: "aws_cloudfront_distribution.d", values: tagged(c9, { enabled: true }), refs: {} }], providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: c9.variables });
+  assert.equal(cf.resource_changes.find((x) => x.address === "aws_cloudfront_distribution.d").change.after.region, undefined, "global types have no region of their own (computed.json)");
+});
+
+test("ruling P10: a bucket policy for CloudFront and soa-01's topic policy pass; an unknown one is refused", () => {
+  const p = (doc, unknown = []) => rules(plan([{ address: "aws_s3_bucket_policy.p", values: doc === null ? {} : { policy: JSON.stringify(doc) }, unknown: ["bucket", ...unknown], refs: {} }]));
+  assert.deepEqual(p({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: "cloudfront.amazonaws.com" }, Action: "s3:GetObject", Resource: `arn:aws:s3:::cloudlabs-${c.prefix}-site/*`, Condition: { ArnLike: { "AWS:SourceArn": `arn:aws:cloudfront::${ACCOUNT}:distribution/*` } } }] }), []);
+  assert.deepEqual(p({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { AWS: `arn:aws:iam::${ACCOUNT}:root` }, Action: "s3:*", Resource: "*" }, { Effect: "Deny", Principal: "*", Action: "s3:*", Resource: "*", Condition: { Bool: { "aws:SecureTransport": "false" } } }] }), []);
+  assert.deepEqual(p(null, ["policy"]), ["public: aws_s3_bucket_policy.p"]);
+});
+
+test("ruling P4: cfnTemplateProblems reads a parameter's value through Ref, and a clean template has no problems", () => {
+  const doc = { Parameters: { LogGroupName: { Type: "String" } }, Resources: { L: { Type: "AWS::Logs::LogGroup", Properties: { LogGroupName: { Ref: "LogGroupName" }, RetentionInDays: 1 } }, Q: { Type: "AWS::SQS::Queue" } } };
+  assert.deepEqual(scope.cfnTemplateProblems(doc, { labId: ID, parameters: { LogGroupName: `/cloudlabs/${ID}/stack` } }), []);
+  assert.deepEqual(scope.cfnTemplateProblems(doc, { labId: ID, parameters: { LogGroupName: "/cloudlabs/soa-02-systems-manager/x" } }), [`L: LogGroupName must start /cloudlabs/${ID}/ (a literal or a Ref to a stack parameter; ruling A56)`]);
+});
+
+test("ruling P4: a stack with its own service role and a clean template passes", () => {
+  assert.deepEqual(rules(stackPlan({})), []);
+});
+
+test("ruling P8: lab 09's zone, its distribution in front of its own bucket (the origin access control beside it) and a health check of its own distribution pass (preflight C2)", () => {
+  const bucket = { address: "aws_s3_bucket.site", values: tagged(c9, { bucket: `cloudlabs-${c9.prefix}-site`, force_destroy: true }), refs: { bucket: ["var.name_prefix"] } };
+  const oac = { address: "aws_cloudfront_origin_access_control.site", values: { name: "lab-soa-09-route53-cloudfront-site", origin_access_control_origin_type: "s3", signing_behavior: "always", signing_protocol: "sigv4" }, refs: { name: ["var.lab_id"] } };
+  const dist = (domain) => ({
+    address: "aws_cloudfront_distribution.site",
+    values: tagged(c9, { enabled: true, price_class: "PriceClass_100", retain_on_delete: false, origin: [{ origin_id: "site", ...(domain ? { domain_name: domain } : {}) }] }),
+    unknown: [...(domain ? [] : ["origin.0.domain_name"]), "origin.0.origin_access_control_id"],
+    refs: { ...(domain ? {} : { "origin.0.domain_name": ref("aws_s3_bucket.site", "bucket_regional_domain_name") }), "origin.0.origin_access_control_id": ref("aws_cloudfront_origin_access_control.site", "id") },
+  });
+  const zone = (name) => ({ address: "aws_route53_zone.lab", values: tagged(c9, { name, force_destroy: true }), refs: { name: ["var.name_prefix"] } });
+  const check = { address: "aws_route53_health_check.site", values: tagged(c9, { type: "HTTP", port: 80, resource_path: "/health.html", request_interval: 30, failure_threshold: 3 }), unknown: ["fqdn"], refs: { fqdn: ref("aws_cloudfront_distribution.site", "domain_name") } };
+  const r9 = (extra) => rules(plan9(extra), c9.id);
+  assert.deepEqual(r9([bucket, oac, dist(null), zone(`${c9.prefix}.labs.clydeford.net`), check]), []);
+  assert.deepEqual(r9([bucket, oac, dist("www.example.com")]), ["gateway: aws_cloudfront_distribution.site"], "a distribution in front of someone else's site");
+  assert.deepEqual(r9([zone(`${c7.prefix}.labs.clydeford.net`)]), ["gateway: aws_route53_zone.lab"], "another session's zone name");
+});
+
+test("ruling P10, mock mode: with no caller identity in the stream, the lab's own account is its roles' boundary's (labs-tf on soa-01)", () => {
+  const topicPolicy = (principal) => ({ address: "aws_sns_topic_policy.p", values: { policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { AWS: principal }, Action: "sns:Publish", Resource: "*" }] }) }, unknown: ["arn"], refs: {} });
+  const mock = (extra) => {
+    const input = { ...planResources(plan(extra)), configKeys: {}, providerConfigs: {} };
+    input.resources = input.resources.filter((r) => r.mode !== "data");
+    return scope.scopeProblemsAws(input, ID, { mode: "mock" }).map((x) => `${x.rule}: ${x.address}`);
+  };
+  assert.deepEqual(mock([role(), topicPolicy(`arn:aws:iam::${ACCOUNT}:root`)]), []);
+  assert.deepEqual(mock([role(), topicPolicy("arn:aws:iam::999999999999:root")]), ["public: aws_sns_topic_policy.p"]);
+  assert.deepEqual(mock([topicPolicy(`arn:aws:iam::${ACCOUNT}:root`)]), ["public: aws_sns_topic_policy.p"], "no account to read: refused");
 });

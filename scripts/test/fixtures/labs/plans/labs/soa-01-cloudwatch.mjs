@@ -8,7 +8,7 @@
 // var.lab_id are known at plan; ids, ARNs and anything built from them are
 // unknown. IAM documents are literal JSON (ruling P12).
 
-import { AWS_PROVIDER_CONFIG, BOUNDARY, al2023Instance, awsData, ctxAws, ref, tagged, templateResources } from "../common-aws.mjs";
+import { ACCOUNT, AWS_PROVIDER_CONFIG, BOUNDARY, al2023Instance, awsData, ctxAws, ref, tagged, templateResources } from "../common-aws.mjs";
 
 export default () => {
   const c = ctxAws("soa-01-cloudwatch", "01");
@@ -18,6 +18,7 @@ export default () => {
   const app = "aws_instance.app";
   const topic = "aws_sns_topic.alerts";
   const logGroup = "aws_cloudwatch_log_group.app";
+  const alertsArn = `arn:aws:sns:${c.variables.region}:${ACCOUNT}:lab-${id}-alerts`;
   const subnet = ["aws_subnet.private[0].id", "aws_subnet.private[0]", "aws_subnet.private"];
   const alarm = (key, name, values, extra = {}) => ({
     address: `aws_cloudwatch_metric_alarm.${key}`,
@@ -66,12 +67,22 @@ export default () => {
       { address: topic, values: tagged(c, { name: `lab-${id}-alerts` }), refs: { name: ["var.lab_id"] } },
       {
         address: "aws_sns_topic_policy.alerts",
-        values: {},
-        unknown: ["arn", "policy"],
-        // In expression order, once per use, as Terraform lists them (the real plan, 2026-10-15).
+        // The policy is known at plan: its Resource is local.alerts_arn, built from the topic's known name, the region
+        // and the caller identity (ruling P10: a resource policy is read for who it lets in).
+        values: {
+          policy: JSON.stringify({
+            Statement: [
+              { Action: ["sns:GetTopicAttributes", "sns:SetTopicAttributes", "sns:Subscribe", "sns:ListSubscriptionsByTopic", "sns:Publish", "sns:DeleteTopic"], Effect: "Allow", Principal: { AWS: `arn:aws:iam::${ACCOUNT}:root` }, Resource: alertsArn, Sid: "OwnerManages" },
+              { Action: "sns:Publish", Condition: { StringEquals: { "aws:SourceAccount": ACCOUNT } }, Effect: "Allow", Principal: { Service: ["events.amazonaws.com", "cloudwatch.amazonaws.com"] }, Resource: alertsArn, Sid: "EventsAndAlarmsOfThisAccount" },
+            ],
+            Version: "2012-10-17",
+          }),
+        },
+        unknown: ["arn"],
+        // In expression order, once per use, as Terraform lists them (a local by its own name; preflight C11).
         refs: {
           arn: ref(topic, "arn"),
-          policy: [...ref("data.aws_partition.current", "partition"), ...ref("data.aws_caller_identity.current", "account_id"), ...ref(topic, "arn"), ...ref(topic, "arn"), ...ref("data.aws_caller_identity.current", "account_id")],
+          policy: [...ref("data.aws_partition.current", "partition"), ...ref("data.aws_caller_identity.current", "account_id"), "local.alerts_arn", "local.alerts_arn", ...ref("data.aws_caller_identity.current", "account_id")],
         },
       },
       alarm("cpu_high", "cpu-high", { alarm_description: "vm-app's CPU above 70% for two minutes", namespace: "AWS/EC2", metric_name: "CPUUtilization", statistic: "Average", evaluation_periods: 2, threshold: 70, comparison_operator: "GreaterThanThreshold" }, { dimensions: true, ok: true }),

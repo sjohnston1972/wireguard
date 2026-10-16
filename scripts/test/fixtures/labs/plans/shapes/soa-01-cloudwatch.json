@@ -527,10 +527,8 @@
      "data.aws_partition.current",
      "data.aws_caller_identity.current.account_id",
      "data.aws_caller_identity.current",
-     "aws_sns_topic.alerts.arn",
-     "aws_sns_topic.alerts",
-     "aws_sns_topic.alerts.arn",
-     "aws_sns_topic.alerts",
+     "local.alerts_arn",
+     "local.alerts_arn",
      "data.aws_caller_identity.current.account_id",
      "data.aws_caller_identity.current"
     ]
@@ -538,8 +536,7 @@
    "unknown": [
     "arn",
     "id",
-    "owner",
-    "policy"
+    "owner"
    ],
    "sensitive": []
   },
