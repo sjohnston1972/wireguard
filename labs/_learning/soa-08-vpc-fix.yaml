@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Find and fix three VPC faults between two peered VPCs with flow logs and Reachability Analyzer.
+learn:
+  - Read VPC Flow Logs records to tell a security group refusal from a network ACL one
+  - Use Reachability Analyzer on a path and on its return path
+  - Remember that a peering needs routes on both sides and network ACLs need rules both ways
+learning_min: 60

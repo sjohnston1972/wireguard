@@ -1,0 +1,46 @@
+# Lab soa-08 (AWS labs batch 2), a break-fix lab. SOA-C03 ((V) the wording
+# against the current exam guide): Networking and Content Delivery (VPC
+# routing, security groups and network ACLs, peering); Monitoring, Logging,
+# Analysis, Remediation, and Performance Optimization (VPC Flow Logs); and
+# ANS-C01's Network Management and Operation (troubleshooting connectivity).
+# The three faults are AWS labs spec §12.2's, verbatim (ruling A28, P17).
+# London list prices × 0.75 (labs-verify --aws-prices):
+#   t4g.micro $0.0094/h -> £0.0071; t4g.nano (V) -> £0.0037; gp3 8 GiB -> £0.0008 each.
+# Authored: flow logs to CloudWatch Logs (a few MB); Instance Connect
+# Endpoints and peering inside one AZ are free. Reachability Analyzer is
+# charged per analysis (about 7.5p): the readme says so where it suggests one.
+id: soa-08-vpc-fix
+version: 1
+cloud: aws
+title: "Break-fix: VPC connectivity troubleshooting"
+summary: >-
+  An app VPC and a data VPC, peered, and a web instance that cannot reach its database on TCP 3306. Find the three
+  faults with VPC Flow Logs, Reachability Analyzer, route tables, network ACLs and security groups, and fix them.
+exam: SOA-C03
+skill_areas: [soa.networking, soa.monitoring, ans.operations]
+level: associate
+type: break-fix
+prerequisites: []
+cost:
+  items:
+    - name: "EC2 t4g.micro, Linux (vm-db)"
+      gbp_h: 0.0071
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.micro, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EC2 t4g.nano, Linux (vm-web)"
+      gbp_h: 0.0037
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      qty: 2
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - { name: "VPC Flow Logs to CloudWatch Logs, a few MB", gbp_h: 0.0002 }
+    - { name: "EC2 Instance Connect Endpoints (2) and VPC peering in one AZ", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 5, destroy_min: 4, session_h: 2, max_h: 4 }
+capacity: { instance_types: [t4g.micro, t4g.nano] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 2 }
+identity:
+  creates: [role]
+  roles: []
+  governance: false

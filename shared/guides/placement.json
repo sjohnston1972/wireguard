@@ -756,5 +756,14 @@
    "width": 952,
    "height": 580
   }
+ ],
+ "soa-08-vpc-fix": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two EC2 Instance Connect Endpoints, two EC2 instances, two VPC endpoints, a CloudWatch log group and more, in two VPCs with three subnets.",
+   "width": 2107,
+   "height": 966
+  }
  ]
 }

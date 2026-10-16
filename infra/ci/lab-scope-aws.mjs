@@ -703,7 +703,7 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
       if (type === "aws_vpc_peering_connection_accepter") refuse("gateway", "a lab never accepts a peering: the pipeline peers the lab to the VPN server");
       if (type === "aws_vpc_peering_connection") {
         for (const attr of ["vpc_id", "peer_vpc_id"]) {
-          if (!(v[attr] instanceof Unknown && ownRefs(refsOf(v[attr], r, attr), ["aws_vpc"]))) refuse("gateway", `${attr} must be one of the lab's own VPCs, by reference (aws_vpc.<name>.id)`);
+          if (!(v[attr] instanceof Unknown && (ownRefs(refsOf(v[attr], r, attr), ["aws_vpc"]) || (mode === "mock" && !refsOf(v[attr], r, attr).length)))) refuse("gateway", `${attr} must be one of the lab's own VPCs, by reference (aws_vpc.<name>.id)`);
         }
         for (const attr of ["peer_owner_id", "peer_region"]) if (r.configured?.has(attr)) refuse("gateway", `a lab's peering stays in this account and region: no ${attr}`);
       }
@@ -1150,7 +1150,7 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           if (t === undefined || t === null || t === "cloud-watch-logs" || t instanceof Unknown) {
             const dest = val.log_destination ?? val.log_group_name;
             const attr = val.log_destination !== undefined ? "log_destination" : "log_group_name";
-            if (!(!plan && dest instanceof Unknown) && !ownGroup(dest, attr)) no("lingering", "a flow log to CloudWatch must write to a log group declared here");
+            if (!(!plan && dest instanceof Unknown) && !(mode === "mock" && dest instanceof Unknown && !refsOf(dest, res, attr).length) && !ownGroup(dest, attr)) no("lingering", "a flow log to CloudWatch must write to a log group declared here");
           }
           break;
         }
