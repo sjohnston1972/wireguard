@@ -576,6 +576,13 @@
    "kind": "architecture"
   }
  ],
+ "saa-19-eks": [
+  {
+   "file": "architecture.svg",
+   "title": "EKS with a managed node group: architecture",
+   "kind": "architecture"
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",

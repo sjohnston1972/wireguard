@@ -1287,7 +1287,11 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           if (first(val.upgrade_policy).support_type !== "STANDARD") refuse("size", "upgrade_policy.support_type must be STANDARD: extended support bills $0.60 an hour (ruling P7)");
           if (list(val.compute_config).some((x) => isObj(x) && badOr(x.enabled, (e) => e === true))) refuse("size", "compute_config: EKS Auto Mode bills per instance on top, known at plan (ruling P7)");
           if (blockUnknown(val.remote_network_config) || list(val.remote_network_config).some(isObj)) refuse("gateway", "remote_network_config reaches networks outside the lab");
-          if (plan && !own(first(val.vpc_config).subnet_ids, ["aws_subnet"], "vpc_config")) refuse("gateway", "vpc_config.subnet_ids must be the lab's own subnets, by reference");
+          // Task 15: a splat over a known count (aws_subnet.private[*].id) plans as a list of unknown ids, each element
+          // carrying the attribute's references; a wholly unknown list is read as one.
+          const subnetIds = first(val.vpc_config).subnet_ids;
+          const ownSubnets = Array.isArray(subnetIds) ? subnetIds.length > 0 && subnetIds.every((s) => own(s, ["aws_subnet"], "vpc_config")) : own(subnetIds, ["aws_subnet"], "vpc_config");
+          if (plan && !ownSubnets) refuse("gateway", "vpc_config.subnet_ids must be the lab's own subnets, by reference");
           break;
         }
         case "aws_glue_catalog_database":

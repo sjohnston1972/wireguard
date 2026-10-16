@@ -1,0 +1,49 @@
+# Lab saa-19 (AWS labs batch 3). SAA-C03 ((V) the wording against the current
+# exam guide): Design High-Performing Architectures (containers on Kubernetes:
+# EKS, managed node groups).
+# London list prices × 0.75 (labs-verify --aws-prices; the EKS filter is (V):
+# if it matches no single product it becomes authored-only, Task 16). The EKS
+# control plane is $0.10 an hour on standard support (extended support,
+# $0.60, is refused: ruling P7). The NAT gateway bills each started hour
+# whole (V, A20). t4g.medium: 4 GiB, enough for the system pods and a small
+# deployment (V, Task 17).
+id: saa-19-eks
+version: 1
+cloud: aws
+title: "EKS with a managed node group"
+summary: >-
+  An EKS cluster with one Graviton node in a managed node group, in private subnets behind a NAT gateway: give
+  yourself access with an access entry, deploy a sample app with kubectl from CloudShell and reach it by port-forward.
+exam: SAA-C03
+skill_areas: [saa.performance]
+level: expert
+type: explore
+prerequisites: [soa-10-containers]
+cost:
+  items:
+    - name: "EKS cluster, standard support, hourly"
+      gbp_h: 0.0750
+      aws_price: { service: AmazonEKS, unit: Hrs, filters: { usagetype: "{usage}-AmazonEKS-Hours:perCluster" } }
+    - name: "EC2 t4g.medium, Linux (the node)"
+      gbp_h: 0.0282
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.medium, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 node volume, 20 GiB"
+      gbp_h: 0.0019
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 20, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - name: "NAT gateway, hourly"
+      gbp_h: 0.0375
+      whole_hours: true
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { productFamily: "NAT Gateway", usagetype: "{usage}-NatGateway-Hours" } }
+    - name: "Public IPv4 address (the NAT gateway's)"
+      gbp_h: 0.0038
+      aws_price: { service: AmazonVPC, unit: Hrs, filters: { group: VPCPublicIPv4Address, usagetype: "{usage}-PublicIPv4:InUseAddress" } }
+    - { name: "EC2 Instance Connect Endpoint", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 20, destroy_min: 15, session_h: 2, max_h: 3 }
+capacity: { instance_types: [t4g.medium, t4g.medium] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: [role]
+  roles: []
+  governance: false

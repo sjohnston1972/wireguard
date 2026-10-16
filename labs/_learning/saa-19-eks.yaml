@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Give yourself access to an EKS cluster, deploy an app on its managed node and reach it with port-forward.
+learn:
+  - Grant cluster access with an EKS access entry, not aws-auth
+  - Run a deployment on a managed node group and read its pods
+  - Reach a pod by port-forward and see why no load balancer was made
+learning_min: 75

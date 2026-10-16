@@ -891,3 +891,25 @@ test("fix round 2, R2-4: a workflow target key in another case is refused", () =
   assert.notEqual(scope.workflowProblem({ queryLanguage: "JSONata", StartAt: "A", States: {} }, id, opts), null);
   assert.equal(scope.workflowProblem(task({ TopicArn: `arn:aws:sns:eu-west-2:${ACCOUNT}:lab-${id}-orders`, "Message.$": "$" }), id, opts), null);
 });
+
+test("Task 15: a cluster's subnet_ids planned as a list of unknown ids (aws_subnet.private[*].id, count 2) are the lab's own; another resource's ids or a literal id are refused", () => {
+  const clusterRole = svcRoleFor(c19, "cluster", "eks");
+  const cluster = (subnetRefs) => T(c19, "aws_eks_cluster.lab", { name: "lab-saa-19-eks", access_config: [{ authentication_mode: "API", bootstrap_cluster_creator_admin_permissions: false }], upgrade_policy: [{ support_type: "STANDARD" }], vpc_config: [{ endpoint_private_access: true, endpoint_public_access: true }] }, { unknown: ["role_arn", "vpc_config.0.subnet_ids"], refs: { role_arn: ref("aws_iam_role.cluster", "arn"), "vpc_config.0.subnet_ids": subnetRefs } });
+  /** As a real (and a mocked) plan prints a splat over a known count: a two-element list, each element unknown. */
+  const perElement = (p) => {
+    const ch = p.resource_changes.find((x) => x.address === "aws_eks_cluster.lab").change;
+    ch.after.vpc_config[0].subnet_ids = [null, null];
+    ch.after_unknown.vpc_config[0].subnet_ids = [true, true];
+    for (const r of p.planned_values.root_module.resources) if (r.address === "aws_eks_cluster.lab") r.values.vpc_config[0].subnet_ids = [null, null];
+    return p;
+  };
+  const p19 = (subnetRefs) => perElement(realisticPlan({ resources: [...templateResources(c19), clusterRole, cluster(subnetRefs)], data: awsData(), providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: c19.variables }));
+  assert.deepEqual(rules(p19(["aws_subnet.private"]), c19.id), []);
+  assert.deepEqual(rules(p19(ref("aws_vpc.lab", "id")), c19.id), ["gateway: aws_eks_cluster.lab"]);
+  // Mock mode (labs-tf): no configuration, so no references to read; each element unknown passes.
+  const mock = p19(["aws_subnet.private"]);
+  delete mock.configuration;
+  assert.deepEqual(scope.scopeProblemsAws({ ...planResources(mock), configKeys: {}, providerConfigs: {} }, c19.id, { mode: "mock" }).filter((x) => x.address === "aws_eks_cluster.lab"), []);
+  // A literal subnet id is never the lab's own.
+  assert.deepEqual(rulesFor(c19, [clusterRole, T(c19, "aws_eks_cluster.lab", { name: "lab-saa-19-eks", access_config: [{ authentication_mode: "API", bootstrap_cluster_creator_admin_permissions: false }], upgrade_policy: [{ support_type: "STANDARD" }], vpc_config: [{ endpoint_private_access: true, endpoint_public_access: true, subnet_ids: ["subnet-0123456789abcdef0", "subnet-0123456789abcdef1"] }] }, { unknown: ["role_arn"], refs: { role_arn: ref("aws_iam_role.cluster", "arn") } })], templateResources(c19)), ["gateway: aws_eks_cluster.lab"]);
+});

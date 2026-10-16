@@ -1057,6 +1057,29 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: [],
   },
+  "saa-19-eks": {
+    nodes: [
+      "aks eks-lab < lab-saa-19-eks · London",
+      "aks ng-lab < lab-saa-19-eks · London",
+      "bastion eice-lab < snet-private-1",
+      "internetGateway igw-lab < vpc-lab",
+      "managedIdentity lab-saa-19-eks-cluster < lab-saa-19-eks · London",
+      "managedIdentity lab-saa-19-eks-node < lab-saa-19-eks · London",
+      "natGateway nat-lab < snet-public-1",
+      "nsg sg-eice < vpc-lab",
+      "nsg sg-vms < vpc-lab",
+      "privateEndpoint vpce-s3 < vpc-lab",
+      "resourceGroup lab-saa-19-eks · London",
+      "routeTable rt-private < vpc-lab",
+      "routeTable rt-public < vpc-lab",
+      "subnet snet-private-1 < vpc-lab",
+      "subnet snet-private-2 < vpc-lab",
+      "subnet snet-public-1 < vpc-lab",
+      "subnet snet-public-2 < vpc-lab",
+      "vnet vpc-lab < lab-saa-19-eks · London",
+    ],
+    edges: ["rt-private ..> nat-lab : 0.0.0.0/0", "rt-public ..> igw-lab : 0.0.0.0/0"],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);
