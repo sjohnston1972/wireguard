@@ -28,6 +28,13 @@
 // schema calls sensitive (data.aws_ssm_parameter's value) as a resource does;
 // and PLAN_DEFAULTS reach inside nested blocks (an S3 lifecycle rule's filter).
 //
+// AWS labs batch 3's release tests (saa-11 to saa-19, 2026-10-16) added more
+// unset Optional and Computed blocks (DynamoDB, Cognito, Step Functions, EFS,
+// EKS, ElastiCache, Glue, an AMI copy, an Auto Scaling group's launch_template
+// when mixed_instances_policy names the templates) and three plan-time
+// defaults (an SQS queue's data key reuse period, an instances distribution's
+// spot_instance_pools, a lifecycle expiration's expired_object_delete_marker).
+//
 //   realisticPlan({ resources, data, providers, variables, providerConfig })
 //     resources: [{ address, values, refs?, unknown?, sensitive?, dynamic?, importing?, actions?, count?, forEach?, providerKey? }]
 //       address    may carry an instance key, azurerm_subnet.s[0] or azurerm_subnet.s["web"]
@@ -94,7 +101,8 @@ export const UNSET_BLOCKS_UNKNOWN = {
   azurerm_virtual_network_gateway: ["bgp_settings"],
   azurerm_storage_account: ["blob_properties", "network_rules", "queue_properties", "routing", "share_properties", "static_website"],
   // AWS labs batch 1's release tests (soa-01 to soa-05, aws 6.69.0, 2026-10-15).
-  aws_autoscaling_group: ["availability_zone_distribution", "capacity_reservation_specification", "instance_lifecycle_policy", "mixed_instances_policy", "traffic_source"],
+  // launch_template: saa-18's group (2026-10-16), which launches from mixed_instances_policy's templates instead.
+  aws_autoscaling_group: ["availability_zone_distribution", "capacity_reservation_specification", "instance_lifecycle_policy", "launch_template", "mixed_instances_policy", "traffic_source"],
   aws_config_config_rule: ["evaluation_mode"],
   aws_config_configuration_recorder: ["recording_group.0.exclusion_by_resource_types", "recording_group.0.recording_strategy", "recording_mode"],
   aws_iam_role: ["inline_policy"],
@@ -111,9 +119,20 @@ export const UNSET_BLOCKS_UNKNOWN = {
   aws_lb_listener: ["mutual_authentication"],
   aws_lb_target_group: ["stickiness", "target_failover", "target_group_health", "target_health_state"],
   // AWS labs batch 3 (Task 3 fix round 2, R2-1): Optional and Computed blocks in aws 6.69's source (dynamodb/table.go,
-  // eks/cluster.go), so planned wholly unknown when unset, as batch 1 and 2's real plans show for such blocks.
-  aws_dynamodb_table: ["global_table_witness"],
-  aws_eks_cluster: ["access_config", "compute_config", "kubernetes_network_config", "storage_config", "upgrade_policy"],
+  // eks/cluster.go), so planned wholly unknown when unset, as batch 1 and 2's real plans show for such blocks. Batch 3's
+  // release tests (saa-11 to saa-19, aws 6.69.0, 2026-10-16) recorded the rest of each type's, and the other types'.
+  aws_ami_copy: ["ebs_block_device", "ephemeral_block_device"],
+  aws_cognito_user_pool: ["sign_in_policy", "sms_configuration", "username_configuration", "verification_message_template"],
+  aws_dynamodb_table: ["global_secondary_index", "global_table_witness", "point_in_time_recovery", "server_side_encryption", "ttl", "warm_throughput"],
+  aws_efs_file_system: ["protection"],
+  aws_eks_cluster: [
+    "access_config", "compute_config", "control_plane_scaling_config", "kube_api_server_config", "kube_controller_manager_config", "kube_scheduler_config",
+    "kubernetes_network_config", "storage_config", "upgrade_policy",
+  ],
+  aws_eks_node_group: ["node_repair_config"],
+  aws_elasticache_replication_group: ["node_group_configuration"],
+  aws_glue_catalog_database: ["create_table_default_permission"],
+  aws_sfn_state_machine: ["encryption_configuration", "logging_configuration", "tracing_configuration"],
   aws_s3_bucket: ["cors_rule", "grant", "lifecycle_rule", "logging", "object_lock_configuration", "replication_configuration", "server_side_encryption_configuration", "versioning", "website"],
   aws_vpc_endpoint: ["dns_options", "subnet_configuration"],
 };
@@ -145,12 +164,25 @@ export const PLAN_DEFAULTS = {
   // soa-04's real plan (2026-10-15): the bucket-wide minimum size and, in each rule and its filter, the prefix and
   // size bounds are known at plan though left unset (the framework provider's defaults). Nested blocks as arrays,
   // element by element, as in `values`. The shape records only that they are known; these values are the defaults.
+  // saa-14's real plan (2026-10-16): a rule's expiration set by days alone knows expired_object_delete_marker (false).
   aws_s3_bucket_lifecycle_configuration: (v) => ({
     transition_default_minimum_object_size: "all_storage_classes_128K",
     ...(Array.isArray(v.rule)
-      ? { rule: v.rule.map((r) => ({ prefix: "", ...(Array.isArray(r?.filter) ? { filter: r.filter.map(() => ({ object_size_greater_than: 0, object_size_less_than: 0, prefix: "" })) } : {}) })) }
+      ? {
+        rule: v.rule.map((r) => ({
+          prefix: "",
+          ...(Array.isArray(r?.filter) ? { filter: r.filter.map(() => ({ object_size_greater_than: 0, object_size_less_than: 0, prefix: "" })) } : {}),
+          ...(Array.isArray(r?.expiration) ? { expiration: r.expiration.map(() => ({ expired_object_delete_marker: false })) } : {}),
+        })),
+      }
       : {}),
   }),
+  // AWS labs batch 3's release tests (aws 6.69.0, 2026-10-16): saa-13's queues know their data key reuse period
+  // (AWS's 300 seconds), and saa-18's group its instances distribution's spot_instance_pools, left unset.
+  aws_sqs_queue: { kms_data_key_reuse_period_seconds: 300 },
+  aws_autoscaling_group: (v) => (Array.isArray(v.mixed_instances_policy)
+    ? { mixed_instances_policy: v.mixed_instances_policy.map((m) => (Array.isArray(m?.instances_distribution) ? { instances_distribution: m.instances_distribution.map(() => ({ spot_instance_pools: 0 })) } : {})) }
+    : {}),
 };
 
 /**

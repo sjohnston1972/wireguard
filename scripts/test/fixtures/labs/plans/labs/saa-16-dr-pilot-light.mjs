@@ -77,7 +77,7 @@ export default () => {
         providerKey: IE,
         values: tagged(c, { cidr_block: drSubnet, availability_zone: "eu-west-1a", map_public_ip_on_launch: false, tags: { Name: "snet-dr" } }),
         unknown: ["vpc_id"],
-        refs: { vpc_id: ref(DR_VPC, "id"), cidr_block: ["local.dr_subnet_cidr"], availability_zone: ["data.aws_availability_zones.dr.names[0]", "data.aws_availability_zones.dr"] },
+        refs: { vpc_id: ref(DR_VPC, "id"), cidr_block: ["local.dr_subnet_cidr"], availability_zone: ["data.aws_availability_zones.dr.names[0]", "data.aws_availability_zones.dr.names", "data.aws_availability_zones.dr"] },
       },
       { address: "aws_route_table.dr", providerKey: IE, values: tagged(c, { tags: { Name: "rt-dr" } }), unknown: ["vpc_id"], refs: { vpc_id: ref(DR_VPC, "id") } },
       { address: "aws_route_table_association.dr", providerKey: IE, values: {}, unknown: ["subnet_id", "route_table_id"], refs: { subnet_id: ref("aws_subnet.dr", "id"), route_table_id: ref("aws_route_table.dr", "id") } },

@@ -172,7 +172,8 @@ export default () => {
           name: ["var.name_prefix"],
           image_id: ["data.aws_ssm_parameter.al2023_arm64.insecure_value", "data.aws_ssm_parameter.al2023_arm64"],
           vpc_security_group_ids: ref("aws_security_group.vms", "id"),
-          user_data: ["local.app_cloud_init", "local.app_page", "local.cloud_init_base", "aws_db_instance.app.address", "aws_db_instance.app", "aws_elasticache_replication_group.app.primary_endpoint_address", "aws_elasticache_replication_group.app"],
+          // base64encode(local.app_cloud_init): the local by its own name, not what it is built from.
+          user_data: ["local.app_cloud_init"],
           "tag_specifications.0.tags": ["var.tags"],
           "tag_specifications.1.tags": ["var.tags"],
           "tag_specifications.2.tags": ["var.tags"],

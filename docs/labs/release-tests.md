@@ -106,3 +106,12 @@ lab's hourly estimate times those minutes.
 | 2026-10-16 04:31 | soa-03-auto-scaling | 3 | pass | yes | none | 6m 19s | 3m 24s | £0.0080 | 38850131479 |
 | 2026-10-16 04:41 | soa-02-systems-manager | 4 | pass | yes | none | 3m 57s | 5m 4s | £0.0065 | 38851045443 |
 | 2026-10-16 04:53 | soa-08-vpc-fix | 2 | pass | yes | none | 3m 54s | 3m 51s | £0.0016 | 38852201889 |
+| 2026-10-16 16:13 | saa-12-serverless-api | 1 | pass | yes | none | 1m 1s | 1m 40s | £0.0000 | 38929752740 |
+| 2026-10-16 16:13 | saa-17-data-pipeline | 1 | pass | yes | none | 1m 9s | 1m 32s | £0.0006 | 38929801604 |
+| 2026-10-16 16:22 | saa-13-decoupling | 1 | pass | yes | none | 2m 4s | 5m 17s | £0.0000 | 38930281683 |
+| 2026-10-16 16:26 | saa-16-dr-pilot-light | 1 | pass | yes | none | 6m 0s | 5m 43s | £0.0011 | 38930312661 |
+| 2026-10-16 16:30 | saa-15-data-security | 1 | pass | yes | none | 3m 50s | 3m 6s | £0.0006 | 38931422250 |
+| 2026-10-16 16:39 | saa-14-storage | 1 | pass | yes | none | 4m 28s | 2m 57s | £0.0021 | 38932487877 |
+| 2026-10-16 16:41 | saa-11-three-tier | 1 | pass | yes | none | 18m 23s | 11m 58s | £0.0677 | 38929851114 |
+| 2026-10-16 16:46 | saa-18-cost-compute | 1 | pass | yes | none | 3m 55s | 2m 56s | £0.0017 | 38933612894 |
+| 2026-10-16 17:11 | saa-19-eks | 1 | pass | yes | none | 13m 55s | 13m 59s | £0.0681 | 38933998495 |

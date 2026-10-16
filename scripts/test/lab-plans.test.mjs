@@ -391,6 +391,34 @@ test("the realistic plans print batch 1 AWS labs' regions, unset blocks, sensiti
   // A plain-text literal has no references; the instance's subnet ref is not listed twice.
   assert.deepEqual(config("soa-09-route53-cloudfront", "aws_s3_object.health").expressions.content, { constant_value: "ok\n" });
   assert.deepEqual(config("soa-08-vpc-fix", "aws_instance.db").expressions.subnet_id.references, ["aws_subnet.db.id", "aws_subnet.db"]);
+  // 7. Batch 3 (saa-11 to saa-19): more unset Optional and Computed blocks, wholly unknown; an Auto Scaling group's
+  // launch_template only when the group leaves it unset.
+  for (const [lab, address, block] of [
+    ["saa-11-three-tier", "aws_elasticache_replication_group.app", "node_group_configuration"],
+    ["saa-12-serverless-api", "aws_cognito_user_pool.users", "verification_message_template"],
+    ["saa-12-serverless-api", "aws_dynamodb_table.items", "point_in_time_recovery"],
+    ["saa-13-decoupling", "aws_sfn_state_machine.orders", "logging_configuration"],
+    ["saa-14-storage", "aws_efs_file_system.shared", "protection"],
+    ["saa-16-dr-pilot-light", "aws_ami_copy.dr", "ebs_block_device"],
+    ["saa-17-data-pipeline", "aws_glue_catalog_database.lake", "create_table_default_permission"],
+    ["saa-18-cost-compute", "aws_autoscaling_group.mixed", "launch_template"],
+    ["saa-19-eks", "aws_eks_cluster.lab", "kube_api_server_config"],
+    ["saa-19-eks", "aws_eks_node_group.lab", "node_repair_config"],
+  ]) assert.equal(change(lab, address).after_unknown[block], true, `${address}: ${block}`);
+  assert.deepEqual(change("saa-11-three-tier", "aws_autoscaling_group.web").after_unknown.launch_template, [{ id: true, name: true, version: true }]);
+  // Plan-time defaults: known, planned, not configured (nested ones inside the blocks the lab sets).
+  const queue = change("saa-13-decoupling", 'aws_sqs_queue.orders["shipping"]');
+  assert.equal(queue.after.kms_data_key_reuse_period_seconds, 300);
+  assert.equal(queue.after_unknown.kms_data_key_reuse_period_seconds, undefined);
+  assert.equal(queue.after_unknown.redrive_policy, true, "Optional and Computed, null in the configuration");
+  const mixed = change("saa-18-cost-compute", "aws_autoscaling_group.mixed");
+  assert.equal(mixed.after.mixed_instances_policy[0].instances_distribution[0].spot_instance_pools, 0);
+  assert.equal(mixed.after.mixed_instances_policy[0].instances_distribution[0].on_demand_base_capacity, 1, "the lab's own values are kept");
+  const tiers = change("saa-14-storage", "aws_s3_bucket_lifecycle_configuration.tiers");
+  assert.equal(tiers.after.rule[1].expiration[0].expired_object_delete_marker, false);
+  assert.equal(tiers.after.rule[1].expiration[0].days, 365);
+  // A local is referenced by its own name, not by what it is built from.
+  assert.deepEqual(config("saa-11-three-tier", "aws_launch_template.app").expressions.user_data.references, ["local.app_cloud_init"]);
   // A plan with no region variable still knows each aws resource's region (London, the fixtures' default).
   const bare = realisticPlan({ resources: [{ address: "aws_vpc.x", values: { cidr_block: "10.0.0.0/16" } }], providers: ["aws"] });
   assert.equal(bare.resource_changes[0].change.after.region, "eu-west-2");

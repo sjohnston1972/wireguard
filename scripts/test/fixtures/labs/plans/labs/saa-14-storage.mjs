@@ -7,9 +7,10 @@
 // wait and the two mount targets made by count) and s3.tf (the bucket, its
 // public access block, the Intelligent-Tiering archive configuration, the
 // lifecycle rules and two objects). The instance's cloud-init names the file
-// system's id, so its user_data is unknown (with references). Each volume's
-// zone is the subnet's attribute, so it is unknown with a reference to the
-// subnet. The file system's creation token and the bucket's name are built
+// system's id, so its user_data is unknown (it references the local by its
+// own name). Each volume's zone is the subnet's attribute, which is known at
+// plan (local.azs), so it is known, with a reference to the subnet. The file
+// system's creation token and the bucket's name are built
 // from the lab id and name prefix, so they are known at plan.
 
 import { AWS_PROVIDER_CONFIG, al2023Instance, awsData, ctxAws, ref, tagged, templateResources } from "../common-aws.mjs";
@@ -19,11 +20,11 @@ export default () => {
   const id = c.id;
   const zone = ["aws_subnet.private[0].availability_zone", "aws_subnet.private[0]", "aws_subnet.private"];
   const instance = al2023Instance(c, { key: "storage", name: "vm-storage", volumeName: null, userDataUnknown: true });
-  instance.refs.user_data = ["local.cloud_init_base", ...ref("aws_efs_file_system.shared", "id")];
+  instance.refs.user_data = ["local.storage_cloud_init"];
   const volume = (key, extra) => ({
     address: `aws_ebs_volume.${key}`,
-    values: tagged(c, { size: 4, type: key, ...extra }),
-    unknown: ["availability_zone"],
+    // The subnet's zone is known at plan (local.azs, from the data source).
+    values: tagged(c, { availability_zone: "eu-west-2a", size: 4, type: key, ...extra }),
     refs: { availability_zone: zone },
   });
   const attachment = (key, device) => ({
