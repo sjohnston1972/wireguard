@@ -7,7 +7,7 @@
 # started hour whole (V), so a session costs at least an hour of it (A20).
 # It makes no IAM (ruling A33): identity.creates is [].
 id: soa-03-auto-scaling
-version: 2
+version: 3
 cloud: aws
 title: "Auto Scaling behind an Application Load Balancer"
 summary: >-

@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -210,4 +210,77 @@ test("the command line: exit 1 with one line per problem before Terraform starts
   const good = spawnSync(process.execPath, [SCRIPT, join(LABS, "az104-06-blob-security", "terraform")], { encoding: "utf8" });
   assert.equal(good.status, 0, good.stdout + good.stderr);
   assert.equal(spawnSync(process.execPath, [SCRIPT], { encoding: "utf8" }).status, 2);
+});
+
+test("cfn (ruling P4): --cloud aws reads terraform/cfn/*.yaml: short-form tags, Transform, IAM types, custom resources, Retain and literal CIDRs are refused; the long form passes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lint-cfn-"));
+  mkdirSync(join(dir, "cfn"));
+  writeFileSync(join(dir, "main.tf"), "# main.tf\n");
+  const good = ["# cfn/stack.yaml", "# Short forms such as !Ref are not read here.", "Resources:", "  Q:", "    Type: AWS::SQS::Queue", "    Properties:", "      VisibilityTimeout:", "        Ref: Timeout", "    DeletionPolicy: Delete", ""].join("\n");
+  writeFileSync(join(dir, "cfn", "stack.yaml"), good);
+  assert.deepEqual(lintDir(dir, { cloud: "aws" }), []);
+  const bad = [
+    "Transform: AWS::Serverless-2016-10-31",
+    "Resources:",
+    "  R:",
+    "    Type: AWS::IAM::Role",
+    "  C:",
+    "    Type: Custom::Thing",
+    "    DeletionPolicy: Retain",
+    "  Q:",
+    "    Type: AWS::SQS::Queue",
+    "    Properties:",
+    "      VisibilityTimeout: !Ref Timeout",
+    "      Cidr: 10.1.0.0/16",
+    "",
+  ].join("\n");
+  writeFileSync(join(dir, "cfn", "stack.yaml"), bad);
+  const got = lintDir(dir, { cloud: "aws" }).map((p) => `${p.rule}: ${p.file}:${p.line}`);
+  assert.deepEqual(got.sort(), ["cfn: cfn/stack.yaml:1", "cfn: cfn/stack.yaml:11", "cfn: cfn/stack.yaml:4", "cfn: cfn/stack.yaml:6", "cfn: cfn/stack.yaml:7", "literal-cidr: cfn/stack.yaml:12"].sort());
+  // An Azure lab's folder never has its cfn/ read.
+  assert.deepEqual(lintDir(dir, { cloud: "azure" }).filter((p) => p.file.startsWith("cfn/")), []);
+});
+
+test("re-review N-4 (--cloud aws only): a literal EC2 id, an EC2 alarm action and timestamp()/uuid() are refused in .tf and cfn/ text; Azure labs keep timestamp()", () => {
+  const tf = [
+    'resource "aws_ssm_association" "x" {',
+    '  name = "AWS-StopEC2Instance"',
+    '  parameters = { InstanceId = "i-0123456789abcdef0" }',
+    "}",
+    'resource "aws_cloudwatch_metric_alarm" "a" {',
+    '  alarm_actions = ["arn:aws:automate:eu-west-2:ec2:terminate", "arn:aws:swf:eu-west-2:123456789012:action/actions/AWS_EC2.InstanceId.Stop/1.0"]',
+    '  dimensions    = { InstanceId = timestamp() == "" ? "x" : "y" }',
+    '  alarm_name    = "lab-${uuid()}"',
+    '  ok_actions    = [plantimestamp() == "" ? "x" : "y"]',
+    '  password      = bcrypt("x")',
+    "}",
+    "# a comment naming vol-0123456789abcdef0 and timestamp() is not read",
+    "",
+  ].join("\n");
+  const got = lintTfText({ "main.tf": tf }, { cloud: "aws" }).filter((p) => ["known-id", "apply-time"].includes(p.rule)).map((p) => `${p.rule}: ${p.line}`);
+  assert.deepEqual(got.sort(), ["apply-time: 7", "apply-time: 8", "apply-time: 9", "apply-time: 10", "known-id: 3", "known-id: 6", "known-id: 6"].sort());
+  for (const id of ["vol-0123456789abcdef0", "snap-0123456789abcdef0", "eni-0123abcd", "sg-0123456789abcdef0", "subnet-0123abcd", "vpc-0a1b2c3d4e5f60718", "rtb-0123abcd", "acl-0123abcd"]) {
+    assert.deepEqual(lintTfText({ "x.tf": `locals { x = "${id}" }\n` }, { cloud: "aws" }).map((p) => p.rule), ["known-id"], id);
+  }
+  // Names that only look like ids pass: sg-vms, lt-a03bc1de, vpc-lab, subnet-private-1.
+  assert.deepEqual(lintTfText({ "x.tf": 'locals {\n  a = "sg-vms"\n  b = "lt-a03bc1de"\n  c = "vpc-lab"\n  d = "snet-private-1"\n}\n' }, { cloud: "aws" }), []);
+  // Azure: timestamp() stays allowed (az104-04-cost's budget start date).
+  assert.deepEqual(lintTfText({ "x.tf": 'locals { t = timestamp() }\n' }, { cloud: "azure" }), []);
+  // cfn/: the same id and action rules.
+  const dir = mkdtempSync(join(tmpdir(), "lint-cfn-id-"));
+  mkdirSync(join(dir, "cfn"));
+  writeFileSync(join(dir, "main.tf"), "# main.tf\n");
+  writeFileSync(join(dir, "cfn", "stack.yaml"), ["Resources:", "  A:", "    Type: AWS::CloudWatch::Alarm", "    Properties:", "      Dimensions:", "        - Name: InstanceId", "          Value: i-0123456789abcdef0", "      AlarmActions:", "        - arn:aws:automate:eu-west-2:ec2:stop", ""].join("\n"));
+  assert.deepEqual(lintDir(dir, { cloud: "aws" }).map((p) => `${p.rule}: ${p.file}:${p.line}`).sort(), ["known-id: cfn/stack.yaml:7", "known-id: cfn/stack.yaml:9"]);
+});
+
+test("cfn (final review I-1): a log group with DeletionProtectionEnabled other than false is refused; false passes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lint-cfn-dp-"));
+  mkdirSync(join(dir, "cfn"));
+  writeFileSync(join(dir, "main.tf"), "# main.tf\n");
+  const tpl = (v) => ["Resources:", "  L:", "    Type: AWS::Logs::LogGroup", "    Properties:", "      RetentionInDays: 1", `      DeletionProtectionEnabled: ${v}`, ""].join("\n");
+  writeFileSync(join(dir, "cfn", "stack.yaml"), tpl("false"));
+  assert.deepEqual(lintDir(dir, { cloud: "aws" }), []);
+  writeFileSync(join(dir, "cfn", "stack.yaml"), tpl("true"));
+  assert.deepEqual(lintDir(dir, { cloud: "aws" }).map((p) => `${p.rule}: ${p.file}:${p.line}`), ["cfn: cfn/stack.yaml:6"]);
 });

@@ -34,7 +34,7 @@ function nameTag(after: Record<string, unknown>): string | undefined {
 /** The name an AWS resource is shown and keyed by: its Name tag, else its own name, else the Terraform address's name. */
 export function awsNameOf(i: TfInst): string {
   const a = i.after;
-  return nameTag(a) ?? str(a.name) ?? str(a.bucket) ?? str(a.identifier) ?? str(a.alarm_name) ?? str(a.function_name) ?? str(a.rule_name) ?? str(a.dashboard_name) ?? (i.index !== null ? `${i.name}[${i.index}]` : i.name);
+  return nameTag(a) ?? str(a.name) ?? str(a.bucket) ?? str(a.identifier) ?? str(a.alarm_name) ?? str(a.function_name) ?? str(a.rule_name) ?? str(a.dashboard_name) ?? str(a.analyzer_name) ?? str(a.family) ?? (i.index !== null ? `${i.name}[${i.index}]` : i.name);
 }
 
 /** A rule folding into the instance an attribute references. */
@@ -49,9 +49,9 @@ const firstOfType = (type: string) => (_i: TfInst, h: PlannedHelpers): TfInst | 
 /** The service's last dot-part: com.amazonaws.eu-west-2.ssm → ssm. */
 const lastPart = (s: string | undefined): string | undefined => s?.split(".").at(-1);
 
-/** The targets behind a listener's target groups: Auto Scaling groups and instances. */
+/** The targets behind a listener's target groups: Auto Scaling groups, ECS services and instances. */
 function behind(tg: TfInst, h: PlannedHelpers): TfInst[] {
-  const out: TfInst[] = [...h.referrers(tg, ["aws_autoscaling_group"])];
+  const out: TfInst[] = [...h.referrers(tg, ["aws_autoscaling_group", "aws_ecs_service"])];
   for (const att of h.referrers(tg, ["aws_lb_target_group_attachment"])) for (const t of h.refs(att, ["target_id"])) if (t.type === "aws_instance" && !out.includes(t)) out.push(t);
   return out;
 }
@@ -75,7 +75,7 @@ const S3_PIECES = [
 
 export const AWS_TF_RULES: Record<string, TfRule> = {
   // Not AWS resources: helpers a lab may use beside the aws provider.
-  ...each(["tls_private_key", "tls_self_signed_cert", "tls_cert_request", "archive_file"], { ignore: true }),
+  ...each(["tls_private_key", "tls_self_signed_cert", "tls_cert_request", "archive_file", "random_password"], { ignore: true }),
 
   // ── Groups ──
   aws_resourcegroups_group: { arm: "resource-groups:group" },
@@ -210,6 +210,34 @@ export const AWS_TF_RULES: Record<string, TfRule> = {
   aws_lambda_function: { arm: "lambda:function" },
   aws_dynamodb_table: { arm: "dynamodb:table" },
   aws_ec2_client_vpn_endpoint: { arm: "ec2:client-vpn-endpoint" },
+
+  // ── Batch 2 (labs 06–10) ──
+  aws_cloudformation_stack: { arm: "cloudformation:stack" },
+  aws_iam_user: { arm: "iam:user" },
+  aws_iam_user_login_profile: into("user"),
+  aws_iam_user_policy_attachment: { fold: ["user"], pull: ["policy_arn"] },
+  aws_kms_key: { arm: "kms:key" },
+  aws_kms_alias: into("target_key_id"),
+  aws_secretsmanager_secret: { arm: "secretsmanager:secret" },
+  ...each(["aws_secretsmanager_secret_version", "aws_secretsmanager_secret_rotation"], into("secret_id")),
+  aws_lambda_permission: into("function_name"),
+  aws_accessanalyzer_analyzer: { arm: "access-analyzer:analyzer" },
+  aws_network_acl: { arm: "ec2:network-acl" },
+  ...each(["aws_network_acl_rule", "aws_network_acl_association"], into("network_acl_id")),
+  aws_flow_log: { arm: "ec2:vpc-flow-log", kind: "flowLog" },
+  aws_route53_zone: { arm: "route53:hostedzone" },
+  aws_route53_record: into("zone_id"),
+  aws_route53_health_check: { arm: "route53:healthcheck", kind: "monitor" },
+  aws_cloudfront_distribution: {
+    arm: "cloudfront:distribution",
+    edges: (i, h) => h.refs(i, ["origin"]).filter((t) => t.type === "aws_s3_bucket" || t.type === "aws_lb").map((t) => ({ from: i, to: t, kind: "traffic" as const, label: "origin" })),
+  },
+  aws_cloudfront_origin_access_control: intoReferrer("aws_cloudfront_distribution"),
+  aws_ecr_repository: { arm: "ecr:repository" },
+  aws_ecr_lifecycle_policy: into("repository"),
+  aws_ecs_cluster: { arm: "ecs:cluster" },
+  aws_ecs_task_definition: { arm: "ecs:task-definition", ...intoReferrer("aws_ecs_service") },
+  aws_ecs_service: { arm: "ecs:service", props: (i) => ({ instances: num(i.after.desired_count) }) },
 
   // ── Systems Manager and Config: generic cards; their pieces fold in (C9) ──
   aws_config_config_rule: { arm: "config:config-rule" },

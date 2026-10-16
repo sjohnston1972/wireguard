@@ -738,5 +738,50 @@
    "width": 1387,
    "height": 786
   }
+ ],
+ "soa-06-cloudformation": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. An IAM role and a resource.",
+   "width": 632,
+   "height": 220
+  }
+ ],
+ "soa-07-iam-kms": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A Lambda function, two KMS keys, a CloudWatch log group, two IAM roles and more.",
+   "width": 952,
+   "height": 580
+  }
+ ],
+ "soa-08-vpc-fix": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two EC2 Instance Connect Endpoints, two EC2 instances, two VPC endpoints, a CloudWatch log group and more, in two VPCs with three subnets.",
+   "width": 2107,
+   "height": 966
+  }
+ ],
+ "soa-09-route53-cloudfront": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A CloudFront distribution sending traffic to an S3 bucket.",
+   "width": 632,
+   "height": 438
+  }
+ ],
+ "soa-10-containers": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A load balancer sending traffic to an ECS service, in one VPC with four subnets.",
+   "width": 1755,
+   "height": 1146
+  }
  ]
 }

@@ -12,8 +12,9 @@
 //      default VPC; and the final review's: no launch with an untagged volume,
 //      no SSM account setting), then about wg-admin-lab-boundary as a policy of its own
 //      (simulate-custom-policy), and fails loudly on any other answer
-//   2. reads the four lab quotas in London and Ireland and asks for more where
-//      they are below target (never twice: a pending request is left alone)
+//   2. reads the lab quotas (London and Ireland; IAM's in us-east-1) and asks
+//      for more where they are below target (never twice: a pending request is
+//      left alone)
 //   3. reports the cost allocation tag cloudlabs-lab, switching it on when
 //      billing has seen it but it is off
 // The aws command runner is passed in (the tests give a fake). Only names,
@@ -61,6 +62,15 @@ export function simulatorCases(account, defaultVpcArns = []) {
     { name: "retention on a new lab log group", action: "logs:PutRetentionPolicy", resource: `arn:aws:logs:eu-west-2:${account}:log-group:/cloudlabs/soa-01-x/app`, context: [region], want: "allowed" },
     { name: "retention on another log group", action: "logs:PutRetentionPolicy", resource: `arn:aws:logs:eu-west-2:${account}:log-group:/aws/other`, context: [region], want: "denied" },
     ...ssmSettingCases(account),
+    // Batch 2 (labs 06–10).
+    { name: "a lab 07 user under the boundary", action: "iam:CreateUser", resource: `arn:aws:iam::${account}:user/cloudlabs-lab/lab-soa-07-iam-kms-ann`, context: bounded, want: "allowed" },
+    { name: "a user for another lab", action: "iam:CreateUser", resource: `arn:aws:iam::${account}:user/cloudlabs-lab/lab-soa-06-cloudformation-ann`, context: bounded, want: "denied" },
+    { name: "remove a hand-made key from the lab 07 user", action: "iam:DeleteAccessKey", resource: `arn:aws:iam::${account}:user/cloudlabs-lab/lab-soa-07-iam-kms-ann`, context: [], want: "allowed" },
+    { name: "delete the lab's analyzer", action: "access-analyzer:DeleteAnalyzer", resource: `arn:aws:access-analyzer:eu-west-2:${account}:analyzer/lab-soa-07-iam-kms-account`, context: [region, ctx(`aws:ResourceTag/${LAB_TAG}`, ["soa-07-iam-kms"])], want: "allowed" },
+    { name: "an untagged CloudFormation stack", action: "cloudformation:CreateStack", resource: `arn:aws:cloudformation:eu-west-2:${account}:stack/lab-soa-06-x-stack/*`, context: [region], want: "denied" },
+    { name: "a CloudFront distribution", action: "cloudfront:CreateDistribution", resource: "*", context: [ctx("aws:RequestedRegion", ["us-east-1"])], want: "allowed" },
+    { name: "a Route 53 hosted zone", action: "route53:CreateHostedZone", resource: "*", context: [ctx("aws:RequestedRegion", ["us-east-1"])], want: "allowed" },
+    { name: "an ECS cluster in us-east-1", action: "ecs:CreateCluster", resource: "*", context: [ctx("aws:RequestedRegion", ["us-east-1"]), ...labTag], want: "denied" },
     ...defaultVpcCase(account, defaultVpcArns),
   ];
 }
@@ -130,6 +140,9 @@ export const LAB_QUOTAS = [
   { service: "ec2", code: "L-0263D0A3", name: "EC2-VPC Elastic IPs", want: 10, raise: "always" },
   { service: "ec2", code: "L-1216C47A", name: "Running On-Demand Standard vCPUs", want: 32, raise: "if-below" },
   { service: "ec2", code: null, find: "Instance Connect", name: "Instance Connect Endpoints per Region", want: 10, raise: "if-below" },
+  // Ruling P13: the role holds 10 managed policies after batch 2; 20 leaves room for a regenerated reference (V: the code,
+  // and that IAM's quota is adjustable to 20).
+  { service: "iam", code: "L-0DA4ABF3", name: "Managed policies per role", want: 20, raise: "if-below", regions: ["us-east-1"] },
 ];
 
 /** The increases to ask for, from what each quota is now (value null: could not be read). */
@@ -202,7 +215,7 @@ async function quotas(run, o) {
   }
   const current = [];
   for (const q of list) {
-    for (const region of AWS_LAB_REGIONS) {
+    for (const region of q.regions ?? AWS_LAB_REGIONS) {
       const ask = (cmd) => run("aws", ["service-quotas", cmd, "--service-code", q.service, "--quota-code", q.code, "--region", region, "--output", "json"]);
       let r = ask("get-service-quota");
       if (r.status !== 0) r = ask("get-aws-default-service-quota");

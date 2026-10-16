@@ -64,6 +64,8 @@ export const AWS_LIVE_SKIP: ReadonlySet<string> = new Set([
   "elasticloadbalancing:targetgroup",
   "elasticloadbalancing:listener",
   "elasticloadbalancing:listener-rule",
+  "ecs:task",
+  "ecs:task-definition",
 ]);
 
 const lower = (s: string) => s.toLowerCase();
@@ -91,7 +93,10 @@ export function awsLiveGraph(rows: readonly AwsRow[], ctx: AwsLiveCtx): Topology
   const container = new Map<"primary" | "secondary", string>();
   const notes: string[] = [];
 
-  const kept = rows.filter((r) => !AWS_LIVE_SKIP.has(lower(r.type)));
+  // Ruling P19: what a CloudFormation stack made carries the stack's tags too, and CloudFormation's own
+  // aws:cloudformation:stack-name: the planned graph draws only the stack, so the live one folds them into it.
+  const fromStack = (row: AwsRow) => typeof row.tags["aws:cloudformation:stack-name"] === "string" && row.type !== "cloudformation:stack";
+  const kept = rows.filter((r) => !AWS_LIVE_SKIP.has(lower(r.type)) && !fromStack(r));
   // Pass 1: containers, then everything else (parents are looked up by node id, so order does not matter for them).
   for (const r of kept) {
     const kind = kindOfAws(r.type);

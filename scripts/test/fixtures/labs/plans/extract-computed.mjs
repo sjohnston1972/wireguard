@@ -124,6 +124,13 @@ export const TYPES = [
   "aws_lambda_function", "aws_dx_gateway", "aws_iam_access_key", "aws_vpc_peering_connection_accepter",
   // AWS labs batch 1, ruling A48: the untagged VPC defaults and aws_ec2_tag the scope check refuses
   "aws_default_security_group", "aws_default_network_acl", "aws_default_route_table", "aws_ec2_tag",
+  // AWS labs batch 2
+  "aws_cloudformation_stack", "aws_cloudformation_stack_set", "aws_iam_user_login_profile", "aws_iam_user_policy_attachment", "aws_kms_key",
+  "aws_kms_alias", "aws_secretsmanager_secret", "aws_secretsmanager_secret_version", "aws_secretsmanager_secret_rotation", "aws_lambda_permission",
+  "aws_accessanalyzer_analyzer", "aws_network_acl", "aws_network_acl_rule", "aws_network_acl_association", "aws_flow_log", "aws_route53_zone",
+  "aws_route53_record", "aws_route53_health_check", "aws_cloudfront_distribution", "aws_cloudfront_origin_access_control", "aws_ecr_repository",
+  "aws_ecr_lifecycle_policy", "aws_ecs_cluster", "aws_ecs_task_definition", "aws_ecs_service", "aws_sqs_queue_policy", "aws_eks_cluster",
+  "aws_wafv2_web_acl",
   // AWS labs batch 1: the data sources on AWS_DATA (realisticPlan needs every aws_ one), and the one the scope tests refuse
   "data.aws_ssm_parameter", "data.aws_ami", "data.aws_availability_zones", "data.aws_caller_identity", "data.aws_region", "data.aws_partition",
   "data.aws_iam_policy_document", "data.aws_ec2_managed_prefix_list", "data.archive_file", "data.aws_vpc",

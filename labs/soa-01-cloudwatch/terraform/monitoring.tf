@@ -29,6 +29,11 @@ resource "aws_sns_topic" "alerts" {
   name = "lab-${var.lab_id}-alerts"
 }
 
+locals {
+  # Known at plan (ruling P10: a resource policy is read for who it lets in, so it must be known before apply).
+  alerts_arn = "arn:${data.aws_partition.current.partition}:sns:${var.region}:${data.aws_caller_identity.current.account_id}:lab-${var.lab_id}-alerts"
+}
+
 resource "aws_sns_topic_policy" "alerts" {
   arn = aws_sns_topic.alerts.arn
   policy = jsonencode({
@@ -39,14 +44,14 @@ resource "aws_sns_topic_policy" "alerts" {
         Effect    = "Allow"
         Principal = { AWS = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root" }
         Action    = ["sns:GetTopicAttributes", "sns:SetTopicAttributes", "sns:Subscribe", "sns:ListSubscriptionsByTopic", "sns:Publish", "sns:DeleteTopic"]
-        Resource  = aws_sns_topic.alerts.arn
+        Resource  = local.alerts_arn
       },
       {
         Sid       = "EventsAndAlarmsOfThisAccount"
         Effect    = "Allow"
         Principal = { Service = ["events.amazonaws.com", "cloudwatch.amazonaws.com"] }
         Action    = "sns:Publish"
-        Resource  = aws_sns_topic.alerts.arn
+        Resource  = local.alerts_arn
         Condition = { StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.current.account_id } }
       },
     ]

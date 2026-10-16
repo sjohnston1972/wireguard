@@ -1,4 +1,8 @@
 {
+ "aws_accessanalyzer_analyzer": {
+  "rg": false,
+  "tags": true
+ },
  "aws_autoscaling_group": {
   "rg": false,
   "tags": false
@@ -26,6 +30,22 @@
  "aws_backup_vault": {
   "rg": false,
   "tags": true
+ },
+ "aws_cloudformation_stack": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_cloudformation_stack_set": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_cloudfront_distribution": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_cloudfront_origin_access_control": {
+  "rg": false,
+  "tags": false
  },
  "aws_cloudwatch_dashboard": {
   "rg": false,
@@ -119,7 +139,35 @@
   "rg": false,
   "tags": false
  },
+ "aws_ecr_lifecycle_policy": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_ecr_repository": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_ecs_cluster": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_ecs_service": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_ecs_task_definition": {
+  "rg": false,
+  "tags": true
+ },
  "aws_eip": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_eks_cluster": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_flow_log": {
   "rg": false,
   "tags": true
  },
@@ -147,6 +195,14 @@
   "rg": false,
   "tags": true
  },
+ "aws_iam_user_login_profile": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_iam_user_policy_attachment": {
+  "rg": false,
+  "tags": false
+ },
  "aws_instance": {
   "rg": false,
   "tags": true
@@ -155,9 +211,21 @@
   "rg": false,
   "tags": true
  },
+ "aws_kms_alias": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_kms_key": {
+  "rg": false,
+  "tags": true
+ },
  "aws_lambda_function": {
   "rg": false,
   "tags": true
+ },
+ "aws_lambda_permission": {
+  "rg": false,
+  "tags": false
  },
  "aws_launch_template": {
   "rg": false,
@@ -179,6 +247,18 @@
   "rg": false,
   "tags": true
  },
+ "aws_network_acl": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_network_acl_association": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_network_acl_rule": {
+  "rg": false,
+  "tags": false
+ },
  "aws_resourcegroups_group": {
   "rg": false,
   "tags": true
@@ -186,6 +266,18 @@
  "aws_route": {
   "rg": false,
   "tags": false
+ },
+ "aws_route53_health_check": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_route53_record": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_route53_zone": {
+  "rg": false,
+  "tags": true
  },
  "aws_route_table": {
   "rg": false,
@@ -223,6 +315,18 @@
   "rg": false,
   "tags": true
  },
+ "aws_secretsmanager_secret": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_secretsmanager_secret_rotation": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_secretsmanager_secret_version": {
+  "rg": false,
+  "tags": false
+ },
  "aws_security_group": {
   "rg": false,
   "tags": true
@@ -232,6 +336,10 @@
   "tags": true
  },
  "aws_sns_topic_policy": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_sqs_queue_policy": {
   "rg": false,
   "tags": false
  },
@@ -276,6 +384,10 @@
   "tags": true
  },
  "aws_vpc_security_group_ingress_rule": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_wafv2_web_acl": {
   "rg": false,
   "tags": true
  },

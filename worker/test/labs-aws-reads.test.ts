@@ -105,6 +105,23 @@ describe("the AWS orphan sweep", () => {
     expect((await readOrphans(env)).map((o) => o.labId)).toEqual(["soa-05-rds"]);
   });
 
+  it("Review Focus 5: a KMS key waiting to delete is never an orphan; other leftovers still are (P11)", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    world.labAws.tagged["eu-west-2"] = [
+      { arn: "arn:aws:kms:eu-west-2:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab", tags: { "cloudlabs-lab": "soa-07-iam-kms" } },
+      { arn: "arn:aws:secretsmanager:eu-west-2:123456789012:secret:lab-soa-07-iam-kms-app-AbCdEf", tags: { "cloudlabs-lab": "soa-07-iam-kms" } },
+    ];
+    const t0 = new Date(NOW);
+    await sweepAwsOrphans(env, budgetedNet(20), t0);
+    await sweepAwsOrphans(env, budgetedNet(20), new Date(t0.getTime() + 91 * 60_000));
+    const o = await readOrphans(env);
+    expect(o).toHaveLength(1);
+    expect(o[0].names.some((n) => n.startsWith("kms:key"))).toBe(false);
+    expect(o[0].names.some((n) => n.startsWith("secretsmanager:secret"))).toBe(true);
+  });
+
   it("the AWS sweep keeps Azure entries and the Azure sweep keeps AWS entries", async () => {
     freeze();
     const { env } = await labEnv();
@@ -237,6 +254,33 @@ describe("capacity, permissions and resources", () => {
     const doc = { sizes: [{ name: "t4g.micro", available: true, reason: null, vcpus: 2, family: "standard" }], usages: [{ family: "standard", used: 30, limit: 32 }], cores: { used: 30, limit: 32 } };
     const words = { place: "London", family: () => "On-Demand Standard" };
     expect(capacityProblems(doc, ["t4g.micro", "t4g.micro", "t4g.micro", "t4g.micro"], [], "eu-west-2", words)).toEqual(["Needs 8 On-Demand Standard vCPUs (8 for this lab's t4g.micro); 30 of 32 used in London."]);
+  });
+
+  it("ruling P7: a global lab's resources include what is tagged in us-east-1", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    await runningLab(env, world, "soa-09-route53-cloudfront");
+    world.labAws.tagged["eu-west-2"] = [{ arn: "arn:aws:s3:::cloudlabs-a09k3x9q-site", tags: { "cloudlabs-lab": "soa-09-route53-cloudfront", Name: "site" } }];
+    world.labAws.tagged["us-east-1"] = [{ arn: "arn:aws:cloudfront::123456789012:distribution/E1ABC", tags: { "cloudlabs-lab": "soa-09-route53-cloudfront", Name: "cdn-site" } }];
+    const r = await api(env, "GET", "/labs/soa-09-route53-cloudfront");
+    expect(r.json.resources).toEqual([
+      { name: "site", type: "s3:bucket", group: "lab-soa-09-route53-cloudfront (London)", state: null },
+      { name: "cdn-site", type: "cloudfront:distribution", group: "lab-soa-09-route53-cloudfront (global: CloudFront, Route 53)", state: null },
+    ]);
+  });
+
+  it("Review Focus 5: an AWS session's users values are withheld outside /labs/:id/secret (P5)", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    const users = { "lab-soa-07-iam-kms-ann": "password Xy7-not-a-real-one at https://123456789012.signin.aws.amazon.com/console" };
+    await runningLab(env, world, "soa-07-iam-kms", { hours: 2, peer: false }, { private_ips: {}, connect: [], users, peer_vpc_id: null });
+    const d = await api(env, "GET", "/labs/soa-07-iam-kms");
+    expect(JSON.stringify(d.json)).not.toContain("Xy7-not-a-real-one");
+    expect(JSON.stringify(d.json)).toContain("lab-soa-07-iam-kms-ann");
+    const s = await api(env, "GET", "/labs/soa-07-iam-kms/secret");
+    expect(s.json.users).toEqual(users);
   });
 
   it("the AWS ticks gate AWS labs with aws_setup; an inactive cost tag only warns", async () => {

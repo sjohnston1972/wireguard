@@ -8,7 +8,7 @@
 # mode, which is free (ruling A34). London list prices × 0.75 (V each
 # filter: labs-verify --aws-prices soa-05-rds). RDS bills by the second.
 id: soa-05-rds
-version: 2
+version: 3
 cloud: aws
 title: "RDS MySQL: Multi-AZ failover, read replica, insights"
 summary: >-

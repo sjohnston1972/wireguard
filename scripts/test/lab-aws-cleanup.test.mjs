@@ -112,14 +112,14 @@ test("Verify clean: an untagged instance in a lab VPC is a named leftover (A26),
 
 test("Verify clean: a tagged type with no handler yet is a leftover, never clean (P6)", { skip }, () => {
   const w = world([
-    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:lambda:eu-west-2:123456789012:function:lab-x") },
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:states:eu-west-2:123456789012:stateMachine:lab-x") },
     ...EMPTY_IAM,
   ]);
   const out = join(w.dir, "gh-output");
   writeFileSync(out, "");
   const r = w.run("infra/ci/lab-aws-safety-net.sh", ["--verify", ID], { ...ENV, GITHUB_OUTPUT: fwd(out) });
   assert.equal(r.status, 1);
-  assert.match(readFileSync(out, "utf8"), /no handler for lambda:function: lab-x/);
+  assert.match(readFileSync(out, "utf8"), /no handler for states:stateMachine: lab-x/);
   w.cleanup();
 });
 
@@ -332,7 +332,7 @@ test("safety net empties a bucket of every version and delete marker before dele
 
 test("safety net clears the lab's named Config recorder and channel, dashboards and queries, and warns on a type it has no handler for", { skip }, () => {
   const w = world([
-    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:lambda:eu-west-2:123456789012:function:lab-x", "arn:aws:events:eu-west-2:123456789012:rule/lab-soa-03-auto-scaling-stop", "arn:aws:autoscaling:eu-west-2:123456789012:autoScalingGroup:0f1e2d3c-aaaa-bbbb-cccc-000000000000:autoScalingGroupName/asg-a03k3x9q") },
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:states:eu-west-2:123456789012:stateMachine:lab-x", "arn:aws:events:eu-west-2:123456789012:rule/lab-soa-03-auto-scaling-stop", "arn:aws:autoscaling:eu-west-2:123456789012:autoScalingGroup:0f1e2d3c-aaaa-bbbb-cccc-000000000000:autoScalingGroupName/asg-a03k3x9q") },
     { cmd: "aws", match: "^configservice describe-configuration-recorders", out: `{"ConfigurationRecorders":[{"name":"lab-${ID}-recorder"},{"name":"default"}]}` },
     { cmd: "aws", match: "^configservice describe-delivery-channels", out: `{"DeliveryChannels":[{"name":"lab-${ID}-channel"},{"name":"default"}]}` },
     { cmd: "aws", match: "^cloudwatch list-dashboards", out: `{"DashboardEntries":[{"DashboardName":"lab-${ID}-ops"}]}` },
@@ -353,7 +353,7 @@ test("safety net clears the lab's named Config recorder and channel, dashboards 
   assert.ok(!calls.some((c) => /configservice (stop|delete)-\S+ --\S+ default/.test(c)), "never the account's own recorder or channel");
   assert.ok(at(new RegExp(`^aws cloudwatch delete-dashboards --dashboard-names lab-${ID}-ops`)) >= 0);
   assert.ok(at(/^aws logs delete-query-definition --query-definition-id qd-1/) >= 0);
-  assert.match(r.out, /::warning::.*no handler for lambda:function yet: lab-x \(left for Verify clean to report\)/);
+  assert.match(r.out, /::warning::.*no handler for states:stateMachine yet: lab-x \(left for Verify clean to report\)/);
   assert.doesNotMatch(r.out, /123456789012/);
   w.cleanup();
 });
@@ -547,5 +547,171 @@ test("safety net does not delete an Instance Connect Endpoint that is already de
   const deletes = w.calls().filter((c) => /^aws ec2 delete-instance-connect-endpoint/.test(c));
   assert.deepEqual(deletes.map((c) => /--instance-connect-endpoint-id (\S+)/.exec(c)[1]), ["eice-0b"]);
   assert.doesNotMatch(r.out, /::warning::/);
+  w.cleanup();
+});
+
+// ── Batch 2 (Task 4): stacks, ECS, CloudFront, Route 53, KMS, secrets, Lambda, ECR, Access Analyzer, flow logs, lab 07's user ──
+const G = { ...ENV, LAB_REGIONS: "us-east-1" };
+const ARNOF = (svc, rest, region = "eu-west-2") => `arn:aws:${svc}:${region}:123456789012:${rest}`;
+const writes = (w, re = /^aws \S+ (delete|terminate|stop|update|deregister|schedule|deactivate|change|disable)/) => w.calls().filter((c) => re.test(c));
+const before = (list, a, b) => list.findIndex((c) => a.test(c)) >= 0 && list.findIndex((c) => a.test(c)) < list.findIndex((c) => b.test(c));
+
+test("Review Focus 1: a stack that ends DELETE_FAILED is force-deleted, and what it left goes by its own handler", { skip }, () => {
+  const stack = ARNOF("cloudformation", "stack/lab-soa-06-cloudformation-stack/0abc");
+  const st = (s) => JSON.stringify({ Stacks: [{ StackName: "lab-soa-06-cloudformation-stack", StackStatus: s }] });
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(stack, ARNOF("sqs", "lab-soa-06-cloudformation-stack-WorkQueue-AbC")) },
+    { cmd: "aws", match: "^cloudformation describe-stacks", out: [st("CREATE_COMPLETE"), st("DELETE_FAILED"), st("DELETE_FAILED"), st("DELETE_COMPLETE")] },
+    { cmd: "aws", match: "^sqs get-queue-url", out: '{"QueueUrl":"https://sqs.eu-west-2.amazonaws.com/123456789012/lab-soa-06-cloudformation-stack-WorkQueue-AbC"}' },
+    ...EMPTY_IAM,
+  ]);
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["soa-06-cloudformation"], ENV).status, 0);
+  const ws = writes(w);
+  assert.equal(ws.filter((c) => c.startsWith("aws cloudformation delete-stack")).length, 2);
+  assert.ok(before(ws, /delete-stack --stack-name \S+ --region/, /--deletion-mode FORCE_DELETE_STACK/));
+  assert.ok(before(ws, /FORCE_DELETE_STACK/, /^aws sqs delete-queue --queue-url https:\/\/sqs/));
+  w.cleanup();
+});
+
+test("Review Focus 1: CloudFront is disabled, waited for until Deployed, deleted with the new ETag, then its origin access control", { skip }, () => {
+  const dist = "arn:aws:cloudfront::123456789012:distribution/E1ABC";
+  const d = (status, enabled, etag) => JSON.stringify({ ETag: etag, Distribution: { Id: "E1ABC", Status: status, DistributionConfig: { Enabled: enabled } } });
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(dist) },
+    { cmd: "aws", match: "^cloudfront list-origin-access-controls", out: JSON.stringify({ OriginAccessControlList: { Items: [{ Id: "OAC1", Name: "lab-soa-09-route53-cloudfront-a09k3x9q" }, { Id: "OAC2", Name: "someone-else" }] } }) },
+    { cmd: "aws", match: "^cloudfront get-distribution-config", out: JSON.stringify({ ETag: "E1", DistributionConfig: { Enabled: true, Comment: "lab" } }) },
+    { cmd: "aws", match: "^cloudfront get-distribution --id", out: [d("InProgress", false, "E2"), d("Deployed", false, "E3")] },
+    { cmd: "aws", match: "^cloudfront get-origin-access-control --id OAC1", out: '{"ETag":"O1","OriginAccessControl":{"Id":"OAC1"}}' },
+    ...EMPTY_IAM,
+  ]);
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["soa-09-route53-cloudfront"], G).status, 0);
+  const ws = writes(w, /^aws cloudfront (update|delete)/);
+  assert.match(ws[0], /^aws cloudfront update-distribution --id E1ABC --if-match E1 --distribution-config file:\/\/\S+ --region us-east-1$/);
+  assert.match(ws[1], /^aws cloudfront delete-distribution --id E1ABC --if-match E3 --region us-east-1$/);
+  assert.match(ws[2], /^aws cloudfront delete-origin-access-control --id OAC1 --if-match O1 --region us-east-1$/);
+  assert.equal(ws.length, 3, "never someone else's origin access control");
+  // Pre-flight C3: the lab-service listings run only in the lab regions (wg-admin-labs is refused them in us-east-1).
+  assert.ok(!w.calls().some((c) => /(cloudwatch|configservice|logs|kms) \S+ .*--region us-east-1/.test(c)), "no lab-service listing in a global region");
+  w.cleanup();
+});
+
+// The change batch file lives in the script's temp folder, which is gone when the script ends, so the NS/SOA filter is
+// pinned by running the script's own jq line on the same answer.
+test("Route 53: the records go in one batch (never the zone's own NS and SOA), then the zone, then its health check", { skip }, () => {
+  const jqLine = readFileSync(join(REPO, "infra", "ci", "lab-aws-safety-net.sh"), "utf8").match(/jq --arg n "\$name" '([^']+)'/)[1];
+  const rr = { ResourceRecordSets: [{ Name: "z.", Type: "NS" }, { Name: "z.", Type: "SOA" }, { Name: "www.z.", Type: "CNAME" }, { Name: "sub.z.", Type: "NS" }] };
+  const filtered = spawnSync(BASH, ["-c", `jq -c --arg n z. '${jqLine}'`], { input: JSON.stringify(rr), encoding: "utf8" });
+  assert.deepEqual(JSON.parse(filtered.stdout).Changes.map((c) => `${c.ResourceRecordSet.Name} ${c.ResourceRecordSet.Type}`), ["www.z. CNAME", "sub.z. NS"]);
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:route53:::hostedzone/Z0LAB", "arn:aws:route53:::healthcheck/hc-1") },
+    { cmd: "aws", match: "^route53 get-hosted-zone", out: '{"HostedZone":{"Id":"/hostedzone/Z0LAB","Name":"a09k3x9q.labs.clydeford.net."}}' },
+    { cmd: "aws", match: "^route53 list-resource-record-sets", out: JSON.stringify({ ResourceRecordSets: [{ Name: "a09k3x9q.labs.clydeford.net.", Type: "NS" }, { Name: "a09k3x9q.labs.clydeford.net.", Type: "SOA" }, { Name: "www.a09k3x9q.labs.clydeford.net.", Type: "CNAME", SetIdentifier: "primary", Failover: "PRIMARY", TTL: 60, ResourceRecords: [{ Value: "blue" }] }] }) },
+    ...EMPTY_IAM,
+  ]);
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["soa-09-route53-cloudfront"], G).status, 0);
+  const ws = writes(w, /^aws route53 (change|delete)/);
+  assert.equal(ws.length, 3);
+  assert.match(ws[0], /^aws route53 change-resource-record-sets --hosted-zone-id Z0LAB --change-batch file:\/\//);
+  assert.match(ws[1], /^aws route53 delete-hosted-zone --id Z0LAB/);
+  assert.match(ws[2], /^aws route53 delete-health-check --health-check-id hc-1/);
+  w.cleanup();
+});
+
+test("ECS: services scaled to 0 and deleted, then the cluster; task definitions deregistered and deleted (ruling P12)", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARNOF("ecs", "cluster/lab-soa-10-containers"), ARNOF("ecs", "service/lab-soa-10-containers/lab-soa-10-containers-web"), ARNOF("ecs", "task-definition/lab-soa-10-containers-web:1")) },
+    { cmd: "aws", match: "^ecs describe-services", out: ['{"services":[{"status":"ACTIVE"}]}', '{"services":[{"status":"INACTIVE"}]}'] },
+    { cmd: "aws", match: "^ecs describe-clusters", out: ['{"clusters":[{"status":"ACTIVE"}]}'] },
+    { cmd: "aws", match: "^ecs describe-task-definition", out: '{"taskDefinition":{"status":"ACTIVE"}}' },
+    ...EMPTY_IAM,
+  ]);
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["soa-10-containers"], ENV).status, 0);
+  const ws = writes(w, /^aws ecs /);
+  const order = ["update-service", "delete-service", "delete-cluster", "deregister-task-definition", "delete-task-definitions"].map((v) => ws.findIndex((c) => c.startsWith(`aws ecs ${v} `)));
+  assert.ok(order.every((x, k) => x >= 0 && (k === 0 || x > order[k - 1])), ws.join("\n"));
+  assert.match(ws.find((c) => c.startsWith("aws ecs delete-service")), /--force/);
+  w.cleanup();
+});
+
+test("ruling P6: hand-made keys, MFA devices and SSH keys go before lab 07's user", { skip }, () => {
+  const n = "lab-soa-07-iam-kms-ann";
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged() },
+    { cmd: "aws", match: "^iam list-roles", out: '{"Roles":[]}' },
+    { cmd: "aws", match: "^iam list-instance-profiles", out: '{"InstanceProfiles":[]}' },
+    { cmd: "aws", match: "^iam list-policies", out: '{"Policies":[]}' },
+    { cmd: "aws", match: "^iam list-users", out: JSON.stringify({ Users: [{ UserName: n }, { UserName: "steven" }] }) },
+    { cmd: "aws", match: "^iam list-access-keys", out: '{"AccessKeyMetadata":[{"AccessKeyId":"AKIAEXAMPLE1"}]}' },
+    { cmd: "aws", match: "^iam list-mfa-devices", out: '{"MFADevices":[{"SerialNumber":"arn:aws:iam::123456789012:mfa/ann"}]}' },
+    { cmd: "aws", match: "^iam list-ssh-public-keys", out: '{"SSHPublicKeys":[{"SSHPublicKeyId":"APKAEXAMPLE"}]}' },
+    { cmd: "aws", match: "^iam list-attached-user-policies", out: '{"AttachedPolicies":[]}' },
+    { cmd: "aws", match: "^iam list-user-policies", out: '{"PolicyNames":[]}' },
+  ]);
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["soa-07-iam-kms"], ENV).status, 0);
+  const ws = writes(w, /^aws iam (delete|deactivate)/);
+  for (const v of ["delete-access-key", "deactivate-mfa-device", "delete-ssh-public-key"]) assert.ok(before(ws, new RegExp(`^aws iam ${v} --user-name ${n} `), /^aws iam delete-user /), v);
+  assert.ok(!ws.some((c) => c.includes("steven")), "never a user outside the lab's prefix");
+  w.cleanup();
+});
+
+test("ruling P11: the key is scheduled for deletion (7 days) after its alias goes; Verify clean counts a pending key clean", { skip }, () => {
+  const key = ARNOF("kms", "key/1234abcd-12ab-34cd-56ef-1234567890ab");
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(key) },
+    { cmd: "aws", match: "^kms list-aliases --key-id", out: '{"Aliases":[]}' },
+    { cmd: "aws", match: "^kms list-aliases", out: '{"Aliases":[{"AliasName":"alias/lab-soa-07-iam-kms-data","TargetKeyId":"1234abcd-12ab-34cd-56ef-1234567890ab"}]}' },
+    { cmd: "aws", match: "^kms describe-key", out: ['{"KeyMetadata":{"KeyState":"Enabled"}}', '{"KeyMetadata":{"KeyState":"PendingDeletion"}}'] },
+    ...EMPTY_IAM,
+  ]);
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["soa-07-iam-kms"], ENV).status, 0);
+  const ws = writes(w, /^aws kms /);
+  assert.ok(before(ws, /^aws kms delete-alias --alias-name alias\/lab-soa-07-iam-kms-data/, /^aws kms schedule-key-deletion --key-id 1234abcd-12ab-34cd-56ef-1234567890ab --pending-window-in-days 7/), ws.join("\n"));
+  const out = join(w.dir, "gh-output");
+  writeFileSync(out, "");
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["--verify", "soa-07-iam-kms"], { ...ENV, GITHUB_OUTPUT: fwd(out) }).status, 0, readFileSync(out, "utf8"));
+  w.cleanup();
+});
+
+test("Verify clean judges batch 2's types by their real state; an inactive task definition and an enabled key are named", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARNOF("cloudformation", "stack/s/0abc"), ARNOF("ecs", "cluster/c"), ARNOF("ecs", "task-definition/t:1"), ARNOF("ecs", "task-definition/t:2"), ARNOF("secretsmanager", "secret:lab-x-AbCdEf"), ARNOF("sqs", "q"), ARNOF("kms", "key/k1"), ARNOF("lambda", "function:f"), ARNOF("ec2", "vpc-flow-log/fl-0abc")) },
+    { cmd: "aws", match: "^cloudformation describe-stacks", out: '{"Stacks":[{"StackStatus":"DELETE_COMPLETE"}]}' },
+    { cmd: "aws", match: "^ecs describe-clusters", out: '{"clusters":[{"status":"INACTIVE"}]}' },
+    { cmd: "aws", match: "task-definition/t:1", out: '{"taskDefinition":{"status":"DELETE_IN_PROGRESS"}}' },
+    { cmd: "aws", match: "task-definition/t:2", out: '{"taskDefinition":{"status":"INACTIVE"}}' },
+    { cmd: "aws", match: "^secretsmanager describe-secret", out: "", code: 254, err: "An error occurred (ResourceNotFoundException) when calling the DescribeSecret operation: x" },
+    { cmd: "aws", match: "^sqs get-queue-url", out: "", code: 254, err: "An error occurred (AWS.SimpleQueueService.NonExistentQueue) when calling the GetQueueUrl operation: x" },
+    { cmd: "aws", match: "^kms describe-key", out: '{"KeyMetadata":{"KeyState":"Enabled"}}' },
+    { cmd: "aws", match: "^lambda get-function-configuration", out: "", code: 254, err: "An error occurred (ResourceNotFoundException) when calling the GetFunctionConfiguration operation: x" },
+    { cmd: "aws", match: "^ec2 describe-flow-logs", out: '{"FlowLogs":[]}' },
+    ...EMPTY_IAM,
+  ]);
+  const out = join(w.dir, "gh-output");
+  writeFileSync(out, "");
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["--verify", ID], { ...ENV, GITHUB_OUTPUT: fwd(out) }).status, 1);
+  const left = JSON.parse(/^leftovers=(.*)$/m.exec(readFileSync(out, "utf8"))[1]);
+  assert.deepEqual(left.sort(), ["ecs:task-definition t:2", "kms:key k1"]);
+  w.cleanup();
+});
+
+test("ruling P18: Unblock changes an RDS instance's deletion protection only when it is not already off", { skip }, () => {
+  const db = (on) => world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:rds:eu-west-2:123456789012:db:db-a05k3x9q") },
+    { cmd: "aws", match: "^rds describe-db-instances", out: JSON.stringify({ DBInstances: [{ DeletionProtection: on }] }) },
+  ]);
+  for (const [on, calls] of [[false, 0], [true, 1]]) {
+    const w = db(on);
+    assert.equal(w.run("infra/ci/lab-unblock-aws.sh", [ID], ENV).status, 0);
+    assert.equal(w.calls().filter((c) => c.startsWith("aws rds modify-db-instance")).length, calls, String(on));
+    w.cleanup();
+  }
+});
+
+// Pre-flight C3: Unblock's Config recorder listing runs only in the lab regions, never in a global one.
+test("Unblock lists Config recorders only in the lab regions (never us-east-1 or us-west-2)", { skip }, () => {
+  const w = world([{ cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged() }]);
+  assert.equal(w.run("infra/ci/lab-unblock-aws.sh", [ID], { ...ENV, LAB_REGIONS: "eu-west-2 us-east-1 us-west-2" }).status, 0);
+  const listings = w.calls().filter((c) => /^aws configservice describe-configuration-recorders/.test(c));
+  assert.deepEqual(listings.map((c) => /--region (\S+)/.exec(c)[1]), ["eu-west-2"]);
   w.cleanup();
 });

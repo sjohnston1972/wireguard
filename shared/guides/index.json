@@ -554,5 +554,40 @@
    "title": "RDS MySQL: Multi-AZ failover, read replica, insights: architecture",
    "kind": "architecture"
   }
+ ],
+ "soa-06-cloudformation": [
+  {
+   "file": "architecture.svg",
+   "title": "CloudFormation inside Terraform: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "soa-07-iam-kms": [
+  {
+   "file": "architecture.svg",
+   "title": "IAM, permission boundaries and KMS: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "soa-08-vpc-fix": [
+  {
+   "file": "architecture.svg",
+   "title": "Break-fix: VPC connectivity troubleshooting: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "soa-09-route53-cloudfront": [
+  {
+   "file": "architecture.svg",
+   "title": "Route 53 routing and CloudFront in front of S3: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "soa-10-containers": [
+  {
+   "file": "architecture.svg",
+   "title": "Containers: ECR and ECS Fargate behind an ALB: architecture",
+   "kind": "architecture"
+  }
  ]
 }

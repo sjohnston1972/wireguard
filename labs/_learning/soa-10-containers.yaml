@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Run and watch a containerised service on ECS Fargate behind a load balancer, with images in ECR.
+learn:
+  - Read a task definition, a service and how the service keeps its tasks running
+  - Put Fargate tasks behind an Application Load Balancer by IP address
+  - Watch a service with Container Insights and push an image to ECR
+learning_min: 60

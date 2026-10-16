@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Change a CloudFormation stack safely with change sets, drift detection and a stack policy.
+learn:
+  - Read a template's parameters, resources and outputs, and the stack built from it
+  - Preview and execute a change set, and see a stack policy refuse a replacement
+  - Detect drift after a change made outside CloudFormation
+learning_min: 45

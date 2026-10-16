@@ -7,14 +7,14 @@
 //
 // An AWS lab (AWS labs spec §6): what the tagging API lists tagged
 // cloudlabs-lab = <id> in London, and in the lab's secondary region when it
-// has one (one read each): the Name tag (else the resource id), the type from
+// has one, and in us-east-1 for a global lab (one read each): the Name tag (else the resource id), the type from
 // the ARN ("ec2:instance"), grouped by the lab's Resource Groups group and
 // region. AWS has no provisioning state here. Null without AWS keys or when
 // AWS refuses.
 
 import type { Env } from "../env";
 import { canAws, canAzure } from "../env";
-import { AWS_LAB_REGIONS, LAB_TAG, labResourceGroupName, labRg, type LabDef } from "../../../shared/labs";
+import { AWS_GLOBAL_LABS, AWS_LAB_REGIONS, LAB_TAG, labResourceGroupName, labRg, type LabDef } from "../../../shared/labs";
 import { awsRegionName } from "../../../shared/azureMetrics";
 import type { LabDetail } from "../../../shared/api";
 import { arm, directNet } from "./net";
@@ -25,11 +25,12 @@ const MAX = 200;
 async function awsLabResources(env: Env, def: LabDef): Promise<LabDetail["resources"]> {
   if (!canAws(env)) return null;
   const net = directNet();
-  const regions = [AWS_LAB_REGIONS[0], ...(def.regions.secondary ? [def.regions.secondary] : [])];
+  // A global lab's CloudFront and Route 53 items are tagged in us-east-1 (ruling P7).
+  const regions = [AWS_LAB_REGIONS[0], ...(def.regions.secondary ? [def.regions.secondary] : []), ...(AWS_GLOBAL_LABS.includes(def.id) ? ["us-east-1"] : [])];
   try {
     const out: NonNullable<LabDetail["resources"]> = [];
     for (const region of regions) {
-      const group = `${labResourceGroupName(def.id)} (${awsRegionName(region)})`;
+      const group = region === "us-east-1" ? `${labResourceGroupName(def.id)} (global: CloudFront, Route 53)` : `${labResourceGroupName(def.id)} (${awsRegionName(region)})`;
       for (const t of await labTagged(env, net, region, def.id)) {
         if (t.tags[LAB_TAG] !== def.id) continue;
         const p = arnParts(t.arn);

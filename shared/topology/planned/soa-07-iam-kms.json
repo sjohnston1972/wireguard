@@ -1,0 +1,162 @@
+{
+ "schema": 1,
+ "labId": "soa-07-iam-kms",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:aws_accessanalyzer_analyzer.account",
+   "key": "access-analyzer:analyzer/analyzer-account",
+   "kind": "generic",
+   "label": "analyzer-account",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "access-analyzer:analyzer",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_cloudwatch_log_group.rotate",
+   "key": "logs:log-group//cloudlabs/soa-07-iam-kms/rotate",
+   "kind": "logAnalytics",
+   "label": "/cloudlabs/soa-07-iam-kms/rotate",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "logs:log-group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_iam_role.rotate",
+   "key": "iam:role/lab-soa-07-iam-kms-rotate",
+   "kind": "managedIdentity",
+   "label": "lab-soa-07-iam-kms-rotate",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "iam:role",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_iam_policy.rotate",
+     "label": "lab-soa-07-iam-kms-rotate",
+     "armType": "iam:policy"
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.rotate",
+     "label": "rotate",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.rotate_logs",
+     "label": "rotate_logs",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_iam_user.ann",
+   "key": "iam:user/user-ann",
+   "kind": "managedIdentity",
+   "label": "user-ann",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "iam:user",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_iam_policy.ann",
+     "label": "lab-soa-07-iam-kms-ann",
+     "armType": "iam:policy"
+    },
+    {
+     "id": "tf:aws_iam_user_login_profile.ann",
+     "label": "ann",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_iam_user_policy_attachment.ann",
+     "label": "ann",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_kms_key.data",
+   "key": "kms:key/key-data",
+   "kind": "keyVault",
+   "label": "key-data",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "kms:key",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_kms_alias.data",
+     "label": "alias/lab-soa-07-iam-kms-data",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_lambda_function.rotate",
+   "key": "lambda:function/fn-rotate",
+   "kind": "lambda",
+   "label": "fn-rotate",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "lambda:function",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_lambda_permission.secrets_manager",
+     "label": "lab-soa-07-iam-kms-rotate",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_resourcegroups_group.lab",
+   "key": "resource-groups:group/lab-soa-07-iam-kms",
+   "kind": "resourceGroup",
+   "label": "lab-soa-07-iam-kms · London",
+   "props": {
+    "region": "eu-west-2"
+   },
+   "armType": "resource-groups:group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_secretsmanager_secret.app",
+   "key": "secretsmanager:secret/secret-app",
+   "kind": "keyVault",
+   "label": "secret-app",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "secretsmanager:secret",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_secretsmanager_secret_rotation.app",
+     "label": "app",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_secretsmanager_secret_version.app",
+     "label": "app",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  }
+ ],
+ "edges": [],
+ "notes": [
+  "1 resource of a type the diagram draws plainly"
+ ]
+}

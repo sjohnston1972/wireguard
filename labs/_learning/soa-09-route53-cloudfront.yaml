@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Route traffic with Route 53 weighted and failover records and serve a private bucket through CloudFront.
+learn:
+  - Answer queries with weighted and failover routing tied to a health check
+  - Serve a private S3 bucket through CloudFront with origin access control
+  - Control what CloudFront caches with cache behaviours and invalidations
+learning_min: 60

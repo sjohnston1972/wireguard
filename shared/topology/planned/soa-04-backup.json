@@ -1,7 +1,7 @@
 {
  "schema": 1,
  "labId": "soa-04-backup",
- "version": 3,
+ "version": 4,
  "source": "planned",
  "at": null,
  "nodes": [

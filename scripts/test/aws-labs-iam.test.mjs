@@ -13,7 +13,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { abacLists, foldWildcards, renderLabPolicies, policySize, fillPolicy, POLICY_MAX, ROLE_POLICIES_MAX, LAB_SERVICES, ABAC_SERVICES, SERVICE_LINKED } from "../lib/aws-lab-policies.mjs";
+import { abacLists, foldWildcards, renderLabPolicies, policySize, fillPolicy, POLICY_MAX, ROLE_POLICIES_MAX, LAB_SERVICES, ABAC_SERVICES, SERVICE_LINKED, NON_CREATE_VERB } from "../lib/aws-lab-policies.mjs";
 import { simulatorCases, boundaryCases, simulatorProblems, quotaPlan, LAB_QUOTAS, runLabsBootstrap } from "../lib/aws-bootstrap-labs.mjs";
 
 const url = (p) => new URL(`../../${p}`, import.meta.url);
@@ -144,7 +144,7 @@ test("lab-abac.json is the generator's, sorted, for the allow-listed services on
   assert.ok(ABAC.create.some((a) => /^ec2:(RunInstances|Run\*)$/.test(a)));
   for (const a of Object.keys(ABAC.createOn)) assert.ok(ABAC.create.includes(a), a);
   // Regenerating changes this pin on purpose: review the new lists, then update it.
-  assert.equal(createHash("sha256").update(JSON.stringify({ create: ABAC.create, change: ABAC.change })).digest("hex"), "648c6fed3671f024bc379c5d31b892e0f2f586c8ddbb33188ec808791e4eb9aa");
+  assert.equal(createHash("sha256").update(JSON.stringify({ create: ABAC.create, change: ABAC.change })).digest("hex"), "4c1f83a69b20c51d927744e709ad639d6241fe6c5d712dab8f96086289df8560");
 });
 
 test("lab-policies.json is what --render makes from lab-abac.json", { skip }, () => {
@@ -154,16 +154,15 @@ test("lab-policies.json is what --render makes from lab-abac.json", { skip }, ()
 
 test("every role policy and the boundary fit (A29), and the role holds at most 10", { skip }, () => {
   const { POLICIES } = files();
+  // Ruling P13: batch 2 fills the tenth; the bootstrap asks IAM for 20 (LAB_QUOTAS).
   assert.ok(POLICIES.role.length <= ROLE_POLICIES_MAX, `${POLICIES.role.length} role policies`);
   for (const [i, d] of POLICIES.role.entries()) assert.ok(policySize(d, FILL) < POLICY_MAX, `role policy ${i + 1}: ${policySize(d, FILL)}`);
   assert.ok(policySize(POLICIES.boundary, FILL) < POLICY_MAX);
-  // Packed tightly enough to keep one policy spare for a regenerated reference (fix round 1).
-  assert.ok(POLICIES.role.length < ROLE_POLICIES_MAX, `${POLICIES.role.length} role policies: no room left`);
 });
 
 test("each §7.1 statement says what it must", { skip }, () => {
   const { POLICIES, statements, sid } = files();
-  for (const s of ["LabServices", "LabBuckets", "BucketList", "GlobalServices", "Identity", "LabRolesBounded", "LabRolesOther", "Lab07UsersBounded", "Lab07UsersOther", "PassLabRoles", "ServiceLinkedRoles", "DenyVpnServer", "DenyVpnTagRequest", "DenyVpnTagKeys", "DenyDefaultVpc", "DenyDefaultVpcChildren", "DenyAccountAndBilling", "DenyIamOutsideLab", "DenyBoundaryRemoval", "DenyOtherRoles", "DenyOtherRegions", "DenyGlobalRegionsForLabServices", "CreateNeedsLabTagRunInstances", "KeepLabTag"]) assert.ok(sid(s), s);
+  for (const s of ["LabServices", "LabBuckets", "BucketList", "GlobalServices", "Identity", "LabRolesBounded", "LabRolesOther", "Lab07UsersBounded", "Lab07UsersOther", "PassLabRoles", "ServiceLinkedRoles", "DenyVpnServer", "DenyVpnTagRequest", "DenyVpnTagKeys", "DenyDefaultVpc", "DenyDefaultVpcChildren", "DenyAccountAndBilling", "DenyStackSets", "DenyIamOutsideLab", "DenyBoundaryRemoval", "DenyOtherRoles", "DenyOtherRegions", "DenyGlobalRegionsForLabServices", "CreateNeedsLabTagRunInstances", "KeepLabTag"]) assert.ok(sid(s), s);
   assert.ok(statements.some((s) => /^CreateNeedsLabTag\d+$/.test(s.Sid)) && statements.some((s) => /^ChangeNeedsLabTag\d+$/.test(s.Sid)));
   assert.deepEqual(sid("DenyVpnServer").Condition, { StringEquals: { "aws:ResourceTag/wg-admin": "vpn" } });
   assert.deepEqual(sid("LabRolesBounded").Condition, { StringEquals: { "iam:PermissionsBoundary": "arn:aws:iam::__ACCOUNT__:policy/wg-admin-lab-boundary" } });
@@ -297,10 +296,10 @@ test("the Worker user may read lab things in both lab regions, and change nothin
   assert.doesNotMatch(never, /Condition/);
 });
 
-test("the simulator cases are the eight of A19 and fix round 1's, and a wrong answer is a problem", () => {
+test("the simulator cases are A19's, fix round 1's and batch 2's, and a wrong answer is a problem", () => {
   const cases = simulatorCases("123456789012", FILL.vpcArns);
   assert.deepEqual(cases.map((c) => [c.name, c.want]), [["tagged VPC", "allowed"], ["bounded lab role", "allowed"], ["untagged VPC", "denied"], ["the VPN server", "denied"], ["role without the boundary", "denied"], ["role outside the path", "denied"], ["access key", "denied"], ["a third region", "denied"],
-    ["an entry in a lab network ACL", "allowed"], ["tag an untagged network ACL", "denied"], ["an entry in an untagged network ACL", "denied"], ["a rule in an untagged security group", "denied"], ["the VPN server's user data", "denied"], ["pass the deploy role", "denied"], ["AdministratorAccess on a lab role", "denied"], ["change the boundary", "denied"], ["remove a boundary", "denied"], ["block public access for the account", "denied"], ["EBS encryption by default", "denied"], ["a launch whose volume has no lab tag", "denied"], ["EICE's network interface", "allowed"], ["an SSM association", "allowed"], ["retention on a new lab log group", "allowed"], ["retention on another log group", "denied"], ["SSM default host management", "denied"], ["reset an SSM setting", "denied"], ["a subnet in the default VPC", "denied"]]);
+    ["an entry in a lab network ACL", "allowed"], ["tag an untagged network ACL", "denied"], ["an entry in an untagged network ACL", "denied"], ["a rule in an untagged security group", "denied"], ["the VPN server's user data", "denied"], ["pass the deploy role", "denied"], ["AdministratorAccess on a lab role", "denied"], ["change the boundary", "denied"], ["remove a boundary", "denied"], ["block public access for the account", "denied"], ["EBS encryption by default", "denied"], ["a launch whose volume has no lab tag", "denied"], ["EICE's network interface", "allowed"], ["an SSM association", "allowed"], ["retention on a new lab log group", "allowed"], ["retention on another log group", "denied"], ["SSM default host management", "denied"], ["reset an SSM setting", "denied"], ["a lab 07 user under the boundary", "allowed"], ["a user for another lab", "denied"], ["remove a hand-made key from the lab 07 user", "allowed"], ["delete the lab's analyzer", "allowed"], ["an untagged CloudFormation stack", "denied"], ["a CloudFront distribution", "allowed"], ["a Route 53 hosted zone", "allowed"], ["an ECS cluster in us-east-1", "denied"], ["a subnet in the default VPC", "denied"]]);
   // With no default VPC in the account there is nothing to ask about it.
   assert.ok(!simulatorCases("123456789012", []).some((c) => c.name === "a subnet in the default VPC"));
   assert.deepEqual(boundaryCases("123456789012", FILL.vpcArns).map((c) => [c.name, c.want]), [["boundary: an entry in a lab network ACL", "allowed"], ["boundary: tag an untagged network ACL", "denied"], ["boundary: an entry in an untagged network ACL", "denied"], ["boundary: a rule in an untagged security group", "denied"], ["boundary: delete every tag", "denied"], ["boundary: block public access for the account", "denied"], ["boundary: SSM default host management", "denied"], ["boundary: reset an SSM setting", "denied"], ["boundary: tag a new snapshot", "allowed"], ["boundary: a subnet in the default VPC", "denied"]]);
@@ -367,11 +366,11 @@ const O = { account: "123456789012", roleArn: "arn:aws:iam::123456789012:role/wg
 
 test("--labs: every simulator case is asked of the role, quotas below target are raised, an inactive cost tag is activated", async () => {
   const log = [];
-  const { run, calls } = fakeAws({ quotas: { "L-F678F1CE eu-west-2": 5, "L-F678F1CE eu-west-1": 20, "L-0263D0A3 eu-west-2": 5, "L-0263D0A3 eu-west-1": 5, "L-1216C47A eu-west-2": 32, "L-1216C47A eu-west-1": 16, "L-ABCD1234 eu-west-2": 5, "L-ABCD1234 eu-west-1": 10 }, pending: ["L-0263D0A3 eu-west-1"] });
+  const { run, calls } = fakeAws({ quotas: { "L-F678F1CE eu-west-2": 5, "L-F678F1CE eu-west-1": 20, "L-0263D0A3 eu-west-2": 5, "L-0263D0A3 eu-west-1": 5, "L-1216C47A eu-west-2": 32, "L-1216C47A eu-west-1": 16, "L-ABCD1234 eu-west-2": 5, "L-ABCD1234 eu-west-1": 10, "L-0DA4ABF3 us-east-1": 10 }, pending: ["L-0263D0A3 eu-west-1"] });
   const r = await runLabsBootstrap(run, { ...O, log: (s) => log.push(s) });
   assert.equal(r.ok, true);
   const sims = calls.filter((c) => c[2] === "simulate-principal-policy");
-  assert.equal(sims.length, 27);
+  assert.equal(sims.length, 35);
   for (const c of sims) assert.equal(c[c.indexOf("--policy-source-arn") + 1], O.roleArn);
   // The boundary, simulated as a policy of its own (simulate-custom-policy), with the document the bootstrap filled.
   const custom = calls.filter((c) => c[2] === "simulate-custom-policy");
@@ -384,7 +383,7 @@ test("--labs: every simulator case is asked of the role, quotas below target are
     { ContextKeyName: "aws:TagKeys", ContextKeyValues: ["cloudlabs-lab"], ContextKeyType: "stringList" },
   ]);
   const raised = calls.filter((c) => c[2] === "request-service-quota-increase").map((c) => [c[c.indexOf("--quota-code") + 1], c[c.indexOf("--region") + 1], c[c.indexOf("--desired-value") + 1]]);
-  assert.deepEqual(raised, [["L-F678F1CE", "eu-west-2", "20"], ["L-0263D0A3", "eu-west-2", "10"], ["L-1216C47A", "eu-west-1", "32"], ["L-ABCD1234", "eu-west-2", "10"]]);
+  assert.deepEqual(raised, [["L-F678F1CE", "eu-west-2", "20"], ["L-0263D0A3", "eu-west-2", "10"], ["L-1216C47A", "eu-west-1", "32"], ["L-ABCD1234", "eu-west-2", "10"], ["L-0DA4ABF3", "us-east-1", "20"]]);
   assert.ok(calls.some((c) => c.join(" ") === "aws ce update-cost-allocation-tags-status --cost-allocation-tags-status TagKey=cloudlabs-lab,Status=Active --region us-east-1"));
   assert.ok(log.includes("Cost tag cloudlabs-lab: activated"));
   assert.ok(log.some((s) => /Instance Connect Endpoints per Region.*L-ABCD1234/.test(s)));
@@ -581,14 +580,14 @@ test("what Terraform does for a lab is allowed: tagged creates on the new item o
 // ── Every AWS CLI call the lab workflow's scripts make, as the role ──────
 
 /** The CLI's service names that are not IAM's, and the commands whose IAM action is not their own name. */
-const CLI_SERVICE = { elbv2: "elasticloadbalancing", configservice: "config", resourcegroupstaggingapi: "tag", s3api: "s3" };
+const CLI_SERVICE = { elbv2: "elasticloadbalancing", configservice: "config", resourcegroupstaggingapi: "tag", s3api: "s3", accessanalyzer: "access-analyzer" };
 const CLI_ACTION = {
   "s3api head-bucket": ["s3:ListBucket"],
   "s3api list-object-versions": ["s3:ListBucketVersions"],
   "s3api delete-objects": ["s3:DeleteObject", "s3:DeleteObjectVersion"],
   "s3api get-object-lock-configuration": ["s3:GetBucketObjectLockConfiguration"],
 };
-const SERVICES_RE = /(?:^|[\s(])(ec2|elbv2|rds|autoscaling|events|configservice|s3api|sns|logs|cloudwatch|ssm|backup|resource-groups|kms|iam|resourcegroupstaggingapi|dynamodb|network-firewall|cloudformation|elasticache|eks|ecs|cloudfront|globalaccelerator|vpc-lattice|route53resolver)\s+"?([a-z0-9]+-[a-z0-9$-]+)"?/g;
+const SERVICES_RE = /(?:^|[\s(])(ec2|elbv2|rds|autoscaling|events|configservice|s3api|sns|logs|cloudwatch|ssm|backup|resource-groups|kms|iam|resourcegroupstaggingapi|dynamodb|network-firewall|cloudformation|elasticache|eks|ecs|cloudfront|globalaccelerator|vpc-lattice|route53resolver|sqs|secretsmanager|lambda|ecr|accessanalyzer|route53)\s+"?([a-z0-9]+-[a-z0-9$-]+)"?/g;
 /** Every "<service> <command>" an aws call names in a script (comments left out), with the region it names. */
 function cliCalls(path) {
   const out = [];
@@ -608,15 +607,15 @@ function requestsOf({ cli, region }) {
   const [svc, cmd] = cli.split(" ");
   const actions = CLI_ACTION[cli] ?? [`${CLI_SERVICE[svc] ?? svc}:${camel(cmd)}`];
   const read = /^(describe|list|get|head)-/.test(cmd);
-  const named = /dashboard|configuration-recorder|delivery-channel|query-definition|alias/.test(cmd);
+  const named = /dashboard|configuration-recorder|delivery-channel|query-definition|alias|origin-access-control/.test(cmd);
   const action0 = actions[0];
   if (svc === "iam") {
-    const what = /instance-profile/.test(cmd) ? "instance-profile" : /policy-version|^(get|delete)-policy$/.test(cmd) ? "policy" : /user|login-profile/.test(cmd) ? "user" : /role/.test(cmd) ? "role" : null;
+    const what = /instance-profile/.test(cmd) ? "instance-profile" : /policy-version|^(get|delete)-policy$/.test(cmd) ? "policy" : /user|login-profile|access-key|mfa-device|ssh-public-key|signing-certificate|service-specific-credential/.test(cmd) ? "user" : /role/.test(cmd) ? "role" : null;
     const name = what === "user" ? "lab-soa-07-iam-kms-ann" : "lab-soa-01-x-vm";
     const resource = what && !/^list-(roles|instance-profiles|policies|users)$/.test(cmd) ? `arn:aws:iam::${A}:${what}/cloudlabs-lab/${name}` : "*";
     return actions.map((action) => ({ action, resource, ctx: { "aws:RequestedRegion": "us-east-1", ...(what === "role" || what === "user" ? BOUNDED : {}) } }));
   }
-  const r = region ?? "eu-west-2";
+  const r = region ?? (["cloudfront", "route53"].includes(svc) ? "us-east-1" : "eu-west-2");
   const resource = svc === "s3api" ? "arn:aws:s3:::cloudlabs-a01abcde-logs" : /dashboard|configuration-recorder/.test(cmd) ? namedArn(action0, "lab-soa-01-x-main") : `arn:aws:${CLI_SERVICE[svc] ?? svc}:${r}:${A}:lab-item/x`;
   // A read must not need the lab's tag; a write is on a tagged item, or a named one that cannot carry tags.
   const ctx = { "aws:RequestedRegion": r, ...(read || named ? {} : { "aws:ResourceTag/cloudlabs-lab": "soa-01-x" }) };
@@ -631,7 +630,9 @@ test("every AWS CLI call in Unblock, the safety net, Verify clean and the ready 
   assert.ok(calls.length > 90, `${calls.length} calls`);
   for (const must of ["iam delete-role", "configservice stop-configuration-recorder", "cloudwatch delete-dashboards", "ec2 revoke-security-group-egress", "resourcegroupstaggingapi get-resources", "cloudfront get-distribution", "s3api delete-objects",
     // Final review, Important 2: security group rules, listeners and listener rules, read and (when still there) deleted.
-    "ec2 describe-security-group-rules", "ec2 revoke-security-group-ingress", "elbv2 describe-listeners", "elbv2 describe-rules", "elbv2 delete-listener", "elbv2 delete-rule"]) assert.ok(calls.some((c) => c.cli === must), must);
+    "ec2 describe-security-group-rules", "ec2 revoke-security-group-ingress", "elbv2 describe-listeners", "elbv2 describe-rules", "elbv2 delete-listener", "elbv2 delete-rule",
+    // Batch 2 (Task 4): the new types' deletes.
+    "cloudformation delete-stack", "cloudfront delete-distribution", "cloudfront delete-origin-access-control", "route53 delete-hosted-zone", "ecs delete-service", "ecs delete-task-definitions", "kms schedule-key-deletion", "iam delete-access-key", "accessanalyzer delete-analyzer"]) assert.ok(calls.some((c) => c.cli === must), must);
   const refused = [];
   for (const c of calls) for (const req of requestsOf(c)) {
     const d = decide(POLICIES.role, req);
@@ -659,4 +660,94 @@ test("A29's fall-back: lists too long for 10 policies become per-service Delete/
   // Even then, the services of the untaggable named types stay out (their items carry no tag).
   assert.ok(!change.some((a) => /^(cloudwatch|config|logs|kms):/.test(a)), change.join(" "));
   for (const d of r.role) assert.ok(policySize(d, FILL) < POLICY_MAX);
+});
+
+test("ruling P1: a delete or update that takes a request tag is a change, never a create (DeleteAnalyzer)", () => {
+  const props = { Annotations: { Properties: { IsWrite: true } } };
+  const sar = {
+    "access-analyzer": {
+      Name: "access-analyzer",
+      Resources: [{ Name: "Analyzer", ConditionKeys: ["aws:ResourceTag/${TagKey}"] }],
+      Actions: [
+        { Name: "CreateAnalyzer", ActionConditionKeys: ["aws:RequestTag/${TagKey}", "aws:TagKeys"], Resources: [{ Name: "Analyzer" }], ...props },
+        { Name: "DeleteAnalyzer", ActionConditionKeys: ["aws:RequestTag/${TagKey}", "aws:TagKeys"], Resources: [{ Name: "Analyzer" }], ...props },
+        { Name: "UpdateAnalyzer", ActionConditionKeys: [], Resources: [{ Name: "Analyzer" }], ...props },
+      ],
+    },
+  };
+  const { create, change } = abacLists(sar);
+  assert.deepEqual(create, ["access-analyzer:CreateAnalyzer"]);
+  assert.deepEqual(change, ["access-analyzer:DeleteAnalyzer", "access-analyzer:UpdateAnalyzer"]);
+});
+
+test("ruling P1: the committed create list holds no delete or update verb", { skip }, () => {
+  const { ABAC } = files();
+  assert.deepEqual(ABAC.create.filter((a) => NON_CREATE_VERB.test(a.split(":")[1])), []);
+  // Fold-proof (pre-flight C16): the delete may sit under a wildcard such as access-analyzer:Delete*.
+  assert.ok(ABAC.change.some((a) => new RegExp(`^${a.replace(/\*/g, ".*")}$`, "i").test("access-analyzer:DeleteAnalyzer")), "the analyzer's delete is a change, judged by the lab tag");
+});
+
+test("rulings P6 and P14: lab 07's user can lose hand-made credentials; Access Analyzer's role is made ahead", { skip }, () => {
+  const { sid } = files();
+  for (const a of ["iam:DeleteAccessKey", "iam:UpdateAccessKey", "iam:DeleteSSHPublicKey", "iam:DeleteSigningCertificate", "iam:DeleteServiceSpecificCredential", "iam:DeactivateMFADevice", "iam:UntagUser"]) assert.ok(sid("Lab07UsersOther").Action.includes(a), a);
+  assert.ok(!sid("Lab07UsersOther").Action.includes("iam:CreateAccessKey"));
+  assert.ok(SERVICE_LINKED.includes("access-analyzer.amazonaws.com"));
+});
+
+test("ruling P13: the managed-policies-per-role quota is asked for in us-east-1 only", () => {
+  const q = LAB_QUOTAS.find((x) => x.code === "L-0DA4ABF3");
+  assert.deepEqual([q.service, q.want, q.raise, q.regions], ["iam", 20, "if-below", ["us-east-1"]]);
+});
+
+test("what labs 06–10 do is allowed: tagged creates, deletes of tagged items, lab 07's user and its hand-made credentials", { skip }, () => {
+  const { POLICIES } = files();
+  const allowed = (action, resource, ctx) => assert.equal(decide(POLICIES.role, { action, resource, ctx }), "allowed", `${action} on ${resource}`);
+  const denied = (action, resource, ctx) => assert.notEqual(decide(POLICIES.role, { action, resource, ctx }), "allowed", `${action} on ${resource}`);
+  const R = { "aws:RequestedRegion": "eu-west-2" };
+  const arn = (svc, rest) => `arn:aws:${svc}:eu-west-2:${A}:${rest}`;
+  // Lab 06: a tagged stack, run by its own role; its update and delete are changes on the tagged stack (P1).
+  allowed("cloudformation:CreateStack", arn("cloudformation", "stack/lab-soa-06-x-stack/*"), NEW);
+  denied("cloudformation:CreateStack", arn("cloudformation", "stack/lab-soa-06-x-stack/*"), R);
+  for (const a of ["cloudformation:UpdateStack", "cloudformation:DeleteStack"]) allowed(a, arn("cloudformation", "stack/lab-soa-06-x-stack/0abc"), LAB);
+  allowed("iam:PassRole", `arn:aws:iam::${A}:role/cloudlabs-lab/lab-soa-06-x-cfn`, { "iam:PassedToService": "cloudformation.amazonaws.com" });
+  // Review I1 (P4): stack sets are never a lab's, even with the lab's request tag (an existing one's execution role is not a lab role).
+  for (const a of ["cloudformation:UpdateStackSet", "cloudformation:CreateStackSet", "cloudformation:CreateStackInstances", "cloudformation:UpdateStackInstances", "cloudformation:ImportStacksToStackSet"]) assert.equal(decide(POLICIES.role, { action: a, resource: arn("cloudformation", "stackset/other:0abc"), ctx: { ...R, "aws:RequestTag/cloudlabs-lab": "soa-06-x" } }), "explicitDeny", a);
+  // Lab 07: the user, its login profile and policy; hand-made credentials removed; never an access key made.
+  const ann = `arn:aws:iam::${A}:user/cloudlabs-lab/lab-soa-07-iam-kms-ann`;
+  allowed("iam:CreateUser", ann, BOUNDED);
+  for (const a of ["iam:TagUser", "iam:CreateLoginProfile", "iam:DeleteLoginProfile", "iam:DeleteAccessKey", "iam:DeactivateMFADevice", "iam:DeleteSSHPublicKey", "iam:DeleteSigningCertificate", "iam:DeleteServiceSpecificCredential", "iam:UpdateAccessKey", "iam:UntagUser", "iam:DeleteUser"]) allowed(a, ann, {});
+  allowed("iam:AttachUserPolicy", ann, { ...BOUNDED, "iam:PolicyARN": `arn:aws:iam::${A}:policy/cloudlabs-lab/lab-soa-07-iam-kms-ann` });
+  denied("iam:CreateAccessKey", ann, {});
+  denied("iam:DeleteAccessKey", `arn:aws:iam::${A}:user/someone`, {});
+  for (const a of ["iam:DeactivateMFADevice", "iam:DeleteSSHPublicKey"]) denied(a, `arn:aws:iam::${A}:user/someone`, {});
+  allowed("access-analyzer:CreateAnalyzer", arn("access-analyzer", "analyzer/lab-soa-07-iam-kms-account"), NEW);
+  allowed("access-analyzer:DeleteAnalyzer", arn("access-analyzer", "analyzer/lab-soa-07-iam-kms-account"), LAB);
+  denied("access-analyzer:DeleteAnalyzer", arn("access-analyzer", "analyzer/other"), R);
+  allowed("kms:CreateKey", "*", NEW);
+  allowed("kms:ScheduleKeyDeletion", arn("kms", "key/0abc"), LAB);
+  allowed("secretsmanager:CreateSecret", arn("secretsmanager", "secret:lab-soa-07-iam-kms-app-a07k3x9q-AbCdEf"), NEW);
+  for (const a of ["secretsmanager:PutSecretValue", "secretsmanager:RotateSecret", "secretsmanager:DeleteSecret", "secretsmanager:CancelRotateSecret"]) allowed(a, arn("secretsmanager", "secret:lab-soa-07-iam-kms-app-a07k3x9q-AbCdEf"), LAB);
+  allowed("lambda:CreateFunction", arn("lambda", "function:lab-soa-07-iam-kms-rotate"), NEW);
+  for (const a of ["lambda:AddPermission", "lambda:DeleteFunction", "lambda:RemovePermission"]) allowed(a, arn("lambda", "function:lab-soa-07-iam-kms-rotate"), LAB);
+  allowed("iam:PassRole", `arn:aws:iam::${A}:role/cloudlabs-lab/lab-soa-07-iam-kms-rotate`, { "iam:PassedToService": "lambda.amazonaws.com" });
+  allowed("iam:CreateServiceLinkedRole", `arn:aws:iam::${A}:role/aws-service-role/access-analyzer.amazonaws.com/AWSServiceRoleForAccessAnalyzer`, { "iam:AWSServiceName": "access-analyzer.amazonaws.com" });
+  // Lab 08: a second VPC, its own network ACL (entries and association on the lab's ACL), peering, flow logs.
+  allowed("ec2:CreateNetworkAcl", arn("ec2", "network-acl/*"), NEW);
+  allowed("ec2:ReplaceNetworkAclAssociation", arn("ec2", "network-acl/acl-0lab"), LAB);
+  allowed("ec2:CreateVpcPeeringConnection", arn("ec2", "vpc-peering-connection/*"), NEW);
+  allowed("ec2:AcceptVpcPeeringConnection", arn("ec2", "vpc-peering-connection/pcx-0lab"), LAB);
+  allowed("ec2:CreateFlowLogs", arn("ec2", "vpc-flow-log/*"), NEW);
+  allowed("iam:PassRole", `arn:aws:iam::${A}:role/cloudlabs-lab/lab-soa-08-vpc-fix-flowlogs`, { "iam:PassedToService": "vpc-flow-logs.amazonaws.com" });
+  // Lab 09: CloudFront and Route 53 in us-east-1 (global APIs), the site bucket by name and its policy.
+  for (const a of ["cloudfront:CreateDistribution", "cloudfront:CreateOriginAccessControl", "cloudfront:DeleteDistribution", "route53:CreateHostedZone", "route53:ChangeResourceRecordSets", "route53:CreateHealthCheck", "route53:DeleteHostedZone"]) allowed(a, "*", { "aws:RequestedRegion": "us-east-1" });
+  allowed("s3:PutBucketPolicy", "arn:aws:s3:::cloudlabs-a09k3x9q-site", R);
+  // Lab 10: NAT gateway and its address, ECR, ECS (deregistering takes no resource), the task execution role.
+  allowed("ec2:AllocateAddress", arn("ec2", "elastic-ip/*"), NEW);
+  allowed("ec2:CreateNatGateway", arn("ec2", "natgateway/*"), NEW);
+  allowed("ecr:CreateRepository", arn("ecr", "repository/lab-soa-10-containers-web"), NEW);
+  for (const a of ["ecr:PutLifecyclePolicy", "ecr:DeleteRepository"]) allowed(a, arn("ecr", "repository/lab-soa-10-containers-web"), LAB);
+  for (const [a, r] of [["ecs:CreateCluster", "cluster/lab-soa-10-containers"], ["ecs:RegisterTaskDefinition", "task-definition/lab-soa-10-containers-web:1"], ["ecs:CreateService", "service/lab-soa-10-containers/lab-soa-10-containers-web"]]) allowed(a, arn("ecs", r), NEW);
+  for (const [a, r] of [["ecs:UpdateService", "service/lab-soa-10-containers/x"], ["ecs:DeleteService", "service/lab-soa-10-containers/x"], ["ecs:DeleteCluster", "cluster/lab-soa-10-containers"], ["ecs:DeleteTaskDefinitions", "task-definition/lab-soa-10-containers-web:1"]]) allowed(a, arn("ecs", r), LAB);
+  allowed("ecs:DeregisterTaskDefinition", "*", R);
+  allowed("iam:PassRole", `arn:aws:iam::${A}:role/cloudlabs-lab/lab-soa-10-containers-exec`, { "iam:PassedToService": "ecs-tasks.amazonaws.com" });
 });

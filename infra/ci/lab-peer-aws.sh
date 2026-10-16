@@ -32,7 +32,9 @@
 #       in each lab route table (replacing a route that already exists)
 #   Finally {phase:"end", ok} releases the lock, whatever happened.
 #
-# unpeer (no Worker, no lock: a teardown never waits), in this order:
+# unpeer (no Worker, no lock: a teardown never waits), touching only the
+#   gateway connection the peer step makes (Name = lab-<id>-headend), never a
+#   peering the lab builds between its own VPCs (lab 08), in this order:
 #   1. the rt-wg routes whose target is one of the lab's connections
 #   2. the lab route tables' routes to those connections (if the lab is still up)
 #   3. the connections themselves
@@ -81,7 +83,7 @@ ids() { jq -r "$1 // empty" 2>/dev/null; }
 # ── unpeer ───────────────────────────────────────────────────────────────
 
 if [ "$ACTION" = unpeer ]; then
-  pcx_json="$(awsq ec2 describe-vpc-peering-connections --filters "Name=tag:cloudlabs-lab,Values=$LAB_ID")" || { warn "could not list the lab's peering connections ($(errcode))"; pcx_json='{}'; }
+  pcx_json="$(awsq ec2 describe-vpc-peering-connections --filters "Name=tag:cloudlabs-lab,Values=$LAB_ID" "Name=tag:Name,Values=lab-$LAB_ID-headend")" || { warn "could not list the lab's peering connections ($(errcode))"; pcx_json='{}'; }
   mapfile -t PCX < <(ids '.VpcPeeringConnections[]?.VpcPeeringConnectionId' <<<"$pcx_json")
   mapfile -t LIVE < <(ids '.VpcPeeringConnections[]? | select((.Status.Code // "") | IN("deleted", "deleting", "rejected", "failed", "expired") | not) | .VpcPeeringConnectionId' <<<"$pcx_json")
   is_lab_pcx() {

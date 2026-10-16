@@ -8,7 +8,7 @@
 
 import type { RunRow } from "../activity";
 import type { LabAction, LabEndReason, LabPeering, LabRunRow, LabSession, LabSessionState } from "../../../shared/api";
-import { LAB_STEPS, sessionEstimateGbp, wholeHoursGbpH } from "../../../shared/labs";
+import { LAB_STEPS, cloudOfId, sessionEstimateGbp, wholeHoursGbpH } from "../../../shared/labs";
 import { labDef } from "./catalogue";
 import type { LabRunDb, LabSessionRow } from "./store";
 
@@ -68,6 +68,9 @@ export const wholeGbpHOf = (labId: string): number => wholeHoursGbpH(labDef(labI
 /** A session for the screens. `cost` overrides the estimate (the actual, once Azure has it). */
 export function labSession(s: LabSessionRow, activeRun: LabRunDb | null, now: number, cost?: { gbp: number | null; basis: "estimate" | "actual" }): LabSession {
   const outputs = parse<{ private_ips?: Record<string, string>; connect?: string[]; users?: Record<string, string> } | null>(s.outputs_json, null);
+  // Ruling P5: an AWS lab's users carry a Terraform-generated password; only GET /labs/:id/secret (Show) returns it.
+  const users = outputs?.users ?? {};
+  const shownUsers = cloudOfId(s.lab_id) === "aws" ? Object.fromEntries(Object.keys(users).map((k) => [k, ""])) : users;
   const leftovers = parse<string[] | null>(s.leftovers_json, null);
   return {
     id: s.id,
@@ -91,7 +94,7 @@ export function labSession(s: LabSessionRow, activeRun: LabRunDb | null, now: nu
     costBasis: cost ? cost.basis : "estimate",
     endReason: s.end_reason as LabEndReason | null,
     note: s.note,
-    outputs: outputs ? { privateIps: outputs.private_ips ?? {}, connect: outputs.connect ?? [], users: outputs.users ?? {} } : null,
+    outputs: outputs ? { privateIps: outputs.private_ips ?? {}, connect: outputs.connect ?? [], users: shownUsers } : null,
     leftovers: Array.isArray(leftovers) ? leftovers : null,
     activeRun: activeRun ? labRunRow(activeRun) : null,
   };

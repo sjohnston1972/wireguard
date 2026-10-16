@@ -40,3 +40,35 @@ test("the resource group queries the lab tag on the lab's own id; outputs are th
   assert.match(text, /TagFilters\s+= \[\{ Key = "cloudlabs-lab", Values = \[var\.lab_id\] \}\]/);
   assert.deepEqual([...text.matchAll(/^output "([^"]+)"/gm)].map((m) => m[1]), ["private_ips", "connect", "peer_vpc_id", "peer_route_table_ids"]);
 });
+
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { commonAwsProblems } from "./fixtures/labs/aws-content.mjs";
+
+test("ruling P2: every allowed provider is pinned, and the VPC is the hub", () => {
+  const v = readFileSync(join(DIR, "versions.tf"), "utf8");
+  for (const [name, version] of [["aws", "~> 6.0"], ["archive", "~> 2.0"], ["random", "~> 3.7"], ["time", "~> 0.13"], ["tls", "~> 4.0"]]) {
+    assert.match(v, new RegExp(`${name} = \\{\\s*source\\s+= "hashicorp/${name}"\\s*version = "${version.replace(/[.*~>]/g, (m) => `\\${m}`)}"`), name);
+  }
+  assert.match(readFileSync(join(DIR, "network.tf"), "utf8"), /tags\s+= \{ Name = "vpc-lab", "cloudlabs-peer" = "hub" \}/);
+  assert.deepEqual(templateResources(ctxAws("soa-01-cloudwatch", "01")).find((r) => r.address === "aws_vpc.lab").values.tags, { Name: "vpc-lab", "cloudlabs-peer": "hub" });
+});
+
+test("ruling P3: a lab that cannot peer may leave network.tf out; one that can must keep it unchanged", () => {
+  const LABS = fileURLToPath(new URL("../../labs/", import.meta.url));
+  const tmp = mkdtempSync(join(tmpdir(), "aws-content-"));
+  try {
+    mkdirSync(join(tmp, "_learning"));
+    for (const p of ["_template-aws", "soa-01-cloudwatch", "_learning/soa-01-cloudwatch.yaml"]) cpSync(join(LABS, p), join(tmp, p), { recursive: true });
+    assert.deepEqual(commonAwsProblems("soa-01-cloudwatch", tmp), []);
+    rmSync(join(tmp, "soa-01-cloudwatch", "terraform", "network.tf"));
+    assert.ok(commonAwsProblems("soa-01-cloudwatch", tmp).includes("network.tf is missing: a lab that can peer starts from labs/_template-aws/network.tf"));
+    const yamlPath = join(tmp, "soa-01-cloudwatch", "lab.yaml");
+    writeFileSync(yamlPath, readFileSync(yamlPath, "utf8").replace(/connectivity: \{ peering: optional, dns_link: false, subnets_used: 1 \}/, 'connectivity: { peering: "off", dns_link: false, subnets_used: 0 }'));
+    assert.ok(!commonAwsProblems("soa-01-cloudwatch", tmp).some((p) => p.startsWith("network.tf")));
+    writeFileSync(join(tmp, "soa-01-cloudwatch", "terraform", "network.tf"), "# changed\n");
+    assert.ok(commonAwsProblems("soa-01-cloudwatch", tmp).includes("network.tf differs from labs/_template-aws/network.tf"));
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
