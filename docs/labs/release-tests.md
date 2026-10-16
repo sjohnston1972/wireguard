@@ -95,3 +95,14 @@ lab's hourly estimate times those minutes.
 | 2026-10-15 20:13 | soa-03-auto-scaling | 2 | pass | yes | none | 5m 52s | 4m 1s | £0.0081 | 38798688113 |
 | 2026-10-15 20:25 | soa-02-systems-manager | 3 | pass | yes | none | 3m 51s | 7m 37s | £0.0083 | 38800159538 |
 | 2026-10-15 21:04 | soa-05-rds | 2 | pass | yes | none | 30m 22s | 7m 44s | £0.0337 | 38801816428 |
+| 2026-10-16 03:43 | soa-06-cloudformation | 1 | pass | yes | none | 1m 59s | 3m 2s | £0.0000 | 38846428615 |
+| 2026-10-16 03:47 | soa-07-iam-kms | 1 | pass | yes | none | 0m 58s | 2m 10s | £0.0001 | 38846915937 |
+| 2026-10-16 03:47 | soa-09-route53-cloudfront | 1 | pass | yes | none | 3m 45s | 4m 42s | £0.0002 | 38846492150 |
+| 2026-10-16 03:56 | soa-08-vpc-fix | 1 | fail | yes | none | — | 2m 18s | £0.0005 | 38847236216 |
+| 2026-10-16 03:58 | soa-10-containers | 1 | pass | yes | none | 3m 58s | 5m 41s | £0.0151 | 38847282221 |
+| 2026-10-16 04:04 | soa-04-backup | 4 | pass | yes | none | 5m 2s | 2m 45s | £0.0006 | 38848014785 |
+| 2026-10-16 04:09 | soa-01-cloudwatch | 3 | pass | yes | none | 3m 59s | 6m 23s | £0.0053 | 38848167168 |
+| 2026-10-16 04:20 | soa-05-rds | 3 | pass | yes | none | 28m 14s | 12m 33s | £0.0360 | 38846554109 |
+| 2026-10-16 04:31 | soa-03-auto-scaling | 3 | pass | yes | none | 6m 19s | 3m 24s | £0.0080 | 38850131479 |
+| 2026-10-16 04:41 | soa-02-systems-manager | 4 | pass | yes | none | 3m 57s | 5m 4s | £0.0065 | 38851045443 |
+| 2026-10-16 04:53 | soa-08-vpc-fix | 2 | pass | yes | none | 3m 54s | 3m 51s | £0.0016 | 38852201889 |
