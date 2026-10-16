@@ -938,6 +938,24 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: ["api-lab -> fn-api : HTTPS"],
   },
+  "saa-13-decoupling": {
+    nodes: [
+      "lambda fn-validate < lab-saa-13-decoupling · London",
+      "logAnalytics /cloudlabs/saa-13-decoupling/validate < lab-saa-13-decoupling · London",
+      "managedIdentity lab-saa-13-decoupling-events < lab-saa-13-decoupling · London",
+      "managedIdentity lab-saa-13-decoupling-sfn < lab-saa-13-decoupling · London",
+      "managedIdentity lab-saa-13-decoupling-validate < lab-saa-13-decoupling · London",
+      "messaging bus-orders < lab-saa-13-decoupling · London",
+      "messaging queue-billing < lab-saa-13-decoupling · London",
+      "messaging queue-billing-dlq < lab-saa-13-decoupling · London",
+      "messaging queue-shipping < lab-saa-13-decoupling · London",
+      "messaging rule-placed < lab-saa-13-decoupling · London",
+      "messaging sfn-orders < lab-saa-13-decoupling · London",
+      "messaging topic-orders < lab-saa-13-decoupling · London",
+      "resourceGroup lab-saa-13-decoupling · London",
+    ],
+    edges: ["rule-placed ..> sfn-orders", "topic-orders ..> queue-billing : fan-out", "topic-orders ..> queue-shipping : fan-out"],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);

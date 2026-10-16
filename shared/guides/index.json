@@ -534,6 +534,13 @@
    "kind": "architecture"
   }
  ],
+ "saa-13-decoupling": [
+  {
+   "file": "architecture.svg",
+   "title": "Decoupling: queues, fan-out, events, workflows: architecture",
+   "kind": "architecture"
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",

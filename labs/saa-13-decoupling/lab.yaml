@@ -1,0 +1,34 @@
+# Lab saa-13 (AWS labs batch 3). SAA-C03 ((V) the wording against the current
+# exam guide): Design Resilient Architectures (loosely coupled designs:
+# queues, dead-letter queues, fan-out, events and workflows).
+# Every service here bills per request or per state transition: an idle hour
+# is free and a session of Things to try stays inside the free tiers
+# (authored figures, V).
+id: saa-13-decoupling
+version: 1
+cloud: aws
+title: "Decoupling: queues, fan-out, events, workflows"
+summary: >-
+  An order event on the lab's own EventBridge bus starts a Step Functions workflow, which validates the order with a
+  Lambda function and publishes it to an SNS topic that fans out to two SQS queues, one with a dead-letter queue.
+exam: SAA-C03
+skill_areas: [saa.resilient]
+level: associate
+type: explore
+prerequisites: [saa-12-serverless-api]
+cost:
+  items:
+    - { name: "EventBridge custom events (a few hundred)", gbp_h: 0.0001 }
+    - { name: "Step Functions standard state transitions (inside the free tier)", gbp_h: 0 }
+    - { name: "Lambda arm64, 128 MB, a few hundred calls", gbp_h: 0.0001 }
+    - { name: "SNS publishes and SQS requests (inside the free tiers)", gbp_h: 0 }
+    - { name: "CloudWatch Logs (one day)", gbp_h: 0.0001 }
+  pricey: null
+timing: { deploy_min: 4, destroy_min: 3, session_h: 2, max_h: 6 }
+capacity: { instance_types: [] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
+identity:
+  creates: [role]
+  roles: []
+  governance: false

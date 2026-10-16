@@ -712,6 +712,15 @@
    "height": 438
   }
  ],
+ "saa-13-decoupling": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A Lambda function, a CloudWatch log group, three IAM roles and seven messaging resources.",
+   "width": 1272,
+   "height": 618
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",
