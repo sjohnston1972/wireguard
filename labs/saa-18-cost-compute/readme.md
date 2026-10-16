@@ -1,4 +1,4 @@
-The same small web server on three purchase options and two processor families. An Auto Scaling group keeps one On-Demand Graviton instance as its base and runs everything above it on Spot, letting AWS pick among a Graviton and an x86 type by price and spare capacity. Each instance's page says what it is and how it is billed. Everything is listed in the lab's resource group, `lab-saa-18-cost-compute`, in AWS Resource Groups (London).
+The same small web server on two purchase options (On-Demand and Spot), three instance types and two processor families. An Auto Scaling group keeps one On-Demand Graviton instance as its base and runs everything above it on Spot, letting AWS pick among a Graviton and an x86 type by price and spare capacity. Each instance's page says what it is and how it is billed. Everything is listed in the lab's resource group, `lab-saa-18-cost-compute`, in AWS Resource Groups (London).
 From the SAA-C03 outline: design cost-optimised compute: choose purchase options (On-Demand, Spot, Savings Plans, Reserved Instances) and instance families, and mix them in an Auto Scaling group.
 
 ## What it deploys
@@ -17,16 +17,16 @@ Prices in London today, On-Demand, Linux, per hour (check the second Connect lin
 lab-saa-18-cost-compute (London)
   asg-<prefix> (snet-private-1/2): base 1 x On-Demand t4g.micro (lt-arm)
                                    above it: Spot t4g.micro | t4g.small (lt-arm) | t3.micro (lt-x86)
-  each instance: page = type, spot/on-demand, arm64/x86_64, zone
+  each instance: page = type, spot/on-demand, aarch64/x86_64, zone
 ```
 
 ## Things to try
 
-- List the instances with the first Connect line (CloudShell): one with an empty `InstanceLifecycle` (On-Demand) and two `spot`. Which Spot types did AWS choose, and in which zones?
-- Run the second line and compare today's Spot prices with the table: how much would a month of each cost, per instance, On-Demand and Spot?
+- List the instances with the first Connect line (CloudShell): one with `None` in the lifecycle column (On-Demand) and two `spot`. Which Spot types did AWS choose, and in which zones?
+- Run the second line and compare today's Spot prices with the prices above: how much would a month of each cost, per instance, On-Demand and Spot?
 - Connect to an instance (third line) and run `curl -s localhost`: the page says its type, `spot` or `on-demand`, and `aarch64` or `x86_64`. The same AMI family runs on both architectures; most open-source software does too.
 - Raise the group's desired capacity to 4 and watch the new instance come up on Spot. Lower it to 3 and see which one AWS removes.
-- In the Auto Scaling console, look at the group's Activity history: a Spot instance AWS reclaims (rare in a short session) is replaced automatically, and the On-Demand base never is reclaimed.
+- In the Auto Scaling console, look at the group's Activity history: a Spot instance AWS reclaims (rare in a short session) is replaced automatically, and the On-Demand base is never reclaimed.
 
 ## Not built here
 
