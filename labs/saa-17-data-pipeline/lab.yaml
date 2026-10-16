@@ -21,7 +21,6 @@ cost:
   items:
     - name: "Kinesis Data Streams, one provisioned shard"
       gbp_h: 0.0124
-      aws_price: { service: AmazonKinesis, unit: Hrs, filters: { usagetype: "{usage}-Storage-ShardHour" } }
     - { name: "Kinesis PUT payload units and Firehose ingestion (20 events a minute)", gbp_h: 0.0005 }
     - { name: "Lambda arm64, one call a minute", gbp_h: 0.0001 }
     - { name: "S3 storage and requests, a few MB", gbp_h: 0.0001 }

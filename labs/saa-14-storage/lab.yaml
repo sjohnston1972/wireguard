@@ -30,7 +30,6 @@ cost:
       aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 4, filters: { productFamily: Storage, volumeApiName: gp3 } }
     - name: "EBS io2 data volume, 4 GiB"
       gbp_h: 0.0006
-      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 4, filters: { productFamily: Storage, volumeApiName: io2 } }
     - { name: "EBS io2 provisioned IOPS, 100", gbp_h: 0.0078 }
     - { name: "EFS Standard and S3 Intelligent-Tiering, a few kB, and their requests", gbp_h: 0.0002 }
     - { name: "EC2 Instance Connect Endpoint", gbp_h: 0 }

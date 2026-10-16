@@ -23,7 +23,6 @@ cost:
   items:
     - name: "EKS cluster, standard support, hourly"
       gbp_h: 0.0750
-      aws_price: { service: AmazonEKS, unit: Hrs, filters: { usagetype: "{usage}-AmazonEKS-Hours:perCluster" } }
     - name: "EC2 t4g.medium, Linux (the node)"
       gbp_h: 0.0282
       aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.medium, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
