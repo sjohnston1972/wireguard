@@ -1150,3 +1150,55 @@ test("batch 3 minor 6: second destinations (dead-letter queues, crawler queues, 
   assert.deepEqual(rulesFor(c12, [pool({ pre_sign_up: `arn:aws:lambda:eu-west-2:${ACCOUNT}:function:someone-else` })]), ["gateway: aws_cognito_user_pool.lab"]);
   assert.deepEqual(rulesWith(c12, ["aws_lambda_function.signup"], [pool({}, { unknown: ["lambda_config.0.pre_sign_up"], refs: { "lambda_config.0.pre_sign_up": ref("aws_lambda_function.signup", "arn") } })]), []);
 });
+
+// ── Task 4 fix round 1 ──
+
+/** A plan with `attr` of `address` turned into a dynamic block whose for_each is not known at plan: one unknown, left out of the configuration. */
+const dynamicBlock = (p, address, attr) => {
+  const rc = p.resource_changes.find((x) => x.address === address);
+  rc.change.after_unknown[attr] = true;
+  delete rc.change.after[attr];
+  delete p.planned_values.root_module.resources.find((x) => x.address === address).values[attr];
+  delete p.configuration.root_module.resources.find((x) => x.address === address).expressions[attr];
+  return p;
+};
+const planOf = (cx, resources, base = templateMainResources(cx)) => realisticPlan({ resources: [...base, ...resources], data: awsData(), providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: cx.variables });
+
+test("fix round 1: a WAF statement as a plan prints it (every unused nested statement as []) passes; a rule group by reference is refused", () => {
+  const stmt = (over = {}) => ({ and_statement: [], byte_match_statement: [], geo_match_statement: [], ip_set_reference_statement: [], label_match_statement: [], managed_rule_group_statement: [{ name: "AWSManagedRulesCommonRuleSet", vendor_name: "AWS", version: "", rule_action_override: [], scope_down_statement: [], managed_rule_group_configs: [] }], not_statement: [], or_statement: [], rate_based_statement: [], regex_match_statement: [], regex_pattern_set_reference_statement: [], rule_group_reference_statement: [], size_constraint_statement: [], sqli_match_statement: [], xss_match_statement: [], ...over });
+  const waf = (s) => T(c26, "aws_wafv2_web_acl.lab", { name: "lab-ans-26-edge-waf", region: "us-east-1", scope: "CLOUDFRONT", default_action: [{ allow: [{}] }], rule: [{ name: "m", priority: 1, statement: [s], override_action: [{ none: [{}] }] }] });
+  assert.deepEqual(rulesFor(c26, [waf(stmt())]), []);
+  assert.deepEqual(rulesFor(c26, [waf(stmt({ managed_rule_group_statement: [], rule_group_reference_statement: [{ arn: "arn:aws:wafv2:us-east-1:999999999999:global/rulegroup/theirs/0123", rule_action_override: [] }] }))]), ["gateway: aws_wafv2_web_acl.lab"]);
+});
+
+test("fix round 1: a dynamic block whose for_each is not known at plan is refused where its elements are judged", () => {
+  const pl = T(c20, "aws_ec2_managed_prefix_list.admin", { name: "lab-ans-20-vpc-design-admin", address_family: "IPv4", max_entries: 4, entry: [{ cidr: "10.50.0.0/16", description: "x" }] });
+  assert.deepEqual(rules(planOf(c20, [pl]), c20.id), []);
+  assert.deepEqual(rules(dynamicBlock(planOf(c20, [pl]), pl.address, "entry"), c20.id), ["address: aws_ec2_managed_prefix_list.admin"]);
+  const eg = U("aws_globalaccelerator_endpoint_group.ldn", { endpoint_group_region: "eu-west-2", endpoint_configuration: [{ weight: 100, client_ip_preservation_enabled: false }] }, { unknown: ["endpoint_configuration.0.endpoint_id", "listener_arn"], refs: { "endpoint_configuration.0.endpoint_id": ref("aws_lb.london", "arn"), listener_arn: ref("aws_globalaccelerator_listener.http", "id") } });
+  const stand = ["aws_lb.london", "aws_globalaccelerator_listener.http"].map((a) => T(c26, a, {}));
+  const egOnly = (p) => rules(p, c26.id).filter((x) => x.endsWith(` ${eg.address}`));
+  assert.deepEqual(egOnly(planOf(c26, [...stand, eg])), []);
+  // The dynamic block's refs are in no configuration, so the fixture gives the dynamic version none.
+  const egDyn = { ...eg, unknown: ["listener_arn"], refs: { listener_arn: eg.refs.listener_arn } };
+  assert.deepEqual(egOnly(dynamicBlock(planOf(c26, [...stand, egDyn]), eg.address, "endpoint_configuration")), ["gateway: aws_globalaccelerator_endpoint_group.ldn"]);
+  const topic = T(c13, "aws_sns_topic.orders", { name: "lab-saa-13-decoupling-orders" });
+  const target = U("aws_cloudwatch_event_target.x", { rule: "lab-saa-13-decoupling-placed", target_id: "x", dead_letter_config: [{}] }, { unknown: ["arn"], refs: { arn: ref("aws_sns_topic.orders", "arn") } });
+  assert.deepEqual(rules(dynamicBlock(planOf(c13, [topic, target]), target.address, "dead_letter_config"), c13.id), ["gateway: aws_cloudwatch_event_target.x"]);
+  // HCL sees a dynamic block a plan cannot tell from an unset computed one: lab 22's ingress, say.
+  const hcl = { resource: { aws_security_group: { router: [{ name: "lab-router", vpc_id: "${aws_vpc.lab.id}", dynamic: { ingress: [{ for_each: "${var.sources}", content: [{ from_port: 500, to_port: 500, protocol: "udp", cidr_blocks: ["${ingress.value}"] }] }] } }] } } };
+  assert.deepEqual(scope.checkHclAws(hcl, c22.id).filter((x) => x.address === "aws_security_group.router").map((x) => x.rule), ["public"]);
+});
+
+test("fix round 1: a Client VPN connect handler and a cross-region interface endpoint are refused; a state machine logs only to the lab's own group", () => {
+  const cvpn = (over) => T(c31, "aws_ec2_client_vpn_endpoint.lab", { client_cidr_block: "10.64.124.0/22", split_tunnel: true, transport_protocol: "udp", authentication_options: [{ type: "certificate-authentication" }], connection_log_options: [{ enabled: false }], self_service_portal: "disabled", ...over }, { unknown: ["server_certificate_arn", "vpc_id", "authentication_options.0.root_certificate_chain_arn"], refs: { server_certificate_arn: ref("aws_acm_certificate.server", "arn"), vpc_id: ref("aws_vpc.lab", "id"), "authentication_options.0.root_certificate_chain_arn": ref("aws_acm_certificate.server", "arn") } });
+  assert.deepEqual(rulesWith(c31, ["aws_acm_certificate.server"], [cvpn({ client_connect_options: [{ enabled: false }] })], templateResources(c31)), []);
+  assert.deepEqual(rulesWith(c31, ["aws_acm_certificate.server"], [cvpn({ client_connect_options: [{ enabled: true, lambda_function_arn: `arn:aws:lambda:eu-west-2:${ACCOUNT}:function:AWSClientVPN-x` }] })], templateResources(c31)), ["gateway: aws_ec2_client_vpn_endpoint.lab"]);
+  const ep = (over) => T(c24, "aws_vpc_endpoint.ssm", { vpc_endpoint_type: "Interface", service_name: "com.amazonaws.eu-west-2.ssm", ...over }, refs({ vpc_id: "aws_vpc.lab" }));
+  assert.deepEqual(rulesFor(c24, [ep({ service_region: "eu-west-2" })], templateResources(c24)), []);
+  assert.deepEqual(rulesFor(c24, [ep({ service_region: "us-east-1" })], templateResources(c24)), ["provider: aws_vpc_endpoint.ssm"]);
+  const sfnRole = T(c13, "aws_iam_role.sfn", { name: "lab-saa-13-decoupling-sfn", path: "/cloudlabs-lab/", permissions_boundary: BOUNDARY, assume_role_policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: "states.amazonaws.com" }, Action: "sts:AssumeRole" }] }) });
+  const sm = (log, more = {}) => T(c13, "aws_sfn_state_machine.orders", { name: "lab-saa-13-decoupling-orders", type: "STANDARD", definition: JSON.stringify({ StartAt: "A", States: { A: { Type: "Pass", End: true } } }), logging_configuration: [{ level: "ALL", include_execution_data: false, ...log }] }, { unknown: ["role_arn", ...(more.unknown ?? [])], refs: { role_arn: ref("aws_iam_role.sfn", "arn"), ...(more.refs ?? {}) } });
+  assert.deepEqual(rulesFor(c13, [sfnRole, sm({ log_destination: `arn:aws:logs:eu-west-2:${ACCOUNT}:log-group:/aws/vendedlogs/states/someone-else:*` })]), ["gateway: aws_sfn_state_machine.orders"]);
+  assert.deepEqual(rulesWith(c13, ["aws_cloudwatch_log_group.sfn"], [sfnRole, sm({}, { unknown: ["logging_configuration.0.log_destination"], refs: { "logging_configuration.0.log_destination": ref("aws_cloudwatch_log_group.sfn", "arn") } })]), []);
+});
