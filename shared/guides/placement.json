@@ -748,6 +748,15 @@
    "height": 1326
   }
  ],
+ "saa-17-data-pipeline": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A Lambda function, an S3 bucket, a CloudWatch log group, three IAM roles and more.",
+   "width": 1272,
+   "height": 618
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",

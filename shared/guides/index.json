@@ -562,6 +562,13 @@
    "kind": "architecture"
   }
  ],
+ "saa-17-data-pipeline": [
+  {
+   "file": "architecture.svg",
+   "title": "Streaming data pipeline to Athena: architecture",
+   "kind": "architecture"
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",

@@ -1024,6 +1024,24 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: ["london ..> ireland : replicates"],
   },
+  "saa-17-data-pipeline": {
+    nodes: [
+      "generic athena-wg < lab-saa-17-data-pipeline · London",
+      "generic crawler-events < lab-saa-17-data-pipeline · London",
+      "generic glue-lake < lab-saa-17-data-pipeline · London",
+      "lambda fn-producer < lab-saa-17-data-pipeline · London",
+      "logAnalytics /cloudlabs/saa-17-data-pipeline/producer < lab-saa-17-data-pipeline · London",
+      "managedIdentity lab-saa-17-data-pipeline-crawler < lab-saa-17-data-pipeline · London",
+      "managedIdentity lab-saa-17-data-pipeline-firehose < lab-saa-17-data-pipeline · London",
+      "managedIdentity lab-saa-17-data-pipeline-producer < lab-saa-17-data-pipeline · London",
+      "messaging rule-every-minute < lab-saa-17-data-pipeline · London",
+      "resourceGroup lab-saa-17-data-pipeline · London",
+      "storage lake < lab-saa-17-data-pipeline · London",
+      "stream firehose-to-s3 < lab-saa-17-data-pipeline · London",
+      "stream stream-events < lab-saa-17-data-pipeline · London",
+    ],
+    edges: ["crawler-events ..> glue-lake : catalogues", "firehose-to-s3 ..> lake : delivers", "rule-every-minute ..> fn-producer", "stream-events ..> firehose-to-s3 : reads"],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);
