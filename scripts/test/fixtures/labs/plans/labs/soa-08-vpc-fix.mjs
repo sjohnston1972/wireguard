@@ -49,7 +49,7 @@ export default () => {
       web,
       // data.tf
       { address: "aws_vpc.data", values: tagged(c, { cidr_block: dataCidr, enable_dns_support: true, enable_dns_hostnames: true, tags: { Name: "vpc-data" } }), refs: { cidr_block: ["local.data_cidr"] } },
-      { address: "aws_subnet.db", values: tagged(c, { cidr_block: dbCidr, availability_zone: "eu-west-2a", map_public_ip_on_launch: false, tags: { Name: "snet-db" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.data", "id"), cidr_block: ["local.db_cidr"], availability_zone: ["local.azs"] } },
+      { address: "aws_subnet.db", values: tagged(c, { cidr_block: dbCidr, availability_zone: "eu-west-2a", map_public_ip_on_launch: false, tags: { Name: "snet-db" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.data", "id"), cidr_block: ["local.db_cidr"], availability_zone: ["local.azs[0]", "local.azs"] } },
       { address: "aws_route_table.data", values: tagged(c, { tags: { Name: "rt-data" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.data", "id") } },
       { address: "aws_route_table_association.db", values: {}, unknown: ["subnet_id", "route_table_id"], refs: { subnet_id: ref("aws_subnet.db", "id"), route_table_id: ref("aws_route_table.data", "id") } },
       { address: "aws_vpc_endpoint.data_s3", values: tagged(c, { service_name: `com.amazonaws.${region}.s3`, vpc_endpoint_type: "Gateway", tags: { Name: "vpce-s3-data" } }), unknown: ["vpc_id", "route_table_ids"], refs: { vpc_id: ref("aws_vpc.data", "id"), service_name: ["var.region"], route_table_ids: ref("aws_route_table.data", "id") } },

@@ -28,7 +28,7 @@ export default () => {
     unknown: ["bucket", ...(extra.unknown ?? [])],
     refs: { bucket: ref("aws_s3_bucket.site", "id"), ...(extra.refs ?? {}) },
   });
-  const object = (key, file, content, type) => onBucket("aws_s3_object", key, tagged(c, { key: file, content, content_type: type }), { refs: { content: ["var.lab_id"] } });
+  const object = (key, file, content, type, refs = ["var.lab_id"]) => onBucket("aws_s3_object", key, tagged(c, { key: file, content, content_type: type }), { refs: refs.length ? { content: refs } : {} });
   const release = (key) => ({
     address: `aws_route53_record.release["${key}"]`,
     forEach: { references: [], constant_value: ["blue", "green", "sorry"] },
@@ -74,7 +74,7 @@ export default () => {
         }),
       }, { refs: { policy: ["local.bucket_arn", "data.aws_caller_identity.current.account_id", "data.aws_caller_identity.current"] } }),
       object("index", "index.html", `<!doctype html><title>lab ${id}</title><h1>Served by CloudFront from a private bucket</h1>\n`, "text/html"),
-      object("health", "health.html", "ok\n", "text/plain"),
+      object("health", "health.html", "ok\n", "text/plain", []),
       // cdn.tf
       {
         address: "aws_cloudfront_origin_access_control.site",

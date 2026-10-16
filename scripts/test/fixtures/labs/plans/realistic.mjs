@@ -100,6 +100,11 @@ export const UNSET_BLOCKS_UNKNOWN = {
     "capacity_reservation_specification", "cpu_options", "ebs_block_device", "enclave_options", "ephemeral_block_device", "instance_market_options",
     "maintenance_options", "network_interface", "primary_network_interface", "private_dns_name_options", "secondary_network_interface",
   ],
+  // AWS labs batch 2's release tests (soa-07 to soa-10, aws 6.69.0, 2026-10-16).
+  aws_cloudfront_distribution: ["default_cache_behavior.0.grpc_config", "ordered_cache_behavior.0.grpc_config"],
+  aws_ecs_service: ["deployment_configuration"],
+  aws_lambda_function: ["ephemeral_storage", "tracing_config"],
+  aws_vpc_peering_connection: ["accepter", "requester"],
   aws_lb: ["subnet_mapping"],
   aws_lb_listener: ["mutual_authentication"],
   aws_lb_target_group: ["stickiness", "target_failover", "target_group_health", "target_health_state"],

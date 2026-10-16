@@ -112,7 +112,7 @@ export function al2023Instance(c, { key, name, subnet = "aws_subnet.private[0]",
     sensitive: ["user_data"],
     refs: {
       ami: ["data.aws_ssm_parameter.al2023_arm64.insecure_value", "data.aws_ssm_parameter.al2023_arm64"],
-      subnet_id: [`${subnet}.id`, subnet, subnet.replace(/\[\d+\]$/, "")],
+      subnet_id: [...new Set([`${subnet}.id`, subnet, subnet.replace(/\[\d+\]$/, "")])],
       vpc_security_group_ids: sgs.flatMap((s) => ref(s, "id")),
       user_data: ["local.cloud_init"],
       volume_tags: ["var.tags"],

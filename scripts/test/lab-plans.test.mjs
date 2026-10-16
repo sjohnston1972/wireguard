@@ -380,6 +380,17 @@ test("the realistic plans print batch 1 AWS labs' regions, unset blocks, sensiti
   const body = planShape(plan("soa-01-cloudwatch")).resources["aws_cloudwatch_dashboard.overview"].refs.dashboard_body;
   assert.equal(body.filter((r) => r === "var.region").length, 4);
   assert.deepEqual(planShape(plan("soa-03-auto-scaling")).resources["aws_autoscaling_group.web"].refs.vpc_zone_identifier, ["aws_subnet.private"], "a splat lists the resource alone");
+  // 6. Batch 2 (soa-07 to soa-10): more unset Optional and Computed blocks, wholly unknown.
+  assert.equal(change("soa-07-iam-kms", "aws_lambda_function.rotate").after_unknown.ephemeral_storage, true);
+  assert.equal(change("soa-07-iam-kms", "aws_lambda_function.rotate").after_unknown.tracing_config, true);
+  assert.equal(change("soa-08-vpc-fix", "aws_vpc_peering_connection.app_data").after_unknown.accepter, true);
+  assert.equal(change("soa-08-vpc-fix", "aws_vpc_peering_connection.app_data").after_unknown.requester, true);
+  assert.equal(change("soa-09-route53-cloudfront", "aws_cloudfront_distribution.site").after_unknown.default_cache_behavior[0].grpc_config, true);
+  assert.equal(change("soa-09-route53-cloudfront", "aws_cloudfront_distribution.site").after_unknown.ordered_cache_behavior[0].grpc_config, true);
+  assert.equal(change("soa-10-containers", "aws_ecs_service.web").after_unknown.deployment_configuration, true);
+  // A plain-text literal has no references; the instance's subnet ref is not listed twice.
+  assert.deepEqual(config("soa-09-route53-cloudfront", "aws_s3_object.health").expressions.content, { constant_value: "ok\n" });
+  assert.deepEqual(config("soa-08-vpc-fix", "aws_instance.db").expressions.subnet_id.references, ["aws_subnet.db.id", "aws_subnet.db"]);
   // A plan with no region variable still knows each aws resource's region (London, the fixtures' default).
   const bare = realisticPlan({ resources: [{ address: "aws_vpc.x", values: { cidr_block: "10.0.0.0/16" } }], providers: ["aws"] });
   assert.equal(bare.resource_changes[0].change.after.region, "eu-west-2");
