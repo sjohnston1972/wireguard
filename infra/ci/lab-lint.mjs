@@ -44,7 +44,7 @@
 // refuses, in .tf and cfn/ text, a literal EC2 id (i-, vol-, snap-, eni-, sg-,
 // subnet-, vpc-, rtb-, acl- and 8 to 17 hex digits) and an EC2 alarm action
 // (automate:, AWS_EC2.InstanceId.: rule known-id), and in .tf timestamp(),
-// plantimestamp() and uuid() (rule apply-time): a plan cannot see a literal
+// plantimestamp(), uuid() and bcrypt() (rule apply-time): a plan cannot see a literal
 // behind a conditional, nor what an apply-time value chooses (Task 3
 // re-review N-4). Azure labs keep timestamp() (az104-04-cost's budget).
 //
@@ -173,7 +173,7 @@ const AWS_TEXT_RULES = [
   // Task 3 re-review N-4: a backstop for what a plan cannot see inside an expression (a literal behind a conditional).
   { rule: "known-id", re: /\b(?:i|vol|snap|eni|sg|subnet|vpc|rtb|acl)-[0-9a-f]{8,17}\b/g, message: (m) => `${m}: an existing AWS resource's id; a lab names its own items by reference` },
   { rule: "known-id", re: /automate:|AWS_EC2\.InstanceId\./gi, message: (m) => `${m}: an EC2 alarm action acts on an instance; a lab's alarm notifies its own topic` },
-  { rule: "apply-time", re: /\b(?:plan)?timestamp\s*\(\s*\)|\buuid\s*\(\s*\)/g, message: (m) => `${m}: a value not known until apply hides what an expression chooses from the plan check` },
+  { rule: "apply-time", re: /\b(?:plan)?timestamp\s*\(\s*\)|\buuid\s*\(\s*\)|\bbcrypt\s*\(/g, message: (m) => `${m}: a value not known until apply hides what an expression chooses from the plan check` },
 ];
 /** Ruling P4: a lab's CloudFormation templates (terraform/cfn/*.yaml), read as text before init. */
 const CFN_RULES = [

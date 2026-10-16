@@ -252,12 +252,13 @@ test("re-review N-4 (--cloud aws only): a literal EC2 id, an EC2 alarm action an
     '  dimensions    = { InstanceId = timestamp() == "" ? "x" : "y" }',
     '  alarm_name    = "lab-${uuid()}"',
     '  ok_actions    = [plantimestamp() == "" ? "x" : "y"]',
+    '  password      = bcrypt("x")',
     "}",
     "# a comment naming vol-0123456789abcdef0 and timestamp() is not read",
     "",
   ].join("\n");
   const got = lintTfText({ "main.tf": tf }, { cloud: "aws" }).filter((p) => ["known-id", "apply-time"].includes(p.rule)).map((p) => `${p.rule}: ${p.line}`);
-  assert.deepEqual(got.sort(), ["apply-time: 7", "apply-time: 8", "apply-time: 9", "known-id: 3", "known-id: 6", "known-id: 6"].sort());
+  assert.deepEqual(got.sort(), ["apply-time: 7", "apply-time: 8", "apply-time: 9", "apply-time: 10", "known-id: 3", "known-id: 6", "known-id: 6"].sort());
   for (const id of ["vol-0123456789abcdef0", "snap-0123456789abcdef0", "eni-0123abcd", "sg-0123456789abcdef0", "subnet-0123abcd", "vpc-0a1b2c3d4e5f60718", "rtb-0123abcd", "acl-0123abcd"]) {
     assert.deepEqual(lintTfText({ "x.tf": `locals { x = "${id}" }\n` }, { cloud: "aws" }).map((p) => p.rule), ["known-id"], id);
   }
