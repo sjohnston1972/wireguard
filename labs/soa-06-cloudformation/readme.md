@@ -4,7 +4,7 @@ From the SOA-C03 outline: provision and maintain cloud resources with AWS CloudF
 ## What it deploys
 
 - The stack `lab-soa-06-cloudformation-stack`, from `terraform/cfn/stack.yaml`, with five parameters (the lab's id, the queue's visibility timeout, receives before a message is dead-lettered, and the names of its log group and parameter)
-- A work queue and its dead-letter queue (`lab-soa-06-cloudformation-stack-WorkQueue-…` and `…-DeadLetterQueue-…`): a message received three times without being deleted moves to the dead-letter queue
+- A work queue and its dead-letter queue (`lab-soa-06-cloudformation-stack-WorkQueue-…` and `…-DeadLetterQueue-…`): a message received more than three times without being deleted moves to the dead-letter queue
 - An SNS topic and the alarm `…-OldestMessageAlarm-…`, which notifies it when a message has waited five minutes
 - The log group `/cloudlabs/soa-06-cloudformation/stack` (one day) and the parameter `/cloudlabs/soa-06-cloudformation/config/greeting`
 - The service role `lab-soa-06-cloudformation-cfn`: CloudFormation builds the stack as this role, which may touch only what the stack names
@@ -23,10 +23,10 @@ lab-soa-06-cloudformation (London)
 
 ## Things to try
 
-- In CloudFormation, open the stack and choose **Update**, **Make a direct update**, keep the current template and change `VisibilityTimeout` to 60. Choose **Create change set** rather than executing: read what it will modify (one property, no replacement), then execute it. Terraform will see the difference at tear-down and still delete the stack.
-- Edit the parameter `/cloudlabs/soa-06-cloudformation/config/greeting` in Systems Manager, Parameter Store, then run **Detect drift** on the stack (or the third Connect line) and read **View drift results**: the parameter shows as modified, with the expected and actual values side by side.
-- Try a change the stack policy refuses: a change set that sets `QueueName` on `WorkQueue` (renaming a queue replaces it) fails on execution with the policy's reason, and the stack rolls back. Read the events tab to see where it stopped.
-- Send messages with the second Connect line, receive one three times without deleting it (`aws sqs receive-message --queue-url … --visibility-timeout 0`), and find it in the dead-letter queue. Leave one unread for five minutes and watch the alarm go to In alarm.
+- In CloudFormation, open the stack and choose **Stack actions**, **Create change set for current stack**, **Use existing template**, and change `VisibilityTimeout` to 60. Submit, read the **Changes** tab (WorkQueue, Modify, no replacement), then choose **Execute change set**. Terraform will see the difference at tear-down and still delete the stack.
+- Edit the parameter `/cloudlabs/soa-06-cloudformation/config/greeting` in Systems Manager, Parameter Store, then run **Detect drift** on the stack (or the third Connect line, then `aws cloudformation describe-stack-resource-drifts --stack-name lab-soa-06-cloudformation-stack`) and read **View drift results**: the parameter shows as modified, with the expected and actual values side by side.
+- Try a change the stack policy refuses: a change set (**Create change set for current stack**, **Edit template in designer**) that adds `"QueueName": "lab-soa-06-cloudformation-stack-renamed"` under WorkQueue's Properties (naming a queue replaces it; the console keeps a template you upload in a `cf-templates-…` S3 bucket, which you can delete afterwards) fails on execution with the policy's reason, and the stack rolls back. Read the events tab to see where it stopped.
+- Send messages with the second Connect line, receive one four times without deleting it (`aws sqs receive-message --queue-url … --visibility-timeout 0`): the fourth comes back empty because SQS has moved it, and you will find it in the dead-letter queue. Leave one unread for about ten minutes (five minutes old, then five breaching minutes) and watch the alarm go to In alarm.
 - Look at the stack's **Template** tab: CloudFormation shows the JSON Terraform handed it. Compare it with `cfn/stack.yaml`.
 
 ## Not built here

@@ -10,7 +10,7 @@ output "private_ips" {
 
 output "connect" {
   value = [
-    "aws cloudformation describe-stacks --stack-name ${aws_cloudformation_stack.lab.name} --query Stacks[0].Outputs",
+    "aws cloudformation describe-stacks --stack-name ${aws_cloudformation_stack.lab.name} --query 'Stacks[0].Outputs'",
     "aws sqs send-message --queue-url ${aws_cloudformation_stack.lab.outputs["WorkQueueUrl"]} --message-body hello",
     "aws cloudformation detect-stack-drift --stack-name ${aws_cloudformation_stack.lab.name}",
   ]
