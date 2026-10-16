@@ -777,8 +777,7 @@ test("what labs 06–10 do is allowed: tagged creates, deletes of tagged items, 
   allowed("ec2:CreateNetworkAcl", arn("ec2", "network-acl/*"), NEW);
   allowed("ec2:ReplaceNetworkAclAssociation", arn("ec2", "network-acl/acl-0lab"), LAB);
   allowed("ec2:CreateVpcPeeringConnection", arn("ec2", "vpc-peering-connection/*"), NEW);
-  // Batch 4 fix round 1: AWS gives the peering's requester VPC (this account's), which PeeringAcceptOwnAccountOnly checks.
-  allowed("ec2:AcceptVpcPeeringConnection", arn("ec2", "vpc-peering-connection/pcx-0lab"), { ...LAB, "ec2:RequesterVpc": arn("ec2", "vpc/vpc-0lab") });
+  allowed("ec2:AcceptVpcPeeringConnection", arn("ec2", "vpc-peering-connection/pcx-0lab"), LAB);
   allowed("ec2:CreateFlowLogs", arn("ec2", "vpc-flow-log/*"), NEW);
   allowed("iam:PassRole", `arn:aws:iam::${A}:role/cloudlabs-lab/lab-soa-08-vpc-fix-flowlogs`, { "iam:PassedToService": "vpc-flow-logs.amazonaws.com" });
   // Lab 09: CloudFront and Route 53 in us-east-1 (global APIs), the site bucket by name and its policy.
@@ -1072,12 +1071,13 @@ test("Task 2 fix round 1, P17: a mirror filter rule's create, modify and delete 
   assert.equal(d("ec2:DeleteTrafficMirrorFilter", filter, R), "explicitDeny");
 });
 
-test("Task 2 fix round 1, P3: the VPC peering accept only for a peering this account's VPC requested", { skip }, () => {
+test("Task 2 fix rounds 1 and 2, P3: the VPC peering accept is refused for another account's requester VPC, and not judged without one", { skip }, () => {
   const { POLICIES } = files();
   const d = (ctx) => decide(POLICIES.role, { action: "ec2:AcceptVpcPeeringConnection", resource: `arn:aws:ec2:eu-west-1:${A}:vpc-peering-connection/pcx-0abc`, ctx: { "aws:RequestedRegion": "eu-west-1", ...ctx } });
   assert.equal(d({ "ec2:RequesterVpc": `arn:aws:ec2:eu-west-2:${A}:vpc/vpc-0def` }), "allowed", "same account");
   assert.equal(d({ "ec2:RequesterVpc": "arn:aws:ec2:eu-west-2:999999999999:vpc/vpc-0def" }), "explicitDeny", "another account's requester");
-  assert.equal(d({}), "explicitDeny", "no requester known: refused");
+  // Fix round 2: without the key the statement does not apply (soa-08's in-lab accept, released, must keep working).
+  assert.equal(d({}), "allowed", "no requester given: not refused by this statement");
   // The accepter VPC (no RequesterVpc on it) is still judged by VpcFabricNeedsLabTag alone.
   assert.equal(decide(POLICIES.role, { action: "ec2:AcceptVpcPeeringConnection", resource: `arn:aws:ec2:eu-west-1:${A}:vpc/vpc-0abc`, ctx: { "aws:RequestedRegion": "eu-west-1", "aws:ResourceTag/cloudlabs-lab": "ans-29-multi-region" } }), "allowed");
 });

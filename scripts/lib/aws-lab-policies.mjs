@@ -421,9 +421,10 @@ function fixedStatements(abac) {
     // Ruling P17 (fix round 1): a mirror filter rule is untagged, so its create, modify and delete need the lab tag on
     // the filter it sits in (AWS authorises each on the filter too).
     deny("MirrorRulesInLabFilters", MIRROR_RULE_ACTIONS, "arn:aws:ec2:*:*:traffic-mirror-filter/*", { Null: { [`aws:ResourceTag/${LAB_TAG}`]: "true" } }),
-    // Ruling P3 (fix round 1): the change-tag exempt VPC peering accept, only for a peering one of this account's VPCs
-    // requested (ec2:RequesterVpc, on the peering connection), never another account's.
-    deny("PeeringAcceptOwnAccountOnly", "ec2:AcceptVpcPeeringConnection", "arn:aws:ec2:*:*:vpc-peering-connection/*", { ArnNotLike: { "ec2:RequesterVpc": `arn:aws:ec2:*:${ACCT}:vpc/*` } }),
+    // Ruling P3 (fix rounds 1 and 2): the change-tag exempt VPC peering accept is refused when the peering's requester
+    // VPC (ec2:RequesterVpc, on the peering connection) is another account's. Only when AWS gives the key: a negated
+    // match on a missing key holds, and would refuse soa-08's released in-lab accept.
+    deny("PeeringAcceptOwnAccountOnly", "ec2:AcceptVpcPeeringConnection", "arn:aws:ec2:*:*:vpc-peering-connection/*", { Null: { "ec2:RequesterVpc": "false" }, ArnNotLike: { "ec2:RequesterVpc": `arn:aws:ec2:*:${ACCT}:vpc/*` } }),
     // The untaggable named types (NAME_OWNED_TYPES): the lab's own names only, never the account's default recorder.
     { Sid: "LabDashboardsOnly", Effect: "Deny", Action: ["cloudwatch:PutDashboard", "cloudwatch:DeleteDashboards"], NotResource: `arn:aws:cloudwatch::${ACCT}:dashboard/lab-*` },
     // soa-02's release test must confirm AWS evaluates PutConfigurationRecorder, at create, against the recorder's named

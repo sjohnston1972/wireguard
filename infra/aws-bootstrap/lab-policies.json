@@ -439,6 +439,9 @@
           "Action": "ec2:AcceptVpcPeeringConnection",
           "Resource": "arn:aws:ec2:*:*:vpc-peering-connection/*",
           "Condition": {
+            "Null": {
+              "ec2:RequesterVpc": "false"
+            },
             "ArnNotLike": {
               "ec2:RequesterVpc": "arn:aws:ec2:*:__ACCOUNT__:vpc/*"
             }
@@ -571,19 +574,6 @@
           "Effect": "Deny",
           "Action": "sts:AssumeRole*",
           "Resource": "*"
-        },
-        {
-          "Sid": "CreateNeedsLabTag1",
-          "Effect": "Deny",
-          "Action": [
-            "access-analyzer:CreateAnalyzer"
-          ],
-          "Resource": "*",
-          "Condition": {
-            "Null": {
-              "aws:RequestTag/cloudlabs-lab": "true"
-            }
-          }
         }
       ]
     },
@@ -701,9 +691,10 @@
           }
         },
         {
-          "Sid": "CreateNeedsLabTag2",
+          "Sid": "CreateNeedsLabTag1",
           "Effect": "Deny",
           "Action": [
+            "access-analyzer:CreateAnalyzer",
             "access-analyzer:CreateServiceLinkedAnalyzer",
             "acm:CreateAcme*",
             "acm:ImportCertificate",
@@ -815,8 +806,7 @@
             "network-firewall:AssociateFirewallPolicy",
             "network-firewall:CreateContainerAssociation",
             "network-firewall:CreateFirewall*",
-            "network-firewall:CreateProxy",
-            "network-firewall:CreateProxyConfiguration"
+            "network-firewall:CreateProxy"
           ],
           "Resource": "*",
           "Condition": {
@@ -831,9 +821,10 @@
       "Version": "2012-10-17",
       "Statement": [
         {
-          "Sid": "CreateNeedsLabTag3",
+          "Sid": "CreateNeedsLabTag2",
           "Effect": "Deny",
           "Action": [
+            "network-firewall:CreateProxyConfiguration",
             "network-firewall:CreateProxyRuleGroup",
             "network-firewall:CreateRuleGroup",
             "network-firewall:CreateTLSInspectionConfiguration",
@@ -890,7 +881,7 @@
           }
         },
         {
-          "Sid": "CreateNeedsLabTag4",
+          "Sid": "CreateNeedsLabTag3",
           "Effect": "Deny",
           "Action": [
             "dynamodb:CreateTable"
@@ -906,7 +897,7 @@
           }
         },
         {
-          "Sid": "CreateNeedsLabTag5",
+          "Sid": "CreateNeedsLabTag4",
           "Effect": "Deny",
           "Action": [
             "apigateway:POST"
@@ -924,7 +915,7 @@
           }
         },
         {
-          "Sid": "CreateNeedsLabTag6",
+          "Sid": "CreateNeedsLabTag5",
           "Effect": "Deny",
           "Action": [
             "ec2:AcceptAddressTransfer",
@@ -947,8 +938,7 @@
             "ec2:CreateFlowLogs",
             "ec2:CreateFpgaImage",
             "ec2:CreateImage",
-            "ec2:CreateInstance*",
-            "ec2:CreateInternetGateway"
+            "ec2:CreateInstance*"
           ],
           "Resource": [
             "arn:aws:ec2:*:*:application-status-check/*",
@@ -1028,9 +1018,10 @@
       "Version": "2012-10-17",
       "Statement": [
         {
-          "Sid": "CreateNeedsLabTag7",
+          "Sid": "CreateNeedsLabTag6",
           "Effect": "Deny",
           "Action": [
+            "ec2:CreateInternetGateway",
             "ec2:CreateInterruptibleCapacityReservationAllocation",
             "ec2:CreateIpamExternalResourceVerificationToken",
             "ec2:CreateIpamInternetRegistryAssociation",
@@ -1150,14 +1141,13 @@
           }
         },
         {
-          "Sid": "CreateNeedsLabTag8",
+          "Sid": "CreateNeedsLabTag7",
           "Effect": "Deny",
           "Action": [
             "ec2:CreateCapacityReservationCancellationQuote",
             "ec2:CreateFleet",
             "ec2:CreateImageUsageReport",
-            "ec2:CreateIpam",
-            "ec2:CreateIpamPool"
+            "ec2:CreateIpam"
           ],
           "Resource": [
             "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -1196,9 +1186,10 @@
       "Version": "2012-10-17",
       "Statement": [
         {
-          "Sid": "CreateNeedsLabTag9",
+          "Sid": "CreateNeedsLabTag8",
           "Effect": "Deny",
           "Action": [
+            "ec2:CreateIpamPool",
             "ec2:CreateIpamPrefixListResolverTarget",
             "ec2:CreateIpamResourceDiscovery",
             "ec2:CreateLocalGatewayRouteTable",
@@ -1249,7 +1240,7 @@
           }
         },
         {
-          "Sid": "CreateNeedsLabTag10",
+          "Sid": "CreateNeedsLabTag9",
           "Effect": "Deny",
           "Action": [
             "ec2:CreateTransitGatewayVpcAttachment",
@@ -1270,7 +1261,7 @@
           }
         },
         {
-          "Sid": "CreateNeedsLabTag11",
+          "Sid": "CreateNeedsLabTag10",
           "Effect": "Deny",
           "Action": [
             "ec2:CreateIpamScope",
@@ -1296,7 +1287,7 @@
           }
         },
         {
-          "Sid": "CreateNeedsLabTag12",
+          "Sid": "CreateNeedsLabTag11",
           "Effect": "Deny",
           "Action": [
             "ec2:Request*"
@@ -1312,7 +1303,7 @@
           }
         },
         {
-          "Sid": "CreateNeedsLabTag13",
+          "Sid": "CreateNeedsLabTag12",
           "Effect": "Deny",
           "Action": [
             "ec2:CreateSnapshot*",
