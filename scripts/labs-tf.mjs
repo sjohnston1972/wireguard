@@ -102,11 +102,14 @@ const MOCK_SSH_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH03BQA5/AQUCJHTD+mOsP
 /** The name_prefix a mocked AWS plan uses: a + the lab number + k3x9q (the tfvars and the plan variables agree). */
 const mockNamePrefix = (labId) => `a${/^[a-z0-9]+-(\d{2})-/.exec(labId)?.[1] ?? "00"}k3x9q`;
 
+/** The one 12-digit account every AWS mock value carries: the caller identity, its arn, and (so) the roles' boundary ARN. */
+export const MOCK_ACCOUNT = "123456789012";
+
 /** The aws mock: the data sources the labs and the template read, answered with fake but well-formed values. */
 const AWS_MOCK = [
   'mock_provider "aws" {',
   '  mock_data "aws_caller_identity" {',
-  '    defaults = { account_id = "123456789012", arn = "arn:aws:iam::123456789012:user/labs-tf-mock", user_id = "AIDALABSTFMOCK" }',
+  `    defaults = { account_id = "${MOCK_ACCOUNT}", arn = "arn:aws:iam::${MOCK_ACCOUNT}:user/labs-tf-mock", user_id = "AIDALABSTFMOCK" }`,
   "  }",
   '  mock_data "aws_partition" {',
   '    defaults = { partition = "aws", dns_suffix = "amazonaws.com" }',
@@ -281,7 +284,9 @@ export function mockPlanScopeProblems(stream, labId) {
     variables: plan.variables ?? AWS_MOCK_VARIABLES(labId),
     planned_values: {
       root_module: {
-        resources: changes.map((c) => ({ address: c.address, mode: c.mode, type: c.type, name: c.name, index: c.index, provider_name: c.provider_name, values: c.change?.after ?? {} })),
+        // A test_plan stream holds no data sources, so the caller identity the mock answers is added: the check then
+        // reads the lab's account from it (not from a role's boundary, which a lab with no role lacks).
+        resources: [{ address: "data.aws_caller_identity.current", mode: "data", type: "aws_caller_identity", name: "current", provider_name: "registry.terraform.io/hashicorp/aws", values: { account_id: MOCK_ACCOUNT, arn: `arn:aws:iam::${MOCK_ACCOUNT}:user/labs-tf-mock`, user_id: "AIDALABSTFMOCK" } }, ...changes.map((c) => ({ address: c.address, mode: c.mode, type: c.type, name: c.name, index: c.index, provider_name: c.provider_name, values: c.change?.after ?? {} }))],
       },
     },
     resource_changes: changes,
