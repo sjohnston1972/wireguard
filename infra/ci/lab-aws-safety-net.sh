@@ -1219,6 +1219,13 @@ del_table() {
     # Review M1: and until the table is no longer UPDATING (or CREATING): AWS refuses to delete it until then.
     n="$(jq -r --arg r "$r" '([.Replicas[]? | select(.RegionName != $r)] | length) + (if (.TableStatus // "") | IN("UPDATING", "CREATING") then 1 else 0 end)' <<<"$DJ" 2>/dev/null)"
     [ "${n:-0}" -eq 0 ] && break
+    # Final review 4: a removal AWS refused (the table was busy) is asked again once the table and that replica are
+    # ACTIVE (one already being removed reads DELETING and is left to finish).
+    if [ "$(jq -r '.TableStatus // ""' <<<"$DJ" 2>/dev/null)" = ACTIVE ]; then
+      while IFS= read -r rep; do
+        [ -n "$rep" ] && QUIET_CODE=ResourceInUseException wr "$i" "remove the $rep replica of $(label "$i")" dynamodb update-table --table-name "$t" --replica-updates "Delete={RegionName=$rep}"
+      done < <(jq -r --arg r "$r" '.Replicas[]? | select(.RegionName != $r and (.ReplicaStatus // "ACTIVE") == "ACTIVE") | .RegionName' <<<"$DJ" 2>/dev/null)
+    fi
     if past_until; then
       warn "left behind: $(label "$i") ($n replica(s) still being removed)"
       return 1
@@ -1231,8 +1238,8 @@ del_table() {
 # A pool's domains first (AWS refuses a pool that still has one); deletion protection off if Unblock could not.
 del_userpool() {
   local i="$1" d
-  describe "$i"
-  [ $? -eq 1 ] && return 1
+  # Final review 4: never deleted blind (a pool that cannot be read is warned about and left).
+  readable "$i" || return 1
   for d in $(jq -r '.Domain // empty, .CustomDomain // empty' <<<"$DJ" 2>/dev/null); do
     wr "$i" "delete the domain $d of $(label "$i")" cognito-idp delete-user-pool-domain --domain "$d" --user-pool-id "${C_I[$i]}"
   done
@@ -1244,6 +1251,16 @@ del_image() {
   local i="$1" snaps s
   # Review I2: never deregister an image whose snapshots could not be read (they would be left where nothing finds them).
   readable "$i" || return 1
+  # Final review 4: a copy still pending may not list its snapshots yet, so it is waited for first.
+  while [ "$(jq -r '.State // ""' <<<"$DJ" 2>/dev/null)" = pending ]; do
+    if past_until; then
+      warn "left behind: $(label "$i") (still pending)"
+      return 1
+    fi
+    echo "safety net: waiting for $(label "$i") to finish copying"
+    sleep "$POLL_S"
+    readable "$i" || return 1
+  done
   snaps="$(jq -r '.BlockDeviceMappings[]?.Ebs.SnapshotId // empty' <<<"$DJ" 2>/dev/null)"
   wr "$i" "deregister $(label "$i")" ec2 deregister-image --image-id "${C_I[$i]}" || return 1
   for s in $snaps; do wr "$i" "delete snapshot $s of $(label "$i")" ec2 delete-snapshot --snapshot-id "$s"; done

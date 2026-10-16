@@ -1099,3 +1099,33 @@ test("saa-15 review I2: Unblock deletes the bucket policy of the lab's own bucke
   assert.match(r2.out, /::warning::.*bucket policy of cloudlabs-a15k3x9q-data/);
   f.cleanup();
 });
+
+// Whole-branch review minor 4: a replica removal AWS refused (the table was busy) is asked again once the table is
+// ACTIVE with that replica still ACTIVE; an AMI copy still pending is waited for (its snapshots may not be listed
+// yet); a user pool that cannot be read is never deleted blind.
+test("final review 4: a refused replica removal is asked again; a pending AMI is waited for; an unreadable pool is left", { skip }, () => {
+  const t = "lab-saa-16-dr-pilot-light-orders";
+  const pending = JSON.stringify({ Images: [{ ImageId: "ami-0aaa1111bbbb2222c", Name: "lab-saa-16-dr-pilot-light-al2023-a16k3x9q", State: "pending", BlockDeviceMappings: [] }] });
+  const ready = JSON.stringify({ Images: [{ ImageId: "ami-0aaa1111bbbb2222c", Name: "lab-saa-16-dr-pilot-light-al2023-a16k3x9q", State: "available", BlockDeviceMappings: [{ DeviceName: "/dev/xvda", Ebs: { SnapshotId: "snap-0ddd3333eeee4444f" } }] }] });
+  const rep = (s) => JSON.stringify({ Table: { TableStatus: s, Replicas: [{ RegionName: "eu-west-1", ReplicaStatus: "ACTIVE" }] } });
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("dynamodb", `table/${t}`), ARN3("cognito-idp", "userpool/eu-west-2_AbC")) },
+    { cmd: "aws", match: `^dynamodb describe-table --table-name ${t} `, out: [rep("UPDATING"), rep("UPDATING"), rep("ACTIVE"), JSON.stringify({ Table: { TableStatus: "ACTIVE", Replicas: [] } }), JSON.stringify({ Table: { TableStatus: "DELETING" } })] },
+    { cmd: "aws", match: "^dynamodb update-table", out: ["", "{}"], code: [254, 0], err: ["An error occurred (ResourceInUseException) when calling the UpdateTable operation: x", ""] },
+    { cmd: "aws", match: "^ec2 describe-images --owners self", out: pending },
+    { cmd: "aws", match: "^ec2 describe-images --image-ids", out: [pending, pending, ready] },
+    { cmd: "aws", match: "^cognito-idp describe-user-pool", out: "", code: 254, err: "An error occurred (TooManyRequestsException) when calling the DescribeUserPool operation: x" },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["saa-16-dr-pilot-light"], ENV);
+  assert.equal(r.status, 0, r.out);
+  const tc = calls3(w, new RegExp(`^aws dynamodb (update|delete)-table --table-name ${t} `));
+  assert.equal(tc.filter((c) => c.startsWith("aws dynamodb update-table")).length, 2, tc.join("\n"));
+  assert.ok(idx(tc, /^aws dynamodb delete-table/) > idx(tc, /^aws dynamodb update-table/), tc.join("\n"));
+  const im = calls3(w, /^aws ec2 (describe-images --image-ids|deregister-image|delete-snapshot)/).map((c) => c.split(" --region")[0]);
+  assert.deepEqual(im.slice(-2), ["aws ec2 deregister-image --image-id ami-0aaa1111bbbb2222c", "aws ec2 delete-snapshot --snapshot-id snap-0ddd3333eeee4444f"]);
+  assert.ok(im.indexOf("aws ec2 deregister-image --image-id ami-0aaa1111bbbb2222c") >= 3, im.join("\n"));
+  assert.equal(calls3(w, /^aws cognito-idp delete-user-pool/).length, 0);
+  assert.match(r.out, /could not read cognito-idp:userpool eu-west-2_AbC \(TooManyRequestsException\)/);
+  w.cleanup();
+});
