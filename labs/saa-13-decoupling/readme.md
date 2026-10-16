@@ -20,9 +20,10 @@ lab-saa-13-decoupling (London)
 
 - Put an order on the bus with the first Connect line in CloudShell, then list the workflow's runs with the second: open the run in the Step Functions console and follow it state by state, inputs and outputs included.
 - Read the order from both queues with the third and fourth lines: one publish, two copies, each queue independent of the other.
-- Read the billing message three times without deleting it (wait for its 20-second visibility timeout between reads): the fourth read finds nothing, and the fifth Connect line finds it in the dead-letter queue.
-- Put an order with `quantity` 0 on the bus: the workflow ends in Rejected and nothing reaches the queues. Find the function's error in `/cloudlabs/saa-13-decoupling/validate`.
-- Put an event with a different `Source` on the bus: the rule does not match it, so nothing runs. EventBridge decides what goes where, not the sender.
+- Read the billing message again with the third line, twice more without deleting it (the read above was its first; wait for its 20-second visibility timeout between reads): the next read finds nothing, because the message has moved to the dead-letter queue, and the fifth Connect line finds it there.
+- Redrive it: the sixth Connect line starts a message move task from the dead-letter queue, which by default sends its messages back to the billing queue (`aws sqs start-message-move-task`); read the billing queue again to see it return.
+- Put an order with `quantity` 0 on the bus: take the first Connect line and change `quantity` from 2 to 0 in it. The function raises an error and the workflow ends in its Rejected state, so the second Connect line lists that run as FAILED, and nothing reaches the queues. Find the error in `/cloudlabs/saa-13-decoupling/validate`.
+- Put an event with a different `Source` on the bus: take the first Connect line and change `cloudlabs.shop` to `cloudlabs.other`. The rule does not match it, so no run starts. EventBridge decides what goes where, not the sender.
 
 ## Learn more
 

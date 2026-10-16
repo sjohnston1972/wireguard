@@ -14,5 +14,6 @@ output "connect" {
     "aws sqs receive-message --region ${var.region} --queue-url ${aws_sqs_queue.orders["billing"].id} --wait-time-seconds 5",
     "aws sqs receive-message --region ${var.region} --queue-url ${aws_sqs_queue.orders["shipping"].id} --wait-time-seconds 5",
     "aws sqs receive-message --region ${var.region} --queue-url ${aws_sqs_queue.billing_dlq.id} --wait-time-seconds 5",
+    "aws sqs start-message-move-task --region ${var.region} --source-arn ${aws_sqs_queue.billing_dlq.arn}",
   ]
 }
