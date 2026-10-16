@@ -202,7 +202,7 @@ export async function runLabWatch(env: Env, now: Date = new Date(), opts: LabWat
   // 5: hourly, the orphan sweep (7 listings); 6: daily, Azure's spend per lab group.
   await step("orphans", () => sweepOrphans(env, net, now));
   await step("lab costs", () => fetchLabCostDays(env, net, now));
-  // Then AWS's: its sweep (12 listings) is its own hourly step, so in a run where the Azure sweep took its calls it
+  // Then AWS's: its sweep (12 listings and up to 4 confirm reads) is its own hourly step, so in a run where the Azure sweep took its calls it
   // waits for the next run (AWS labs spec ruling P7); and, daily, AWS's spend by the cloudlabs-lab tag.
   await step("aws orphans", () => sweepAwsOrphans(env, net, now));
   await step("aws lab costs", () => fetchAwsLabCostDays(env, net, now));

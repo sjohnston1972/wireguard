@@ -30,7 +30,13 @@
 // the Config recorders and lab-* dashboards of both lab regions. A tagged
 // item's lab is its tag's value; a name's, labIdOf. The tagging API keeps
 // listing deleted items for about an hour, so an AWS item counts only once
-// no live session of its lab has seen it for 90 minutes. Each sweep rewrites
+// no live session of its lab has seen it for 90 minutes. It can keep listing
+// them for many hours more (live 2026-10-16: terminated instances, deleted
+// VPC endpoints, INACTIVE ECS clusters and services), so an EC2 instance or
+// VPC endpoint in a lab region counts only once EC2 confirms it still exists
+// (one Describe per region and kind, AWS_CONFIRM_CALLS at most; a read that
+// fails keeps it counted), and ECS clusters, services and task definitions,
+// which the Worker cannot describe, are never counted. Each sweep rewrites
 // only its own cloud's entries in labs:orphans and gives back only its own
 // cloud's ended_dirty slots; Clean up for an AWS lab is a lab-aws.yml destroy.
 
@@ -44,7 +50,7 @@ import { arm, graph, BudgetExceeded, type Net } from "./net";
 import { labIdOf } from "./cost";
 import { freeSlot, LIVE_SQL } from "./store";
 import { AwsError } from "../cloud/awsApi";
-import { configRecorderNames, dashboardNames, iamLabNames, labTagged, taggedName } from "./awsReads";
+import { arnParts, configRecorderNames, dashboardNames, ec2Gone, iamLabNames, labTagged, taggedName, type Ec2ConfirmKind } from "./awsReads";
 
 const MIN = 60_000;
 export const SWEEP_EVERY_MS = 60 * MIN;
@@ -61,6 +67,8 @@ const KV_SWEEP = "labs:sweep";
 const KV_ORPHANS = "labs:orphans";
 /** The AWS sweep's calls: tagging in four regions, four IAM listings, recorders and dashboards in both lab regions. */
 export const AWS_SWEEP_CALLS = 12;
+/** At most one confirm read per lab region and EC2 kind (instances, VPC endpoints), reserved before the sweep starts. */
+export const AWS_CONFIRM_CALLS = AWS_LAB_REGIONS.length * 2;
 /** How long an AWS item must go unseen by a live session of its lab before it counts (A16). */
 export const AWS_ORPHAN_GRACE_MS = 90 * MIN;
 const KV_SWEEP_AWS = "labs:sweep-aws";
@@ -74,7 +82,7 @@ interface SweepState {
 }
 
 /** One name a listing returned; `lab` when the name alone cannot tell (a policy assignment known by its scope). */
-type Found = { name: string; created: string | null; lab?: string | null };
+type Found = { name: string; created: string | null; lab?: string | null; arn?: string };
 
 async function list<T>(r: Promise<Response>, what: string): Promise<T[]> {
   const res = await r;
@@ -311,7 +319,42 @@ export async function sweepOrphans(env: Env, net: Net, now: Date): Promise<strin
 const awsLabId = (id: string | null | undefined): string | null => (id && id.length <= LAB_ID_MAX && LAB_ID_RE.test(id) && cloudOfId(id) === "aws" ? id : null);
 
 /** Ruling P11: a lab's KMS key waits 7 days to delete (no charge) and the tagging API lists it all week: never an orphan. */
-const AWS_SWEEP_SKIP = /^arn:aws[a-z-]*:kms:[^:]*:[0-9]*:key\//;
+const KMS_KEY = /^arn:aws[a-z-]*:kms:[^:]*:[0-9]*:key\//;
+/**
+ * The tagging API lists an ECS cluster or service for hours after it is INACTIVE, and a deregistered task definition
+ * while it is INACTIVE or DELETE_IN_PROGRESS (live 2026-10-16). The Worker's IAM user has no ecs:Describe*, so these
+ * are never orphans: a real ECS leftover still runs in the lab's own VPC and subnets, which are counted.
+ */
+const ECS_GHOSTS = /^arn:aws[a-z-]*:ecs:[^:]*:[0-9]*:(cluster|service|task-definition)\//;
+const AWS_SWEEP_SKIP = (arn: string) => KMS_KEY.test(arn) || ECS_GHOSTS.test(arn);
+
+/**
+ * Of the AWS sweep's would-be orphans, the ARNs EC2 says are really gone: the instances and VPC endpoints in a lab
+ * region (the Worker's IAM user may describe only there), one read per region and kind. A read that fails (refused,
+ * throttled, out of calls) clears nothing: those items stay counted.
+ */
+async function confirmGone(env: Env, net: Net, candidates: Found[]): Promise<Set<string>> {
+  const groups = new Map<string, { region: string; kind: Ec2ConfirmKind; byId: Map<string, string> }>();
+  for (const f of candidates) {
+    if (!f.arn) continue;
+    const region = f.arn.split(":")[3] ?? "";
+    const p = arnParts(f.arn);
+    if (p.service !== "ec2" || (p.type !== "instance" && p.type !== "vpc-endpoint") || !(AWS_LAB_REGIONS as readonly string[]).includes(region)) continue;
+    const key = `${region} ${p.type}`;
+    const g = groups.get(key) ?? { region, kind: p.type, byId: new Map<string, string>() };
+    g.byId.set(p.id, f.arn);
+    groups.set(key, g);
+  }
+  const gone = new Set<string>();
+  for (const g of groups.values()) {
+    try {
+      for (const id of await ec2Gone(env, net, g.region, g.kind, [...g.byId.keys()])) gone.add(g.byId.get(id)!);
+    } catch {
+      /* not confirmed: counted, as before */
+    }
+  }
+  return gone;
+}
 
 /** The 12 AWS listings, in order; a listing that failed is left out and named in `errors`. */
 async function listAws(env: Env, net: Net): Promise<{ found: Found[]; errors: string[] }> {
@@ -333,7 +376,7 @@ async function listAws(env: Env, net: Net): Promise<{ found: Found[]; errors: st
       // One page only: what it holds counts, but a listing with more is partial (no slot is released on it and
       // earlier entries it may not have seen are kept), never "complete".
       if (page.truncated) errors.push(`tagged resources in ${region} (more than ${page.length})`);
-      return page.filter((t) => !AWS_SWEEP_SKIP.test(t.arn)).map((t) => ({ name: taggedName(t.arn), created: null, lab: awsLabId(t.tags[LAB_TAG]) }));
+      return page.filter((t) => !AWS_SWEEP_SKIP(t.arn)).map((t) => ({ name: taggedName(t.arn), created: null, lab: awsLabId(t.tags[LAB_TAG]), arn: t.arn }));
     });
   }
   await attempt("IAM roles", async () => named(await iamLabNames(env, net, "roles"), "iam role"));
@@ -349,34 +392,44 @@ async function listAws(env: Env, net: Net): Promise<{ found: Found[]; errors: st
 
 /**
  * One AWS sweep, if an hour has passed since the last (KV labs:sweep-aws) and the Worker has AWS keys. Returns a log
- * line, or null when not due. Needs AWS_SWEEP_CALLS calls left or makes none (BudgetExceeded): a half sweep is never
+ * line, or null when not due. Needs AWS_SWEEP_CALLS + AWS_CONFIRM_CALLS calls left or makes none (BudgetExceeded): a half sweep is never
  * recorded, so it stays due for the next run.
  */
 export async function sweepAwsOrphans(env: Env, net: Net, now: Date): Promise<string | null> {
   if (!canAws(env)) return null;
   const prev = await readState(env, KV_SWEEP_AWS);
   if (prev && now.getTime() - Date.parse(prev.at) < SWEEP_EVERY_MS) return null;
-  if (net.remaining() < AWS_SWEEP_CALLS) throw new BudgetExceeded(AWS_SWEEP_CALLS, net.remaining(), AWS_SWEEP_CALLS);
+  // The listings and the confirm reads, or none.
+  const need = AWS_SWEEP_CALLS + AWS_CONFIRM_CALLS;
+  if (net.remaining() < need) throw new BudgetExceeded(need, net.remaining(), need);
   const t = now.getTime();
   const { found, errors } = await listAws(env, net);
 
   const live = new Set((await env.DB.prepare(`SELECT DISTINCT lab_id FROM lab_sessions WHERE state IN (${LIVE_SQL})`).all<{ lab_id: string }>()).results.map((r) => r.lab_id));
   const seen: Record<string, string> = {};
-  const byLab = new Map<string, { names: string[]; since: number }>();
-  const present = new Set<string>();
+  const rows: { f: Found; lab: string; first: number | null }[] = [];
   for (const f of found) {
     const lab = f.lab;
     if (!lab) continue; // not a lab's (or not an AWS lab's)
-    present.add(lab);
     // The 90 minutes run from the last sweep a live session of the lab saw it: the tagging API lists a deleted item
     // for about an hour, so what a clean tear-down removed is never named.
     if (live.has(lab)) {
       seen[f.name] = now.toISOString();
+      rows.push({ f, lab, first: null });
       continue;
     }
     const first = Math.min(...[prev?.seen[f.name], now.toISOString()].map((x) => Date.parse(x ?? "")).filter(Number.isFinite));
     seen[f.name] = new Date(first).toISOString();
-    if (t - first < AWS_ORPHAN_GRACE_MS) continue;
+    rows.push({ f, lab, first: t - first < AWS_ORPHAN_GRACE_MS ? null : first });
+  }
+  // A would-be orphan EC2 says is gone (it can stay listed for hours) is neither a leftover nor keeps its lab present.
+  const gone = await confirmGone(env, net, rows.filter((r) => r.first !== null).map((r) => r.f));
+  const byLab = new Map<string, { names: string[]; since: number }>();
+  const present = new Set<string>();
+  for (const { f, lab, first } of rows) {
+    if (f.arn && gone.has(f.arn)) continue;
+    present.add(lab);
+    if (first === null) continue; // a live session owns it, or it is inside the 90 minutes
     const e = byLab.get(lab) ?? { names: [], since: first };
     e.names.push(f.name);
     e.since = Math.min(e.since, first);
