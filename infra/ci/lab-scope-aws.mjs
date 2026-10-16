@@ -482,6 +482,7 @@ export function cfnTemplateProblems(doc, { labId, parameters = {} }) {
       if (typeof n !== "string" || !n.startsWith(own)) out.push(`${name}: LogGroupName must start ${own} (a literal or a Ref to a stack parameter; ruling A56)`);
       const d = Number(value(props.RetentionInDays));
       if (!(d >= 1 && d <= 7)) out.push(`${name}: RetentionInDays must be 1 to 7`);
+      if (props.DeletionProtectionEnabled !== undefined && value(props.DeletionProtectionEnabled) !== false && value(props.DeletionProtectionEnabled) !== "false") out.push(`${name}: DeletionProtectionEnabled would keep the log group after tear-down (only false, or leave it out)`);
     }
     if (t === "AWS::SSM::Parameter") {
       const n = value(props.Name);
@@ -1109,6 +1110,7 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           if (!plan && days === undefined) days = 0;
           if (!skip(days) && !(typeof days === "number" && days >= 1 && days <= 7)) no("lingering", `retention_in_days must be 1 to 7 (it is ${days instanceof Unknown ? "not known at plan" : JSON.stringify(days ?? 0)})`);
           off("skip_destroy");
+          off("deletion_protection_enabled");
           break;
         }
         case "aws_lambda_function": {

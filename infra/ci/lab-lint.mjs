@@ -182,6 +182,8 @@ const CFN_RULES = [
   { rule: "cfn", re: /\b(AWS::CloudFormation::(?:Stack|StackSet|CustomResource|Macro|ModuleDefaultVersion|ResourceVersion)|AWS::Serverless::\w+|AWS::IAM::\w+|AWS::Include|Custom::[\w-]+|Fn::Transform|Fn::ImportValue)\b/g, message: (m) => `${m}: a lab's template makes only what lab-scope-aws.mjs CFN_TYPES lists, and reaches nothing outside itself` },
   { rule: "cfn", re: /(?:^|[:\-[,]\s*)!(?:Ref|Sub|GetAtt|Join|If|Equals|Select|Split|FindInMap|Base64|Cidr|GetAZs|ImportValue|Not|And|Or|Condition|Transform|Length|ToJsonString)\b/gm, message: (m) => `${m.trim().replace(/^[:\-[,]\s*/, "")}: write the long form (Ref:, Fn::Sub:): Terraform's yamldecode reads no YAML tags` },
   { rule: "cfn", re: /\b(?:DeletionPolicy|UpdateReplacePolicy)\s*:\s*(?:Retain|RetainExceptOnCreate|Snapshot)\b/g, message: (m) => `${m}: a lab keeps nothing after tear-down (Delete only)` },
+  // Final review I-1: a log group with deletion protection on cannot be deleted at tear-down.
+  { rule: "cfn", re: /\bDeletionProtectionEnabled"?\s*:\s*"?(?!false\b)[^\s"]+/g, message: (m) => `${m}: a lab keeps nothing after tear-down (false, or leave it out)` },
 ];
 
 const lineOf = (code, index) => code.slice(0, index).split("\n").length;

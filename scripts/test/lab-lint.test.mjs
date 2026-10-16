@@ -273,3 +273,14 @@ test("re-review N-4 (--cloud aws only): a literal EC2 id, an EC2 alarm action an
   writeFileSync(join(dir, "cfn", "stack.yaml"), ["Resources:", "  A:", "    Type: AWS::CloudWatch::Alarm", "    Properties:", "      Dimensions:", "        - Name: InstanceId", "          Value: i-0123456789abcdef0", "      AlarmActions:", "        - arn:aws:automate:eu-west-2:ec2:stop", ""].join("\n"));
   assert.deepEqual(lintDir(dir, { cloud: "aws" }).map((p) => `${p.rule}: ${p.file}:${p.line}`).sort(), ["known-id: cfn/stack.yaml:7", "known-id: cfn/stack.yaml:9"]);
 });
+
+test("cfn (final review I-1): a log group with DeletionProtectionEnabled other than false is refused; false passes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "lint-cfn-dp-"));
+  mkdirSync(join(dir, "cfn"));
+  writeFileSync(join(dir, "main.tf"), "# main.tf\n");
+  const tpl = (v) => ["Resources:", "  L:", "    Type: AWS::Logs::LogGroup", "    Properties:", "      RetentionInDays: 1", `      DeletionProtectionEnabled: ${v}`, ""].join("\n");
+  writeFileSync(join(dir, "cfn", "stack.yaml"), tpl("false"));
+  assert.deepEqual(lintDir(dir, { cloud: "aws" }), []);
+  writeFileSync(join(dir, "cfn", "stack.yaml"), tpl("true"));
+  assert.deepEqual(lintDir(dir, { cloud: "aws" }).map((p) => `${p.rule}: ${p.file}:${p.line}`), ["cfn: cfn/stack.yaml:6"]);
+});
