@@ -360,3 +360,77 @@ describe("AWS icons cover every kind an AWS lab produces", () => {
     for (const k of kinds) if (k !== "gateway") expect(KINDS[k as keyof typeof KINDS].awsIcon, k).toBeTruthy();
   });
 });
+
+describe("batch 2's types on the diagrams", () => {
+  const b2 = (labId: string, changes: ReturnType<typeof ch>[], refs: Record<string, Record<string, string[]>>) => plannedGraph({ labId, version: 1, number: "10", changes: [ch("aws_resourcegroups_group.lab", { name: `lab-${labId}` }), ...changes], outputs: { peer_vpc_id: null }, refs } as never);
+
+  it("an ECS service behind an ALB: the task definition folds in, the LB's edge reaches the service; ECR and the cluster are their own cards", () => {
+    const g = b2("soa-10-containers", [
+      ch("aws_lb.web", { load_balancer_type: "application", tags: { Name: "alb-web" } }),
+      ch("aws_lb_target_group.web", { tags: { Name: "tg-web" } }),
+      ch("aws_lb_listener.http", { port: 80, protocol: "HTTP", tags: { Name: "listener-http" } }),
+      ch("aws_ecs_cluster.lab", { name: "lab-soa-10-containers", tags: { Name: "ecs-lab" } }),
+      ch("aws_ecs_task_definition.web", { family: "lab-soa-10-containers-web", tags: { Name: "td-web" } }),
+      ch("aws_ecs_service.web", { name: "lab-soa-10-containers-web", desired_count: 2, tags: { Name: "svc-web" } }),
+      ch("aws_ecr_repository.web", { name: "lab-soa-10-containers-web", tags: { Name: "ecr-web" } }),
+      ch("aws_ecr_lifecycle_policy.web", {}),
+    ], {
+      "aws_lb_listener.http": { load_balancer_arn: ["aws_lb.web"], default_action: ["aws_lb_target_group.web"] },
+      "aws_ecs_service.web": { cluster: ["aws_ecs_cluster.lab"], task_definition: ["aws_ecs_task_definition.web"], load_balancer: ["aws_lb_target_group.web"] },
+      "aws_ecr_lifecycle_policy.web": { repository: ["aws_ecr_repository.web"] },
+    });
+    const keys = g.nodes.map((n) => n.key);
+    for (const k of ["ecs:service/svc-web", "ecs:cluster/ecs-lab", "ecr:repository/ecr-web", "elasticloadbalancing:loadbalancer/alb-web"]) expect(keys).toContain(k);
+    expect(keys).not.toContain("ecs:task-definition/td-web");
+    expect(g.nodes.find((n) => n.key === "ecs:service/svc-web")).toMatchObject({ kind: "containerApp" });
+    const nid = (k: string) => g.nodes.find((n) => n.key === k)?.id;
+    expect(g.edges.some((e) => e.from === nid("elasticloadbalancing:loadbalancer/alb-web") && e.to === nid("ecs:service/svc-web") && e.label === "HTTP 80")).toBe(true);
+  });
+
+  it("a distribution fronting its bucket, a zone and a health check; a user, a key and a secret; a stack; a flow log", () => {
+    const g = b2("soa-09-route53-cloudfront", [
+      ch("aws_s3_bucket.site", { bucket: "cloudlabs-a09k3x9q-site", tags: { Name: "site" } }),
+      ch("aws_cloudfront_origin_access_control.site", { name: "lab-soa-09-route53-cloudfront-a09k3x9q" }),
+      ch("aws_cloudfront_distribution.site", { tags: { Name: "cdn-site" } }),
+      ch("aws_route53_zone.lab", { name: "a09k3x9q.labs.clydeford.net", tags: { Name: "zone-lab" } }),
+      ch("aws_route53_record.www_primary", { name: "www.a09k3x9q.labs.clydeford.net" }),
+      ch("aws_route53_health_check.primary", { tags: { Name: "hc-primary" } }),
+      ch("aws_iam_user.ann", { name: "lab-x-ann", tags: { Name: "user-ann" } }),
+      ch("aws_iam_user_policy_attachment.ann", {}),
+      ch("aws_kms_key.data", { tags: { Name: "key-data" } }),
+      ch("aws_kms_alias.data", { name: "alias/lab-x-data" }),
+      ch("aws_secretsmanager_secret.app", { name: "lab-x-app", tags: { Name: "secret-app" } }),
+      ch("aws_cloudformation_stack.lab", { name: "lab-x-stack", tags: { Name: "stack-lab" } }),
+      ch("aws_flow_log.data", { tags: { Name: "flow-data" } }),
+    ], {
+      "aws_cloudfront_distribution.site": { origin: ["aws_s3_bucket.site", "aws_cloudfront_origin_access_control.site"] },
+      "aws_route53_record.www_primary": { zone_id: ["aws_route53_zone.lab"] },
+      "aws_kms_alias.data": { target_key_id: ["aws_kms_key.data"] },
+      "aws_iam_user_policy_attachment.ann": { user: ["aws_iam_user.ann"] },
+    });
+    const kind = (k: string) => g.nodes.find((n) => n.key === k)?.kind;
+    expect([kind("cloudfront:distribution/cdn-site"), kind("route53:hostedzone/zone-lab"), kind("route53:healthcheck/hc-primary"), kind("iam:user/user-ann"), kind("kms:key/key-data"), kind("secretsmanager:secret/secret-app"), kind("ec2:vpc-flow-log/flow-data")]).toEqual(["frontDoor", "dnsZone", "monitor", "managedIdentity", "keyVault", "keyVault", "flowLog"]);
+    expect(kind("cloudformation:stack/stack-lab")).toBe("generic");
+    expect(g.nodes.some((n) => n.key.includes("origin-access-control") || n.key.startsWith("route53:record"))).toBe(false);
+    const nid = (k: string) => g.nodes.find((n) => n.key === k)?.id;
+    expect(g.edges.some((e) => e.from === nid("cloudfront:distribution/cdn-site") && e.to === nid("s3:bucket/site") && e.label === "origin")).toBe(true);
+  });
+
+  it("the live view draws the same kinds as the plan (C13)", () => {
+    expect([kindOfAws("iam:user"), kindOfAws("secretsmanager:secret"), kindOfAws("kms:key"), kindOfAws("route53:healthcheck"), kindOfAws("ec2:vpc-flow-log")]).toEqual(["managedIdentity", "keyVault", "keyVault", "monitor", "flowLog"]);
+  });
+
+  it("ruling P19: live rows CloudFormation made fold into their stack; ECS tasks and task definitions are left out", () => {
+    const row = (type: string, id: string, tags: Record<string, string>): AwsRow => ({ arn: `arn:aws:${type.split(":")[0]}:eu-west-2:123456789012:${type.split(":")[1]}/${id}`, type, id, region: "eu-west-2", name: tags.Name ?? null, tags: { "cloudlabs-lab": "soa-06-cloudformation", ...tags }, props: {}, refs: {} });
+    const g = awsLiveGraph([
+      row("resource-groups:group", "lab-soa-06-cloudformation", { Name: "lab-soa-06-cloudformation" }),
+      row("cloudformation:stack", "lab-soa-06-cloudformation-stack", { Name: "stack-lab" }),
+      row("sqs:queue", "lab-soa-06-cloudformation-stack-WorkQueue-AbC", { "aws:cloudformation:stack-name": "lab-soa-06-cloudformation-stack" }),
+      row("ecs:task", "c/0abc", {}),
+      row("ecs:task-definition", "t:1", {}),
+    ], { labId: "soa-06-cloudformation", version: 1, gatewayVpcIds: [], at: "2026-10-16T00:00:00Z" });
+    const keys = g.nodes.map((n) => n.key);
+    expect(keys).toContain("cloudformation:stack/stack-lab");
+    expect(keys.some((k) => k.startsWith("sqs:queue") || k.startsWith("ecs:task"))).toBe(false);
+  });
+});

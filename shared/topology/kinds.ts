@@ -183,11 +183,11 @@ const AWS: Partial<Record<TopoKind, { icon: string; types: string[]; tf: string[
   containerApp: { icon: "ecs", types: ["ecs:service"], tf: ["aws_ecs_service"] },
   storage: { icon: "s3-bucket", types: ["s3:bucket"], tf: ["aws_s3_bucket"] },
   sqlServer: { icon: "rds", types: ["rds:db"], tf: ["aws_db_instance"] },
-  keyVault: { icon: "kms", types: ["kms:key"], tf: ["aws_kms_key"] },
+  keyVault: { icon: "kms", types: ["kms:key", "secretsmanager:secret"], tf: ["aws_kms_key", "aws_secretsmanager_secret"] },
   registry: { icon: "ecr", types: ["ecr:repository"], tf: ["aws_ecr_repository"] },
   recoveryVault: { icon: "backup", types: ["backup:backup-vault"], tf: ["aws_backup_vault"] },
-  managedIdentity: { icon: "iam-role", types: ["iam:role"], tf: ["aws_iam_role"] },
-  monitor: { icon: "cloudwatch", types: ["cloudwatch:alarm"], tf: ["aws_cloudwatch_metric_alarm", "aws_cloudwatch_dashboard"] },
+  managedIdentity: { icon: "iam-role", types: ["iam:role", "iam:user"], tf: ["aws_iam_role", "aws_iam_user"] },
+  monitor: { icon: "cloudwatch", types: ["cloudwatch:alarm", "route53:healthcheck"], tf: ["aws_cloudwatch_metric_alarm", "aws_cloudwatch_dashboard"] },
   logAnalytics: { icon: "cloudwatch-logs", types: ["logs:log-group"], tf: ["aws_cloudwatch_log_group"] },
   messaging: { icon: "messaging", types: ["sns:topic", "events:rule", "sqs:queue", "states:stateMachine"], tf: ["aws_sns_topic", "aws_cloudwatch_event_rule", "aws_sqs_queue", "aws_sfn_state_machine"] },
   transitGateway: { icon: "transit-gateway", types: ["ec2:transit-gateway"], tf: ["aws_ec2_transit_gateway"] },
@@ -197,6 +197,7 @@ const AWS: Partial<Record<TopoKind, { icon: string; types: string[]; tf: string[
   stream: { icon: "kinesis", types: ["kinesis:stream", "firehose:deliverystream"], tf: ["aws_kinesis_*", "aws_kinesisanalyticsv2_*"] },
   lattice: { icon: "vpc-lattice", types: ["vpc-lattice:service", "vpc-lattice:servicenetwork"], tf: ["aws_vpclattice_*"] },
   clientVpn: { icon: "client-vpn", types: ["ec2:client-vpn-endpoint"], tf: ["aws_ec2_client_vpn_endpoint"] },
+  flowLog: { icon: "cloudwatch-logs", types: ["ec2:vpc-flow-log"], tf: ["aws_flow_log"] },
   generic: { icon: "general-resource", types: [], tf: [] },
 };
 for (const [kind, a] of Object.entries(AWS) as [TopoKind, { icon: string; types: string[]; tf: string[] }][]) {
