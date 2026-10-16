@@ -520,6 +520,13 @@
    "kind": "concept"
   }
  ],
+ "saa-11-three-tier": [
+  {
+   "file": "architecture.svg",
+   "title": "Three-tier web app across two AZs: architecture",
+   "kind": "architecture"
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",

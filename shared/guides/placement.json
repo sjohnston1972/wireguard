@@ -694,6 +694,15 @@
    "height": 618
   }
  ],
+ "saa-11-three-tier": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A load balancer sending traffic to an Auto Scaling group, in one VPC with six subnets.",
+   "width": 2043,
+   "height": 1046
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",
