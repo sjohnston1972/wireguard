@@ -131,6 +131,13 @@ export const TYPES = [
   "aws_route53_record", "aws_route53_health_check", "aws_cloudfront_distribution", "aws_cloudfront_origin_access_control", "aws_ecr_repository",
   "aws_ecr_lifecycle_policy", "aws_ecs_cluster", "aws_ecs_task_definition", "aws_ecs_service", "aws_sqs_queue_policy", "aws_eks_cluster",
   "aws_wafv2_web_acl",
+  // AWS labs batch 3 (labs 11-19; aws_eks_cluster and aws_lambda_permission are listed above)
+  "aws_elasticache_subnet_group", "aws_elasticache_replication_group", "aws_apigatewayv2_api", "aws_apigatewayv2_authorizer",
+  "aws_apigatewayv2_integration", "aws_apigatewayv2_route", "aws_apigatewayv2_stage", "aws_cognito_user_pool", "aws_cognito_user_pool_client",
+  "aws_cognito_user", "aws_dynamodb_table", "aws_sqs_queue", "aws_sns_topic_subscription", "aws_cloudwatch_event_bus", "aws_sfn_state_machine",
+  "aws_efs_file_system", "aws_efs_mount_target", "aws_s3_bucket_intelligent_tiering_configuration",
+  "aws_s3_bucket_server_side_encryption_configuration", "aws_vpc_endpoint_policy", "aws_ami_copy", "aws_kinesis_stream",
+  "aws_kinesis_firehose_delivery_stream", "aws_glue_catalog_database", "aws_glue_crawler", "aws_athena_workgroup", "aws_eks_node_group",
   // AWS labs batch 1: the data sources on AWS_DATA (realisticPlan needs every aws_ one), and the one the scope tests refuse
   "data.aws_ssm_parameter", "data.aws_ami", "data.aws_availability_zones", "data.aws_caller_identity", "data.aws_region", "data.aws_partition",
   "data.aws_iam_policy_document", "data.aws_ec2_managed_prefix_list", "data.archive_file", "data.aws_vpc",

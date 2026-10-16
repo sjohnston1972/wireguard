@@ -284,3 +284,8 @@ test("cfn (final review I-1): a log group with DeletionProtectionEnabled other t
   writeFileSync(join(dir, "cfn", "stack.yaml"), tpl("true"));
   assert.deepEqual(lintDir(dir, { cloud: "aws" }).map((p) => `${p.rule}: ${p.file}:${p.line}`), ["cfn: cfn/stack.yaml:6"]);
 });
+
+test("rulings P4 and P14 (--cloud aws): a literal AMI id and an aws-sdk: workflow integration are refused", () => {
+  const tf = ['locals {', '  a = "ami-0123456789abcdef0"', '  b = "arn:aws:states:::aws-sdk:iam:createUser"', '  c = "ami-dr"', '}', ''].join("\n");
+  assert.deepEqual(lintTfText({ "x.tf": tf }, { cloud: "aws" }).map((p) => `${p.rule}: ${p.line}`).sort(), ["gateway: 3", "known-id: 2"]);
+});
