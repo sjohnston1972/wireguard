@@ -1,0 +1,242 @@
+{
+ "schema": 1,
+ "labId": "saa-13-decoupling",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:aws_cloudwatch_event_bus.orders",
+   "key": "events:event-bus/bus-orders",
+   "kind": "messaging",
+   "label": "bus-orders",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "events:event-bus",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_cloudwatch_event_rule.placed",
+   "key": "events:rule/rule-placed",
+   "kind": "messaging",
+   "label": "rule-placed",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "events:rule",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_cloudwatch_event_target.workflow",
+     "label": "workflow",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_cloudwatch_log_group.validate",
+   "key": "logs:log-group//cloudlabs/saa-13-decoupling/validate",
+   "kind": "logAnalytics",
+   "label": "/cloudlabs/saa-13-decoupling/validate",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "logs:log-group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_iam_role.events",
+   "key": "iam:role/lab-saa-13-decoupling-events",
+   "kind": "managedIdentity",
+   "label": "lab-saa-13-decoupling-events",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "iam:role",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_iam_policy.events",
+     "label": "lab-saa-13-decoupling-events",
+     "armType": "iam:policy"
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.events",
+     "label": "events",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_iam_role.sfn",
+   "key": "iam:role/lab-saa-13-decoupling-sfn",
+   "kind": "managedIdentity",
+   "label": "lab-saa-13-decoupling-sfn",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "iam:role",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_iam_policy.sfn",
+     "label": "lab-saa-13-decoupling-sfn",
+     "armType": "iam:policy"
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.sfn",
+     "label": "sfn",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_iam_role.validate",
+   "key": "iam:role/lab-saa-13-decoupling-validate",
+   "kind": "managedIdentity",
+   "label": "lab-saa-13-decoupling-validate",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "iam:role",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_iam_role_policy_attachment.validate_logs",
+     "label": "validate_logs",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_lambda_function.validate",
+   "key": "lambda:function/fn-validate",
+   "kind": "lambda",
+   "label": "fn-validate",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "lambda:function",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_resourcegroups_group.lab",
+   "key": "resource-groups:group/lab-saa-13-decoupling",
+   "kind": "resourceGroup",
+   "label": "lab-saa-13-decoupling · London",
+   "props": {
+    "region": "eu-west-2"
+   },
+   "armType": "resource-groups:group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_sfn_state_machine.orders",
+   "key": "states:statemachine/sfn-orders",
+   "kind": "messaging",
+   "label": "sfn-orders",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "states:stateMachine",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_sns_topic.orders",
+   "key": "sns:topic/topic-orders",
+   "kind": "messaging",
+   "label": "topic-orders",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "sns:topic",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_sns_topic_subscription.orders[\"billing\"]",
+     "label": "orders[billing]",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_sns_topic_subscription.orders[\"shipping\"]",
+     "label": "orders[shipping]",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_sqs_queue.billing_dlq",
+   "key": "sqs:queue/queue-billing-dlq",
+   "kind": "messaging",
+   "label": "queue-billing-dlq",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "sqs:queue",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_sqs_queue.orders[\"billing\"]",
+   "key": "sqs:queue/queue-billing",
+   "kind": "messaging",
+   "label": "queue-billing",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "sqs:queue",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_sqs_queue_policy.orders[\"billing\"]",
+     "label": "orders[billing]",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_sqs_queue.orders[\"shipping\"]",
+   "key": "sqs:queue/queue-shipping",
+   "kind": "messaging",
+   "label": "queue-shipping",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "sqs:queue",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_sqs_queue_policy.orders[\"shipping\"]",
+     "label": "orders[shipping]",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:aws_cloudwatch_event_rule.placed>tf:aws_sfn_state_machine.orders:",
+   "from": "tf:aws_cloudwatch_event_rule.placed",
+   "to": "tf:aws_sfn_state_machine.orders",
+   "kind": "dependency",
+   "via": "tf:aws_cloudwatch_event_target.workflow"
+  },
+  {
+   "id": "dependency:tf:aws_sns_topic.orders>tf:aws_sqs_queue.orders[\"billing\"]:fan-out",
+   "from": "tf:aws_sns_topic.orders",
+   "to": "tf:aws_sqs_queue.orders[\"billing\"]",
+   "kind": "dependency",
+   "label": "fan-out",
+   "via": "tf:aws_sns_topic_subscription.orders[\"billing\"]"
+  },
+  {
+   "id": "dependency:tf:aws_sns_topic.orders>tf:aws_sqs_queue.orders[\"shipping\"]:fan-out",
+   "from": "tf:aws_sns_topic.orders",
+   "to": "tf:aws_sqs_queue.orders[\"shipping\"]",
+   "kind": "dependency",
+   "label": "fan-out",
+   "via": "tf:aws_sns_topic_subscription.orders[\"shipping\"]"
+  }
+ ]
+}

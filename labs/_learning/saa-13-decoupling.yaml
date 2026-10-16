@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Follow one order through an event bus, a workflow, a topic and two queues, and watch failures land safely.
+learn:
+  - Route events from a custom bus to a workflow with a rule
+  - Fan one message out to two queues with an SNS topic
+  - Send messages that keep failing to a dead-letter queue
+learning_min: 45

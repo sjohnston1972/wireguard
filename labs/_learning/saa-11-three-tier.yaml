@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Run a three-tier web application across two zones and see what each tier does for resilience and speed.
+learn:
+  - Separate web, app and data tiers with subnets and chained security groups
+  - Fail a Multi-AZ database over while the app tier keeps answering
+  - Put a cache in front of a database and compare the two
+learning_min: 60

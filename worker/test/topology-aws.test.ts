@@ -329,6 +329,21 @@ describe("GET /labs/:id/topology for an AWS lab", () => {
     expect(nodes.find((n) => n.id === node!.parent)!.kind).toBe("resourceGroup");
   });
 
+  it("ruling P5: a two-region DNS lab's live graph reads London, Ireland and us-east-1 within the call cap", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    resetTopologyCache();
+    await runningLab(env, world, "saa-16-dr-pilot-light");
+    const seen = fakeAws();
+    const r = await api(env, "GET", "/labs/saa-16-dr-pilot-light/topology");
+    expect(r.json.status).toBe("ok");
+    expect(AWS_TOPOLOGY_CALLS_MAX).toBe(15);
+    expect(seen.length).toBeLessThanOrEqual(AWS_TOPOLOGY_CALLS_MAX);
+    expect(seen.filter((s) => s.host.endsWith(".us-east-1.amazonaws.com")).map((s) => s.action)).toEqual(["ResourceGroupsTaggingAPI_20170126.GetResources"]);
+    expect(seen.some((s) => s.host === "tagging.eu-west-1.amazonaws.com")).toBe(true);
+  });
+
   it("an AWS refusal is failed in plain words; throttling is throttled", async () => {
     const { env } = await runningAws();
     fakeAws({ fail: { status: 403, code: "UnauthorizedOperation" } });
@@ -432,5 +447,99 @@ describe("batch 2's types on the diagrams", () => {
     const keys = g.nodes.map((n) => n.key);
     expect(keys).toContain("cloudformation:stack/stack-lab");
     expect(keys.some((k) => k.startsWith("sqs:queue") || k.startsWith("ecs:task"))).toBe(false);
+  });
+});
+
+describe("batch 3's types on the diagrams", () => {
+  const b3 = (labId: string, changes: ReturnType<typeof ch>[], refs: Record<string, Record<string, string[]>>) => plannedGraph({ labId, version: 1, number: labId.slice(4, 6), changes: [ch("aws_resourcegroups_group.lab", { name: `lab-${labId}` }), ...changes], outputs: {}, refs } as never);
+  const kindOf = (g: { nodes: { key: string; kind: string }[] }, k: string) => g.nodes.find((n) => n.key === k)?.kind;
+  const edge = (g: { nodes: { key: string; id: string }[]; edges: { from: string; to: string; label?: string }[] }, a: string, b: string, label: string) => {
+    const nid = (k: string) => g.nodes.find((n) => n.key === k)?.id;
+    return g.edges.some((e) => e.from === nid(a) && e.to === nid(b) && e.label === label);
+  };
+
+  it("an HTTP API's pieces fold in and its integration draws the API's edge to the function; Cognito's client and user fold into the pool", () => {
+    const g = b3("saa-12-serverless-api", [
+      ch("aws_apigatewayv2_api.lab", { name: "lab-saa-12-serverless-api", tags: { Name: "api-lab" } }),
+      ch("aws_apigatewayv2_stage.default", { name: "$default" }),
+      ch("aws_apigatewayv2_route.items_get", { route_key: "GET /items" }),
+      ch("aws_apigatewayv2_integration.api", { integration_type: "AWS_PROXY" }),
+      ch("aws_lambda_function.api", { function_name: "lab-saa-12-serverless-api-api", tags: { Name: "fn-api" } }),
+      ch("aws_cognito_user_pool.users", { name: "lab-saa-12-serverless-api-users", tags: { Name: "pool-users" } }),
+      ch("aws_cognito_user_pool_client.cli", { name: "cli" }),
+      ch("aws_cognito_user.labuser", { username: "labuser" }),
+      ch("aws_dynamodb_table.items", { name: "lab-saa-12-serverless-api-items", tags: { Name: "table-items" } }),
+    ], {
+      "aws_apigatewayv2_stage.default": { api_id: ["aws_apigatewayv2_api.lab"] },
+      "aws_apigatewayv2_route.items_get": { api_id: ["aws_apigatewayv2_api.lab"] },
+      "aws_apigatewayv2_integration.api": { api_id: ["aws_apigatewayv2_api.lab"], integration_uri: ["aws_lambda_function.api"] },
+      "aws_cognito_user_pool_client.cli": { user_pool_id: ["aws_cognito_user_pool.users"] },
+      "aws_cognito_user.labuser": { user_pool_id: ["aws_cognito_user_pool.users"] },
+    });
+    expect(g.nodes.map((n) => n.key).filter((k) => /^apigateway|^cognito/.test(k)).sort()).toEqual(["apigateway:apis/api-lab", "cognito-idp:userpool/pool-users"]);
+    expect([kindOf(g, "apigateway:apis/api-lab"), kindOf(g, "cognito-idp:userpool/pool-users"), kindOf(g, "lambda:function/fn-api"), kindOf(g, "dynamodb:table/table-items")]).toEqual(["generic", "generic", "lambda", "dynamodb"]);
+    expect(edge(g, "apigateway:apis/api-lab", "lambda:function/fn-api", "HTTPS")).toBe(true);
+  });
+
+  it("a topic fans out to its queues; a bus is messaging; a stream feeds Firehose, which delivers to the bucket; the crawler catalogues its database", () => {
+    const g = b3("saa-17-data-pipeline", [
+      ch("aws_sns_topic.orders", { name: "lab-x-orders", tags: { Name: "topic-orders" } }),
+      ch("aws_sqs_queue.billing", { name: "lab-x-billing", tags: { Name: "queue-billing" } }),
+      ch("aws_sns_topic_subscription.billing", { protocol: "sqs" }),
+      ch("aws_cloudwatch_event_bus.bus", { name: "lab-x-bus", tags: { Name: "bus-orders" } }),
+      ch("aws_kinesis_stream.events", { name: "lab-x-events", tags: { Name: "stream-events" } }),
+      ch("aws_kinesis_firehose_delivery_stream.to_s3", { name: "lab-x-to-s3", tags: { Name: "firehose-to-s3" } }),
+      ch("aws_s3_bucket.lake", { bucket: "cloudlabs-a17k3x9q-lake", tags: { Name: "lake" } }),
+      ch("aws_glue_catalog_database.lake", { name: "lab_x", tags: { Name: "glue-lake" } }),
+      ch("aws_glue_crawler.events", { name: "lab-x-events", tags: { Name: "crawler-events" } }),
+      ch("aws_athena_workgroup.wg", { name: "lab-x-wg", tags: { Name: "athena-wg" } }),
+    ], {
+      "aws_sns_topic_subscription.billing": { topic_arn: ["aws_sns_topic.orders"], endpoint: ["aws_sqs_queue.billing"] },
+      "aws_kinesis_firehose_delivery_stream.to_s3": { kinesis_source_configuration: ["aws_kinesis_stream.events"], extended_s3_configuration: ["aws_s3_bucket.lake"] },
+      "aws_glue_crawler.events": { database_name: ["aws_glue_catalog_database.lake"] },
+    });
+    expect(edge(g, "sns:topic/topic-orders", "sqs:queue/queue-billing", "fan-out")).toBe(true);
+    expect(kindOf(g, "events:event-bus/bus-orders")).toBe("messaging");
+    expect([kindOf(g, "kinesis:stream/stream-events"), kindOf(g, "firehose:deliverystream/firehose-to-s3")]).toEqual(["stream", "stream"]);
+    expect(edge(g, "kinesis:stream/stream-events", "firehose:deliverystream/firehose-to-s3", "reads") && edge(g, "firehose:deliverystream/firehose-to-s3", "s3:bucket/lake", "delivers")).toBe(true);
+    expect(edge(g, "glue:crawler/crawler-events", "glue:database/glue-lake", "catalogues")).toBe(true);
+    expect(kindOf(g, "athena:workgroup/athena-wg")).toBe("generic");
+  });
+
+  it("EKS: the cluster and its node group are aks and the launch template folds into the node group; ElastiCache is cache; EFS's mount targets fold in", () => {
+    const g = b3("saa-19-eks", [
+      ch("aws_eks_cluster.lab", { name: "lab-saa-19-eks", tags: { Name: "eks-lab" } }),
+      ch("aws_launch_template.node", { name: "lt-a19k3x9q", tags: { Name: "lt-node" } }),
+      ch("aws_eks_node_group.lab", { node_group_name: "lab-saa-19-eks-ng", instance_types: ["t4g.medium"], scaling_config: [{ desired_size: 1 }], tags: { Name: "ng-lab" } }),
+      ch("aws_elasticache_replication_group.app", { replication_group_id: "ca11k3x9q", node_type: "cache.t4g.micro", tags: { Name: "cache-app" } }),
+      ch("aws_elasticache_subnet_group.data", { name: "lab-x-cache", tags: { Name: "cache-subnets" } }),
+      ch("aws_efs_file_system.shared", { tags: { Name: "efs-shared" } }),
+      ch("aws_efs_mount_target.shared[0]", {}),
+    ], {
+      "aws_eks_node_group.lab": { cluster_name: ["aws_eks_cluster.lab"], launch_template: ["aws_launch_template.node"] },
+      "aws_elasticache_replication_group.app": { subnet_group_name: ["aws_elasticache_subnet_group.data"] },
+      "aws_efs_mount_target.shared": { file_system_id: ["aws_efs_file_system.shared"] },
+    });
+    const keys = g.nodes.map((n) => n.key);
+    expect([kindOf(g, "eks:cluster/eks-lab"), kindOf(g, "eks:nodegroup/ng-lab"), kindOf(g, "elasticache:replicationgroup/cache-app"), kindOf(g, "elasticfilesystem:file-system/efs-shared")]).toEqual(["aks", "aks", "cache", "generic"]);
+    expect(keys.some((k) => k.includes("launch-template") || k.includes("subnetgroup") || k.includes("mount"))).toBe(false);
+    expect(g.nodes.find((n) => n.key === "eks:nodegroup/ng-lab")).toMatchObject({ props: { size: "t4g.medium", instances: 1 } });
+  });
+
+  it("ruling P20: live, a global table's Ireland replica folds into its London table; an API's stage and a group's member cluster are left out", () => {
+    const row = (type: string, id: string, region: string, tags: Record<string, string> = {}): AwsRow => ({ arn: `arn:aws:${type.split(":")[0]}:${region}:123456789012:${type.split(":")[1]}/${id}`, type, id, region, name: tags.Name ?? null, tags: { "cloudlabs-lab": "saa-16-dr-pilot-light", ...tags }, props: {}, refs: {} });
+    const g = awsLiveGraph([
+      row("resource-groups:group", "lab-saa-16-dr-pilot-light", "eu-west-2", { Name: "lab-saa-16-dr-pilot-light" }),
+      row("resource-groups:group", "lab-saa-16-dr-pilot-light", "eu-west-1", { Name: "lab-saa-16-dr-pilot-light" }),
+      row("dynamodb:table", "lab-saa-16-dr-pilot-light-orders", "eu-west-2", { Name: "table-orders" }),
+      row("dynamodb:table", "lab-saa-16-dr-pilot-light-orders", "eu-west-1", { Name: "table-orders" }),
+      row("apigateway:stages", "a1/$default", "eu-west-2"),
+      row("elasticache:cluster", "ca11k3x9q-001", "eu-west-2"),
+    ], { labId: "saa-16-dr-pilot-light", version: 1, gatewayVpcIds: [], at: "2026-10-16T00:00:00Z", region: "eu-west-2", secondaryRegion: "eu-west-1" });
+    const keys = g.nodes.map((n) => n.key);
+    expect(keys.filter((k) => k.startsWith("dynamodb:table"))).toEqual(["dynamodb:table/table-orders"]);
+    expect(keys.some((k) => k.startsWith("apigateway:stages") || k.startsWith("elasticache:cluster"))).toBe(false);
+    expect(kindOfAws("events:event-bus")).toBe("messaging");
+    expect(kindOfAws("eks:nodegroup")).toBe("aks");
   });
 });

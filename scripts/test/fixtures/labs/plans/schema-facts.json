@@ -3,6 +3,34 @@
   "rg": false,
   "tags": true
  },
+ "aws_ami_copy": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_apigatewayv2_api": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_apigatewayv2_authorizer": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_apigatewayv2_integration": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_apigatewayv2_route": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_apigatewayv2_stage": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_athena_workgroup": {
+  "rg": false,
+  "tags": true
+ },
  "aws_autoscaling_group": {
   "rg": false,
   "tags": false
@@ -51,6 +79,10 @@
   "rg": false,
   "tags": false
  },
+ "aws_cloudwatch_event_bus": {
+  "rg": false,
+  "tags": true
+ },
  "aws_cloudwatch_event_rule": {
   "rg": false,
   "tags": true
@@ -72,6 +104,18 @@
   "tags": true
  },
  "aws_cloudwatch_query_definition": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_cognito_user": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_cognito_user_pool": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_cognito_user_pool_client": {
   "rg": false,
   "tags": false
  },
@@ -123,6 +167,10 @@
   "rg": false,
   "tags": true
  },
+ "aws_dynamodb_table": {
+  "rg": false,
+  "tags": true
+ },
  "aws_ebs_snapshot": {
   "rg": false,
   "tags": true
@@ -159,6 +207,14 @@
   "rg": false,
   "tags": true
  },
+ "aws_efs_file_system": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_efs_mount_target": {
+  "rg": false,
+  "tags": false
+ },
  "aws_eip": {
   "rg": false,
   "tags": true
@@ -167,7 +223,27 @@
   "rg": false,
   "tags": true
  },
+ "aws_eks_node_group": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_elasticache_replication_group": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_elasticache_subnet_group": {
+  "rg": false,
+  "tags": true
+ },
  "aws_flow_log": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_glue_catalog_database": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_glue_crawler": {
   "rg": false,
   "tags": true
  },
@@ -211,6 +287,14 @@
   "rg": false,
   "tags": true
  },
+ "aws_kinesis_firehose_delivery_stream": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_kinesis_stream": {
+  "rg": false,
+  "tags": true
+ },
  "aws_kms_alias": {
   "rg": false,
   "tags": false
@@ -240,6 +324,10 @@
   "tags": true
  },
  "aws_lb_target_group": {
+  "rg": false,
+  "tags": true
+ },
+ "aws_lightsail_instance": {
   "rg": false,
   "tags": true
  },
@@ -291,6 +379,10 @@
   "rg": false,
   "tags": true
  },
+ "aws_s3_bucket_intelligent_tiering_configuration": {
+  "rg": false,
+  "tags": false
+ },
  "aws_s3_bucket_lifecycle_configuration": {
   "rg": false,
   "tags": false
@@ -304,6 +396,10 @@
   "tags": false
  },
  "aws_s3_bucket_replication_configuration": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_s3_bucket_server_side_encryption_configuration": {
   "rg": false,
   "tags": false
  },
@@ -331,6 +427,10 @@
   "rg": false,
   "tags": true
  },
+ "aws_sfn_state_machine": {
+  "rg": false,
+  "tags": true
+ },
  "aws_sns_topic": {
   "rg": false,
   "tags": true
@@ -338,6 +438,14 @@
  "aws_sns_topic_policy": {
   "rg": false,
   "tags": false
+ },
+ "aws_sns_topic_subscription": {
+  "rg": false,
+  "tags": false
+ },
+ "aws_sqs_queue": {
+  "rg": false,
+  "tags": true
  },
  "aws_sqs_queue_policy": {
   "rg": false,
@@ -370,6 +478,10 @@
  "aws_vpc_endpoint": {
   "rg": false,
   "tags": true
+ },
+ "aws_vpc_endpoint_policy": {
+  "rg": false,
+  "tags": false
  },
  "aws_vpc_peering_connection": {
   "rg": false,

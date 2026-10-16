@@ -520,6 +520,69 @@
    "kind": "concept"
   }
  ],
+ "saa-11-three-tier": [
+  {
+   "file": "architecture.svg",
+   "title": "Three-tier web app across two AZs: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "saa-12-serverless-api": [
+  {
+   "file": "architecture.svg",
+   "title": "Serverless API with Cognito sign-in: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "saa-13-decoupling": [
+  {
+   "file": "architecture.svg",
+   "title": "Decoupling: queues, fan-out, events, workflows: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "saa-14-storage": [
+  {
+   "file": "architecture.svg",
+   "title": "Storage choices: S3 classes, EFS, EBS gp3 and io2: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "saa-15-data-security": [
+  {
+   "file": "architecture.svg",
+   "title": "Data security: KMS, bucket and endpoint policies: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "saa-16-dr-pilot-light": [
+  {
+   "file": "architecture.svg",
+   "title": "Pilot-light DR across London and Ireland: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "saa-17-data-pipeline": [
+  {
+   "file": "architecture.svg",
+   "title": "Streaming data pipeline to Athena: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "saa-18-cost-compute": [
+  {
+   "file": "architecture.svg",
+   "title": "Cost-optimised compute: Spot, Graviton and x86: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "saa-19-eks": [
+  {
+   "file": "architecture.svg",
+   "title": "EKS with a managed node group: architecture",
+   "kind": "architecture"
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",

@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Call a serverless API that only lets in users who signed in to its own Cognito user pool.
+learn:
+  - Sign in to a Cognito user pool and read the token it gives you
+  - Protect API routes with a JWT authoriser and throttle a stage
+  - Store and read items in a DynamoDB table billed per request
+learning_min: 45

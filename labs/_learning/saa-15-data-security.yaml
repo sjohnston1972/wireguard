@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Protect data in S3 with a customer managed key, a bucket policy and an endpoint policy, and test each.
+learn:
+  - Encrypt a bucket by default with a customer managed KMS key
+  - Refuse plain HTTP and the wrong encryption with a bucket policy
+  - Limit what a VPC can reach in S3 with an endpoint policy
+learning_min: 45

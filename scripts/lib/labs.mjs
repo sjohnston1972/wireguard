@@ -46,6 +46,13 @@ export const AWS_BOUNDARY = "wg-admin-lab-boundary";
 export const AWS_IAM_USER_LABS = ["soa-07-iam-kms"];
 export const AWS_CONFIG_LABS = ["soa-02-systems-manager"];
 export const AWS_GLOBAL_LABS = ["soa-09-route53-cloudfront", "ans-26-edge"];
+/**
+ * Ruling P5: labs outside AWS_GLOBAL_LABS with Route 53 zones or health checks. The tagging API lists Route 53 items
+ * in us-east-1 only, so Parse payload adds us-east-1 (never us-west-2) to their LAB_REGIONS and the Worker reads it.
+ */
+export const AWS_DNS_LABS = ["saa-16-dr-pilot-light"];
+/** Whether an AWS lab has items the tagging API lists only in us-east-1 (a global lab's, or a DNS lab's Route 53). */
+export const readsUsEast1 = (id) => AWS_GLOBAL_LABS.includes(id) || AWS_DNS_LABS.includes(id);
 export const AWS_INSTANCE_TYPES = ["t4g.nano", "t4g.micro", "t4g.small", "t3.micro", "t3.small", "t4g.medium"];
 export const AWS_MEDIUM_LABS = ["saa-19-eks"];
 export const AWS_USAGE_PREFIX = { "eu-west-2": "EUW2", "eu-west-1": "EU", "us-east-1": "USE1", "us-west-2": "USW2" };

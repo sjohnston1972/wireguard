@@ -1,0 +1,44 @@
+# Lab saa-14 (AWS labs batch 3). SAA-C03 ((V) the wording against the current
+# exam guide): Design High-Performing Architectures (block, file and object
+# storage, IOPS); Design Cost-Optimized Architectures (storage classes,
+# lifecycle, Intelligent-Tiering).
+# London list prices × 0.75 (labs-verify --aws-prices). io2's provisioned IOPS
+# are billed per IOPS-month (authored, V: London $0.076); EFS and S3 hold a
+# few kB (authored).
+id: saa-14-storage
+version: 1
+cloud: aws
+title: "Storage choices: S3 classes, EFS, EBS gp3 and io2"
+summary: >-
+  One instance with a gp3 and an io2 volume and an EFS file system mounted, and a bucket that moves objects between
+  storage classes by itself, so you can measure block, file and object storage side by side and see what each costs.
+exam: SAA-C03
+skill_areas: [saa.performance, saa.cost]
+level: associate
+type: explore
+prerequisites: []
+cost:
+  items:
+    - name: "EC2 t4g.micro, Linux"
+      gbp_h: 0.0071
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.micro, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - name: "EBS gp3 data volume, 4 GiB"
+      gbp_h: 0.0004
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 4, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - name: "EBS io2 data volume, 4 GiB"
+      gbp_h: 0.0006
+    - { name: "EBS io2 provisioned IOPS, 100", gbp_h: 0.0078 }
+    - { name: "EFS Standard and S3 Intelligent-Tiering, a few kB, and their requests", gbp_h: 0.0002 }
+    - { name: "EC2 Instance Connect Endpoint", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 5, destroy_min: 5, session_h: 2, max_h: 6 }
+capacity: { instance_types: [t4g.micro] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false

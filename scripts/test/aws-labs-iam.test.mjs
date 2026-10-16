@@ -13,7 +13,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { abacLists, foldWildcards, renderLabPolicies, policySize, fillPolicy, POLICY_MAX, ROLE_POLICIES_MAX, LAB_SERVICES, ABAC_SERVICES, SERVICE_LINKED, NON_CREATE_VERB, CHANGE_TAG_EXEMPT } from "../lib/aws-lab-policies.mjs";
+import { abacLists, foldWildcards, renderLabPolicies, policySize, fillPolicy, POLICY_MAX, ROLE_POLICIES_MAX, LAB_SERVICES, ABAC_SERVICES, SERVICE_LINKED, NON_CREATE_VERB, CHANGE_TAG_EXEMPT, POLICY_PACK, HTTP_VERB_RULES, NAMED_TABLES, EKS_LB_TAG, CREATE_TAG_EXEMPT } from "../lib/aws-lab-policies.mjs";
 import { simulatorCases, boundaryCases, simulatorProblems, quotaPlan, LAB_QUOTAS, runLabsBootstrap } from "../lib/aws-bootstrap-labs.mjs";
 
 const url = (p) => new URL(`../../${p}`, import.meta.url);
@@ -138,6 +138,16 @@ test("ruling A82: a change-list entry that names or covers an exempt action fail
   assert.throws(() => renderLabPolicies({ ...abac, change: ["ec2:ReplaceNetworkAclAssociation"] }), /A82/);
 });
 
+test("ruling P22: deleting a network interface is in no change list (EFS's DeleteMountTarget asks about its untagged ENI as the caller)", () => {
+  const sar = { ec2: { Name: "ec2", Resources: [{ Name: "network-interface", ConditionKeys: ["aws:ResourceTag/${TagKey}"] }], Actions: [
+    W({ Name: "DeleteNetworkInterface", Resources: [{ Name: "network-interface" }] }),
+    W({ Name: "DeleteNetworkAcl", Resources: [{ Name: "network-interface" }] }),
+  ] } };
+  assert.ok(CHANGE_TAG_EXEMPT.includes("ec2:DeleteNetworkInterface"));
+  assert.deepEqual(abacLists(sar).change, ["ec2:DeleteNetworkAcl"]);
+  assert.throws(() => renderLabPolicies({ services: ABAC_SERVICES, create: [], createOn: {}, change: ["ec2:DeleteNetwork*"], untag: [] }), /A82/);
+});
+
 test("wildcards fold only where every action they match is listed", () => {
   const all = ["ec2:CreateVpc", "ec2:CreateVpcEndpoint", "ec2:CreateVpcPeeringConnection", "ec2:CreateVolume"];
   assert.deepEqual(foldWildcards(["ec2:CreateVpc", "ec2:CreateVpcEndpoint", "ec2:CreateVpcPeeringConnection"], all), ["ec2:CreateVpc*"]);
@@ -162,7 +172,9 @@ test("lab-abac.json is the generator's, sorted, for the allow-listed services on
   // Regenerating changes this pin on purpose: review the new lists, then update it.
   // Ruling A82: ec2:ReplaceNetwork* became ec2:ReplaceNetworkAclEntry (the association is exempt; CHANGE_TAG_EXEMPT).
   assert.ok(ABAC.change.includes("ec2:ReplaceNetworkAclEntry") && !ABAC.change.some((a) => /^ec2:ReplaceNetwork(\*|AclAssociation)$/.test(a)));
-  assert.equal(createHash("sha256").update(JSON.stringify({ create: ABAC.create, change: ABAC.change })).digest("hex"), "3b6993fe1e0b6d8a23c15d5d8fe3f235a79d5768dcd517dd6e0fd3d5cd7df509");
+  // Batch 3 (2026-10-16): P2's API Gateway verbs moved to the change list, ec2:CopyImage (P4) and
+  // elasticloadbalancing:DeleteLoadBalancer (P8) left the lists; nothing else changed in the reference.
+  assert.equal(createHash("sha256").update(JSON.stringify({ create: ABAC.create, change: ABAC.change })).digest("hex"), "53d756b2becbec9c6061d96f0d0ffa78b6fe3714aa02a8edcb54a285db9e0478");
 });
 
 test("lab-policies.json is what --render makes from lab-abac.json", { skip }, () => {
@@ -170,9 +182,9 @@ test("lab-policies.json is what --render makes from lab-abac.json", { skip }, ()
   assert.deepEqual(POLICIES, renderLabPolicies(ABAC));
 });
 
-test("every role policy and the boundary fit (A29), and the role holds at most 10", { skip }, () => {
+test("every role policy and the boundary fit (A29), and the role holds at most ROLE_POLICIES_MAX", { skip }, () => {
   const { POLICIES } = files();
-  // Ruling P13: batch 2 fills the tenth; the bootstrap asks IAM for 20 (LAB_QUOTAS).
+  // Ruling P1: up to 20 (IAM's L-0DA4ABF3 is 20 in this account).
   assert.ok(POLICIES.role.length <= ROLE_POLICIES_MAX, `${POLICIES.role.length} role policies`);
   for (const [i, d] of POLICIES.role.entries()) assert.ok(policySize(d, FILL) < POLICY_MAX, `role policy ${i + 1}: ${policySize(d, FILL)}`);
   assert.ok(policySize(POLICIES.boundary, FILL) < POLICY_MAX);
@@ -180,7 +192,7 @@ test("every role policy and the boundary fit (A29), and the role holds at most 1
 
 test("each §7.1 statement says what it must", { skip }, () => {
   const { POLICIES, statements, sid } = files();
-  for (const s of ["LabServices", "LabBuckets", "BucketList", "GlobalServices", "Identity", "LabRolesBounded", "LabRolesOther", "Lab07UsersBounded", "Lab07UsersOther", "PassLabRoles", "ServiceLinkedRoles", "DenyVpnServer", "DenyVpnTagRequest", "DenyVpnTagKeys", "DenyDefaultVpc", "DenyDefaultVpcChildren", "DenyAccountAndBilling", "DenyStackSets", "DenyIamOutsideLab", "DenyBoundaryRemoval", "DenyOtherRoles", "DenyOtherRegions", "DenyGlobalRegionsForLabServices", "CreateNeedsLabTagRunInstances", "KeepLabTag", "NaclOnlyInLabVpcs", "NaclMoveLabSubnetsOnly"]) assert.ok(sid(s), s);
+  for (const s of ["LabServices", "LabBuckets", "BucketList", "GlobalServices", "Identity", "LabRolesBounded", "LabRolesOther", "Lab07UsersBounded", "Lab07UsersOther", "PassLabRoles", "ServiceLinkedRoles", "DenyVpnServer", "DenyVpnTagRequest", "DenyVpnTagKeys", "DenyDefaultVpc", "DenyDefaultVpcChildren", "DenyAccountAndBilling", "DenyStackSets", "DenyIamOutsideLab", "DenyBoundaryRemoval", "DenyOtherRoles", "DenyOtherRegions", "DenyGlobalRegionsForLabServices", "CreateNeedsLabTagRunInstances", "KeepLabTag", "NaclOnlyInLabVpcs", "NaclMoveLabSubnetsOnly", "ElbDeleteLabOrEks"]) assert.ok(sid(s), s);
   assert.ok(statements.some((s) => /^CreateNeedsLabTag\d+$/.test(s.Sid)) && statements.some((s) => /^ChangeNeedsLabTag\d+$/.test(s.Sid)));
   assert.deepEqual(sid("DenyVpnServer").Condition, { StringEquals: { "aws:ResourceTag/wg-admin": "vpn" } });
   assert.deepEqual(sid("LabRolesBounded").Condition, { StringEquals: { "iam:PermissionsBoundary": "arn:aws:iam::__ACCOUNT__:policy/wg-admin-lab-boundary" } });
@@ -314,13 +326,13 @@ test("the Worker user may read lab things in both lab regions, and change nothin
   assert.doesNotMatch(never, /Condition/);
 });
 
-test("the simulator cases are A19's, fix round 1's and batch 2's, and a wrong answer is a problem", () => {
+test("the simulator cases are A19's, fix round 1's, batch 2's and batch 3's, and a wrong answer is a problem", () => {
   const cases = simulatorCases("123456789012", FILL.vpcArns);
   assert.deepEqual(cases.map((c) => [c.name, c.want]), [["tagged VPC", "allowed"], ["bounded lab role", "allowed"], ["untagged VPC", "denied"], ["the VPN server", "denied"], ["role without the boundary", "denied"], ["role outside the path", "denied"], ["access key", "denied"], ["a third region", "denied"],
-    ["an entry in a lab network ACL", "allowed"], ["tag an untagged network ACL", "denied"], ["an entry in an untagged network ACL", "denied"], ["a rule in an untagged security group", "denied"], ["replace an ACL association off a default ACL", "allowed"], ["a network ACL in an untagged VPC", "denied"], ["move a lab subnet's ACL association", "allowed"], ["move an untagged subnet's ACL association", "denied"], ["move the VPN server's subnet's ACL association", "denied"], ["the VPN server's user data", "denied"], ["pass the deploy role", "denied"], ["AdministratorAccess on a lab role", "denied"], ["change the boundary", "denied"], ["remove a boundary", "denied"], ["block public access for the account", "denied"], ["EBS encryption by default", "denied"], ["a launch whose volume has no lab tag", "denied"], ["EICE's network interface", "allowed"], ["an SSM association", "allowed"], ["retention on a new lab log group", "allowed"], ["retention on another log group", "denied"], ["SSM default host management", "denied"], ["reset an SSM setting", "denied"], ["a lab 07 user under the boundary", "allowed"], ["a user for another lab", "denied"], ["remove a hand-made key from the lab 07 user", "allowed"], ["delete the lab's analyzer", "allowed"], ["an untagged CloudFormation stack", "denied"], ["a CloudFront distribution", "allowed"], ["a Route 53 hosted zone", "allowed"], ["an ECS cluster in us-east-1", "denied"], ["a subnet in the default VPC", "denied"], ["an ACL move in the default VPC", "denied"]]);
+    ["an entry in a lab network ACL", "allowed"], ["tag an untagged network ACL", "denied"], ["an entry in an untagged network ACL", "denied"], ["a rule in an untagged security group", "denied"], ["replace an ACL association off a default ACL", "allowed"], ["a network ACL in an untagged VPC", "denied"], ["move a lab subnet's ACL association", "allowed"], ["move an untagged subnet's ACL association", "denied"], ["move the VPN server's subnet's ACL association", "denied"], ["delete an untagged network interface (an EFS mount target's)", "allowed"], ["delete the VPN server's network interface", "denied"], ["the VPN server's user data", "denied"], ["pass the deploy role", "denied"], ["AdministratorAccess on a lab role", "denied"], ["change the boundary", "denied"], ["remove a boundary", "denied"], ["block public access for the account", "denied"], ["EBS encryption by default", "denied"], ["a launch whose volume has no lab tag", "denied"], ["EICE's network interface", "allowed"], ["an SSM association", "allowed"], ["retention on a new lab log group", "allowed"], ["retention on another log group", "denied"], ["SSM default host management", "denied"], ["reset an SSM setting", "denied"], ["a lab 07 user under the boundary", "allowed"], ["a user for another lab", "denied"], ["remove a hand-made key from the lab 07 user", "allowed"], ["delete the lab's analyzer", "allowed"], ["an untagged CloudFormation stack", "denied"], ["a CloudFront distribution", "allowed"], ["a Route 53 hosted zone", "allowed"], ["an ECS cluster in us-east-1", "denied"], ["a global table's replica in Ireland", "allowed"], ["an untagged table not named for a lab", "denied"], ["copy an AMI to Ireland", "allowed"], ["a tagged HTTP API", "allowed"], ["an untagged HTTP API", "denied"], ["a route on a lab API", "allowed"], ["delete an untagged API", "denied"], ["API Gateway's account settings", "denied"], ["delete a load balancer Kubernetes made for lab 19", "allowed"], ["delete an untagged load balancer", "denied"], ["the Spot service-linked role", "allowed"], ["a subnet in the default VPC", "denied"], ["an ACL move in the default VPC", "denied"]]);
   // With no default VPC in the account there is nothing to ask about it.
   assert.ok(!simulatorCases("123456789012", []).some((c) => /default VPC/.test(c.name)));
-  assert.deepEqual(boundaryCases("123456789012", FILL.vpcArns).map((c) => [c.name, c.want]), [["boundary: an entry in a lab network ACL", "allowed"], ["boundary: tag an untagged network ACL", "denied"], ["boundary: an entry in an untagged network ACL", "denied"], ["boundary: a rule in an untagged security group", "denied"], ["boundary: replace an ACL association off a default ACL", "allowed"], ["boundary: a network ACL in an untagged VPC", "denied"], ["boundary: move a lab subnet's ACL association", "allowed"], ["boundary: move an untagged subnet's ACL association", "denied"], ["boundary: move the VPN server's subnet's ACL association", "denied"], ["boundary: delete every tag", "denied"], ["boundary: block public access for the account", "denied"], ["boundary: SSM default host management", "denied"], ["boundary: reset an SSM setting", "denied"], ["boundary: tag a new snapshot", "allowed"], ["boundary: a subnet in the default VPC", "denied"], ["boundary: an ACL move in the default VPC", "denied"]]);
+  assert.deepEqual(boundaryCases("123456789012", FILL.vpcArns).map((c) => [c.name, c.want]), [["boundary: an entry in a lab network ACL", "allowed"], ["boundary: tag an untagged network ACL", "denied"], ["boundary: an entry in an untagged network ACL", "denied"], ["boundary: a rule in an untagged security group", "denied"], ["boundary: replace an ACL association off a default ACL", "allowed"], ["boundary: a network ACL in an untagged VPC", "denied"], ["boundary: move a lab subnet's ACL association", "allowed"], ["boundary: move an untagged subnet's ACL association", "denied"], ["boundary: move the VPN server's subnet's ACL association", "denied"], ["boundary: delete an untagged network interface (an EFS mount target's)", "allowed"], ["boundary: delete the VPN server's network interface", "denied"], ["boundary: delete every tag", "denied"], ["boundary: block public access for the account", "denied"], ["boundary: SSM default host management", "denied"], ["boundary: reset an SSM setting", "denied"], ["boundary: tag a new snapshot", "allowed"], ["boundary: a subnet in the default VPC", "denied"], ["boundary: an ACL move in the default VPC", "denied"]]);
   const ok = cases.map((c) => ({ name: c.name, decision: c.want === "allowed" ? "allowed" : "explicitDeny" }));
   assert.deepEqual(simulatorProblems(ok, cases), []);
   assert.deepEqual(simulatorProblems([{ ...ok[0], decision: "implicitDeny" }, ...ok.slice(1)], cases), ["tagged VPC: wanted allowed, AWS said implicitDeny"]);
@@ -388,11 +400,11 @@ test("--labs: every simulator case is asked of the role, quotas below target are
   const r = await runLabsBootstrap(run, { ...O, log: (s) => log.push(s) });
   assert.equal(r.ok, true);
   const sims = calls.filter((c) => c[2] === "simulate-principal-policy");
-  assert.equal(sims.length, 41);
+  assert.equal(sims.length, 54);
   for (const c of sims) assert.equal(c[c.indexOf("--policy-source-arn") + 1], O.roleArn);
   // The boundary, simulated as a policy of its own (simulate-custom-policy), with the document the bootstrap filled.
   const custom = calls.filter((c) => c[2] === "simulate-custom-policy");
-  assert.equal(custom.length, 16);
+  assert.equal(custom.length, 18);
   for (const c of custom) assert.equal(c[c.indexOf("--policy-input-list") + 1], BOUNDARY_DOC);
   const tagged = sims[0];
   assert.deepEqual(JSON.parse(tagged[tagged.indexOf("--context-entries") + 1]), [
@@ -599,14 +611,18 @@ test("what Terraform does for a lab is allowed: tagged creates on the new item o
 // ── Every AWS CLI call the lab workflow's scripts make, as the role ──────
 
 /** The CLI's service names that are not IAM's, and the commands whose IAM action is not their own name. */
-const CLI_SERVICE = { elbv2: "elasticloadbalancing", configservice: "config", resourcegroupstaggingapi: "tag", s3api: "s3", accessanalyzer: "access-analyzer" };
+const CLI_SERVICE = { elbv2: "elasticloadbalancing", elb: "elasticloadbalancing", configservice: "config", resourcegroupstaggingapi: "tag", s3api: "s3", accessanalyzer: "access-analyzer", apigatewayv2: "apigateway", stepfunctions: "states", efs: "elasticfilesystem" };
 const CLI_ACTION = {
   "s3api head-bucket": ["s3:ListBucket"],
   "s3api list-object-versions": ["s3:ListBucketVersions"],
   "s3api delete-objects": ["s3:DeleteObject", "s3:DeleteObjectVersion"],
   "s3api get-object-lock-configuration": ["s3:GetBucketObjectLockConfiguration"],
+  // Ruling P2: API Gateway's actions are its HTTP verbs.
+  "apigatewayv2 get-api": ["apigateway:GET"],
+  "apigatewayv2 get-stage": ["apigateway:GET"],
+  "apigatewayv2 delete-api": ["apigateway:DELETE"],
 };
-const SERVICES_RE = /(?:^|[\s(])(ec2|elbv2|rds|autoscaling|events|configservice|s3api|sns|logs|cloudwatch|ssm|backup|resource-groups|kms|iam|resourcegroupstaggingapi|dynamodb|network-firewall|cloudformation|elasticache|eks|ecs|cloudfront|globalaccelerator|vpc-lattice|route53resolver|sqs|secretsmanager|lambda|ecr|accessanalyzer|route53)\s+"?([a-z0-9]+-[a-z0-9$-]+)"?/g;
+const SERVICES_RE = /(?:^|[\s(])(ec2|elbv2|rds|autoscaling|events|configservice|s3api|sns|logs|cloudwatch|ssm|backup|resource-groups|kms|iam|resourcegroupstaggingapi|dynamodb|network-firewall|cloudformation|elasticache|eks|ecs|cloudfront|globalaccelerator|vpc-lattice|route53resolver|sqs|secretsmanager|lambda|ecr|accessanalyzer|route53|elb|apigatewayv2|cognito-idp|stepfunctions|efs|kinesis|firehose|glue|athena)\s+"?([a-z0-9]+-[a-z0-9$-]+)"?/g;
 /** Every "<service> <command>" an aws call names in a script (comments left out), with the region it names. */
 function cliCalls(path) {
   const out = [];
@@ -635,9 +651,11 @@ function requestsOf({ cli, region }) {
     return actions.map((action) => ({ action, resource, ctx: { "aws:RequestedRegion": "us-east-1", ...(what === "role" || what === "user" ? BOUNDED : {}) } }));
   }
   const r = region ?? (["cloudfront", "route53"].includes(svc) ? "us-east-1" : "eu-west-2");
-  const resource = svc === "s3api" ? "arn:aws:s3:::cloudlabs-a01abcde-logs" : /dashboard|configuration-recorder/.test(cmd) ? namedArn(action0, "lab-soa-01-x-main") : `arn:aws:${CLI_SERVICE[svc] ?? svc}:${r}:${A}:lab-item/x`;
+  const resource = svc === "s3api" ? "arn:aws:s3:::cloudlabs-a01abcde-logs" : /dashboard|configuration-recorder/.test(cmd) ? namedArn(action0, "lab-soa-01-x-main") : svc === "dynamodb" ? `arn:aws:dynamodb:${r}:${A}:table/lab-soa-01-x-items` : `arn:aws:${CLI_SERVICE[svc] ?? svc}:${r}:${A}:lab-item/x`;
+  // Ruling P4: an AMI copy and its snapshots are never tag-checked (deregistering and snapshot deletes are AWS_OWNED_TYPES).
+  const untagged = svc === "ec2" && /image|snapshot/.test(cmd);
   // A read must not need the lab's tag; a write is on a tagged item, or a named one that cannot carry tags.
-  const ctx = { "aws:RequestedRegion": r, ...(read || named ? {} : { "aws:ResourceTag/cloudlabs-lab": "soa-01-x" }) };
+  const ctx = { "aws:RequestedRegion": r, ...(read || named || untagged ? {} : { "aws:ResourceTag/cloudlabs-lab": "soa-01-x" }) };
   return actions.map((action) => ({ action, resource, ctx }));
 }
 
@@ -646,12 +664,14 @@ test("every AWS CLI call in Unblock, the safety net, Verify clean and the ready 
   const scripts = ["infra/ci/lab-unblock-aws.sh", "infra/ci/lab-aws-safety-net.sh", "infra/ci/lab-ready-aws.sh"];
   const calls = scripts.flatMap((p) => cliCalls(p).map((c) => ({ ...c, p })));
   // The extraction found the calls (a script that stops naming them would make this test vacuous).
-  assert.ok(calls.length > 90, `${calls.length} calls`);
+  assert.ok(calls.length > 130, `${calls.length} calls`);
   for (const must of ["iam delete-role", "configservice stop-configuration-recorder", "cloudwatch delete-dashboards", "ec2 revoke-security-group-egress", "resourcegroupstaggingapi get-resources", "cloudfront get-distribution", "s3api delete-objects",
     // Final review, Important 2: security group rules, listeners and listener rules, read and (when still there) deleted.
     "ec2 describe-security-group-rules", "ec2 revoke-security-group-ingress", "elbv2 describe-listeners", "elbv2 describe-rules", "elbv2 delete-listener", "elbv2 delete-rule",
     // Batch 2 (Task 4): the new types' deletes.
-    "cloudformation delete-stack", "cloudfront delete-distribution", "cloudfront delete-origin-access-control", "route53 delete-hosted-zone", "ecs delete-service", "ecs delete-task-definitions", "kms schedule-key-deletion", "iam delete-access-key", "accessanalyzer delete-analyzer"]) assert.ok(calls.some((c) => c.cli === must), must);
+    "cloudformation delete-stack", "cloudfront delete-distribution", "cloudfront delete-origin-access-control", "route53 delete-hosted-zone", "ecs delete-service", "ecs delete-task-definitions", "kms schedule-key-deletion", "iam delete-access-key", "accessanalyzer delete-analyzer",
+    // Batch 3 (Task 4): the new types' deletes, Unblock's Kubernetes-made load balancers and EKS deletion protection (pre-flight C9).
+    "eks delete-nodegroup", "eks delete-cluster", "dynamodb update-table", "dynamodb delete-table", "apigatewayv2 delete-api", "cognito-idp delete-user-pool", "efs delete-mount-target", "elasticache delete-replication-group", "kinesis delete-stream", "firehose delete-delivery-stream", "glue stop-crawler", "glue delete-database", "athena delete-work-group", "stepfunctions delete-state-machine", "elbv2 delete-load-balancer", "elb delete-load-balancer", "eks update-cluster-config"]) assert.ok(calls.some((c) => c.cli === must), must);
   const refused = [];
   for (const c of calls) for (const req of requestsOf(c)) {
     const d = decide(POLICIES.role, req);
@@ -669,7 +689,7 @@ test("the peer step's calls stay inside wg-admin-deploy's own policy (unchanged;
   for (const c of calls) assert.ok(!deny.includes(`"ec2:${camel(c.split(" ")[1])}"`), c);
 });
 
-test("A29's fall-back: lists too long for 10 policies become per-service Delete/Modify/Update/Terminate wildcards", () => {
+test("A29's fall-back: lists too long for ROLE_POLICIES_MAX policies become per-service Delete/Modify/Update/Terminate wildcards", () => {
   const many = Array.from({ length: 4000 }, (_, i) => `ec2:DoSomethingQuiteLongNumber${String(i).padStart(4, "0")}`);
   const r = renderLabPolicies({ services: ABAC_SERVICES, create: ["ec2:CreateVpc", "ec2:RunInstances"], change: many, createOn: { "ec2:RunInstances": ["arn:aws:ec2:*:*:instance/*", "arn:aws:ec2:*:*:volume/*"] }, untag: ["ec2:DeleteTags"] });
   assert.ok(r.role.length <= ROLE_POLICIES_MAX);
@@ -816,5 +836,152 @@ test("ruling A82: a lab may move a subnet off its VPC's untagged default ACL ont
   for (const drop of ["DenyVpnServer", "NaclMoveLabSubnetsOnly"]) {
     const docs = POLICIES.role.map((d) => ({ ...d, Statement: d.Statement.filter((s) => s.Sid !== drop) }));
     assert.equal(decide(docs, vpnSubnet), "explicitDeny", `without ${drop}`);
+  }
+});
+
+// ── Batch 3 (labs 11–19): rulings P1–P4, P8, P10 ──────────────────────────
+
+test("ruling P2: API Gateway's verbs: POST is a create on /apis only; PUT, PATCH and DELETE need the lab tag; /account is refused", () => {
+  const verb = (Name) => ({ Name, ActionConditionKeys: ["aws:RequestTag/${TagKey}", "aws:TagKeys"], Resources: [{ Name: "Api" }, { Name: "Apis" }, { Name: "Account" }], Annotations: { Properties: { IsWrite: Name !== "GET" } } });
+  const sar = {
+    apigateway: {
+      Name: "apigateway",
+      Resources: [
+        { Name: "Api", ARNFormats: ["arn:${Partition}:apigateway:${Region}::/apis/${ApiId}"], ConditionKeys: ["aws:ResourceTag/${TagKey}"] },
+        { Name: "Apis", ARNFormats: ["arn:${Partition}:apigateway:${Region}::/apis"], ConditionKeys: ["aws:ResourceTag/${TagKey}"] },
+        { Name: "Account", ARNFormats: ["arn:${Partition}:apigateway:${Region}::/account"], ConditionKeys: [] },
+      ],
+      Actions: ["GET", "POST", "PUT", "PATCH", "DELETE"].map(verb),
+    },
+  };
+  const { create, change, createOn, untag } = abacLists(sar);
+  assert.deepEqual(create, ["apigateway:POST"]);
+  assert.deepEqual(createOn["apigateway:POST"], HTTP_VERB_RULES.apigateway.postCreatesOn);
+  assert.deepEqual(change, ["apigateway:DELETE", "apigateway:PATCH", "apigateway:PUT"]);
+  assert.ok(untag.includes("apigateway:DELETE"));
+  const { role } = renderLabPolicies({ services: ["apigateway"], create, change, createOn, untag });
+  const d = (action, resource, ctx) => decide(role, { action, resource, ctx });
+  const R = { "aws:RequestedRegion": "eu-west-2" };
+  assert.equal(d("apigateway:POST", "arn:aws:apigateway:eu-west-2::/apis", { ...R, "aws:RequestTag/cloudlabs-lab": "saa-12-x" }), "allowed");
+  assert.equal(d("apigateway:POST", "arn:aws:apigateway:eu-west-2::/apis", R), "explicitDeny");
+  assert.equal(d("apigateway:POST", "arn:aws:apigateway:eu-west-2::/apis/a1/routes", R), "allowed");
+  // Pre-flight C17, option (b): the tag is asked for only on the API, its stages, /account and the other top-level
+  // paths (an API id is 10 characters); a route, integration or authoriser is judged by nothing.
+  assert.equal(d("apigateway:DELETE", "arn:aws:apigateway:eu-west-2::/apis/a1b2c3d4e5", { ...R, "aws:ResourceTag/cloudlabs-lab": "saa-12-x" }), "allowed");
+  assert.equal(d("apigateway:DELETE", "arn:aws:apigateway:eu-west-2::/apis/a1b2c3d4e5", R), "explicitDeny");
+  assert.equal(d("apigateway:DELETE", "arn:aws:apigateway:eu-west-2::/apis/a1b2c3d4e5/routes/x", R), "allowed");
+  assert.equal(d("apigateway:DELETE", "arn:aws:apigateway:eu-west-2::/apis/a1b2c3d4e5/integrations/y", R), "allowed");
+  assert.equal(d("apigateway:DELETE", "arn:aws:apigateway:eu-west-2::/apis/a1b2c3d4e5/stages/$default", R), "explicitDeny");
+  assert.equal(d("apigateway:PATCH", "arn:aws:apigateway:eu-west-2::/restapis/r1b2c3d4e5", R), "explicitDeny");
+  assert.equal(d("apigateway:PUT", "arn:aws:apigateway:eu-west-2::/domainnames/api.example.com", R), "explicitDeny");
+  assert.equal(d("apigateway:DELETE", "arn:aws:apigateway:eu-west-2::/vpclinks/v1", R), "explicitDeny");
+  assert.equal(d("apigateway:PATCH", "arn:aws:apigateway:eu-west-2::/account", R), "explicitDeny");
+  assert.equal(d("apigateway:DELETE", "arn:aws:apigateway:eu-west-2::/tags/x", { ...R, "aws:ResourceTag/cloudlabs-lab": "saa-12-x", "aws:TagKeys": ["cloudlabs-lab"] }), "explicitDeny", "never untag the lab tag");
+  const verbs = role.flatMap((x) => x.Statement).filter((s) => [].concat(s.Action).includes("apigateway:DELETE") && /^ChangeNeedsLabTag/.test(s.Sid));
+  assert.equal(verbs.length, 1);
+  assert.deepEqual(verbs[0].Resource, HTTP_VERB_RULES.apigateway.changesOn);
+});
+
+test("pre-flight C17 (b): no other action's wildcard covers an HTTP verb (it would refuse the verb on every path)", () => {
+  const sar = { apigateway: { Name: "apigateway", Resources: [{ Name: "Portal", ConditionKeys: ["aws:ResourceTag/${TagKey}"] }], Actions: [
+    W({ Name: "PutPortalPolicy", Resources: [{ Name: "Portal" }] }),
+    W({ Name: "PutPortalThing", Resources: [{ Name: "Portal" }] }),
+    W({ Name: "PUT", ActionConditionKeys: ["aws:RequestTag/${TagKey}"], Resources: [{ Name: "Portal" }] }),
+  ] } };
+  // Without keeping the verbs out of the fold, the three would fold into apigateway:Put*.
+  assert.deepEqual(abacLists(sar).change, ["apigateway:PUT", "apigateway:PutPortal*"]);
+  const abac = { services: ["apigateway"], create: [], createOn: {}, untag: [] };
+  assert.throws(() => renderLabPolicies({ ...abac, change: ["apigateway:Put*", "apigateway:PUT"] }), /apigateway:Put\*.*P2/);
+  assert.throws(() => renderLabPolicies({ ...abac, change: ["apigateway:De*"] }), /P2/);
+  assert.doesNotThrow(() => renderLabPolicies({ ...abac, change: ["apigateway:PUT", "apigateway:PutPortal*", "apigateway:DeletePortal*"] }));
+});
+
+test("rulings P3 and P4: DynamoDB is refused only outside table/lab-*; CopyImage is exempt; both lists say so", { skip }, () => {
+  const { ABAC, POLICIES } = files();
+  assert.ok(!ABAC.create.some((a) => /^ec2:Copy(Image|\*)/.test(a)), "CopyImage is in no create list (ruling P4)");
+  assert.ok(ABAC.create.includes("dynamodb:CreateTable"));
+  const st = POLICIES.role.flatMap((d) => d.Statement);
+  const dyn = st.filter((s) => s.Effect === "Deny" && [].concat(s.Action ?? []).some((a) => a.startsWith("dynamodb:")) && /NeedsLabTag/.test(s.Sid));
+  assert.ok(dyn.length >= 2 && dyn.every((s) => JSON.stringify(s.NotResource) === JSON.stringify(NAMED_TABLES)), JSON.stringify(dyn.map((s) => s.Sid)));
+  assert.ok(CREATE_TAG_EXEMPT.includes("ec2:CopyImage"));
+});
+
+test("Review Focus 1: a replica table named lab-* is allowed untagged in Ireland; another table is refused; P8's load balancers", { skip }, () => {
+  const { POLICIES } = files();
+  const d = (action, resource, ctx) => decide(POLICIES.role, { action, resource, ctx });
+  const IE = { "aws:RequestedRegion": "eu-west-1" };
+  for (const a of ["dynamodb:CreateTable", "dynamodb:CreateTableReplica", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:BatchWriteItem"]) assert.equal(d(a, `arn:aws:dynamodb:eu-west-1:${A}:table/lab-saa-16-dr-pilot-light-orders`, IE), "allowed", a);
+  assert.notEqual(d("dynamodb:CreateTable", `arn:aws:dynamodb:eu-west-1:${A}:table/orders`, IE), "allowed");
+  assert.notEqual(d("dynamodb:DeleteTable", `arn:aws:dynamodb:eu-west-2:${A}:table/orders`, { "aws:RequestedRegion": "eu-west-2" }), "allowed");
+  assert.equal(d("dynamodb:CreateTable", `arn:aws:dynamodb:eu-west-2:${A}:table/orders`, NEW), "allowed", "a tagged table of any name");
+  assert.equal(d("ec2:CopyImage", "arn:aws:ec2:eu-west-1::image/*", IE), "allowed");
+  assert.equal(d("ec2:CopyImage", "arn:aws:ec2:us-east-2::image/*", { "aws:RequestedRegion": "us-east-2" }), "explicitDeny", "never a third region");
+  const lb = `arn:aws:elasticloadbalancing:eu-west-2:${A}:loadbalancer/a1b2c3`;
+  const R = { "aws:RequestedRegion": "eu-west-2" };
+  assert.equal(d("elasticloadbalancing:DeleteLoadBalancer", lb, { ...R, [`aws:ResourceTag/${EKS_LB_TAG}`]: "owned" }), "allowed");
+  assert.equal(d("elasticloadbalancing:DeleteLoadBalancer", lb, LAB), "allowed");
+  assert.equal(d("elasticloadbalancing:DeleteLoadBalancer", lb, { ...R, "aws:ResourceTag/kubernetes.io/cluster/someone-else": "owned" }), "explicitDeny");
+  assert.equal(d("elasticloadbalancing:DeleteLoadBalancer", lb, R), "explicitDeny");
+  assert.equal(d("elasticloadbalancing:DeleteLoadBalancer", lb, { ...R, "aws:ResourceTag/wg-admin": "vpn", [`aws:ResourceTag/${EKS_LB_TAG}`]: "owned" }), "explicitDeny", "never the VPN server's");
+});
+
+test("ruling P1: 20 policies at most, at least 4 spare, each packed under POLICY_PACK", { skip }, () => {
+  const { POLICIES } = files();
+  assert.equal(ROLE_POLICIES_MAX, 20);
+  assert.ok(POLICIES.role.length <= ROLE_POLICIES_MAX - 4, `${POLICIES.role.length} role policies`);
+  for (const [i, d] of POLICIES.role.entries()) assert.ok(policySize(d, FILL) < POLICY_PACK, `role policy ${i + 1}: ${policySize(d, FILL)}`);
+});
+
+test("what labs 11–19 do is allowed: tagged creates, their changes, the roles they pass, the service-linked roles they need", { skip }, () => {
+  const { POLICIES } = files();
+  const allowed = (action, resource, ctx) => assert.equal(decide(POLICIES.role, { action, resource, ctx }), "allowed", `${action} on ${resource}`);
+  const arn = (svc, rest, region = "eu-west-2") => `arn:aws:${svc}:${region}:${A}:${rest}`;
+  const pass = (name, svc) => allowed("iam:PassRole", `arn:aws:iam::${A}:role/cloudlabs-lab/${name}`, { "iam:PassedToService": `${svc}.amazonaws.com` });
+  // Lab 11: ElastiCache.
+  allowed("elasticache:CreateReplicationGroup", arn("elasticache", "replicationgroup:ca11k3x9q"), NEW);
+  allowed("elasticache:CreateCacheSubnetGroup", arn("elasticache", "subnetgroup:lab-saa-11-three-tier-cache"), NEW);
+  allowed("elasticache:DeleteReplicationGroup", arn("elasticache", "replicationgroup:ca11k3x9q"), LAB);
+  // Lab 12: Cognito, DynamoDB, the API's integration permission.
+  allowed("cognito-idp:CreateUserPool", "*", NEW);
+  for (const a of ["cognito-idp:CreateUserPoolClient", "cognito-idp:AdminCreateUser", "cognito-idp:AdminSetUserPassword", "cognito-idp:DeleteUserPool"]) allowed(a, arn("cognito-idp", "userpool/eu-west-2_AbCdEf"), LAB);
+  allowed("dynamodb:CreateTable", arn("dynamodb", "table/lab-saa-12-serverless-api-items"), NEW);
+  // Lab 13: queues, topic, bus, state machine, the roles they pass.
+  for (const [a, r] of [["sqs:CreateQueue", "lab-saa-13-decoupling-billing"], ["sns:CreateTopic", "lab-saa-13-decoupling-orders"], ["events:CreateEventBus", "event-bus/lab-saa-13-decoupling-bus"], ["states:CreateStateMachine", "stateMachine:lab-saa-13-decoupling-orders"]]) allowed(a, arn(a.split(":")[0], r), NEW);
+  for (const [a, r] of [["sqs:SetQueueAttributes", "lab-saa-13-decoupling-billing"], ["sns:Subscribe", "lab-saa-13-decoupling-orders"], ["events:PutTargets", "rule/lab-saa-13-decoupling-bus/lab-saa-13-decoupling-placed"], ["states:DeleteStateMachine", "stateMachine:lab-saa-13-decoupling-orders"]]) allowed(a, arn(a.split(":")[0], r), LAB);
+  pass("lab-saa-13-decoupling-sfn", "states");
+  pass("lab-saa-13-decoupling-events", "events");
+  // Lab 14: EFS and its mount targets; the service-linked role.
+  allowed("elasticfilesystem:CreateFileSystem", arn("elasticfilesystem", "file-system/*"), NEW);
+  allowed("elasticfilesystem:CreateMountTarget", arn("elasticfilesystem", "file-system/fs-0abc"), LAB);
+  allowed("iam:CreateServiceLinkedRole", `arn:aws:iam::${A}:role/aws-service-role/elasticfilesystem.amazonaws.com/AWSServiceRoleForAmazonElasticFileSystem`, { "iam:AWSServiceName": "elasticfilesystem.amazonaws.com" });
+  // Lab 16: Ireland, the replication role, the DynamoDB replication service-linked role, Route 53 in us-east-1.
+  allowed("ec2:CreateVpc", arn("ec2", "vpc/*", "eu-west-1"), { ...NEW, "aws:RequestedRegion": "eu-west-1" });
+  pass("lab-saa-16-dr-pilot-light-replication", "s3");
+  allowed("iam:CreateServiceLinkedRole", `arn:aws:iam::${A}:role/aws-service-role/replication.dynamodb.amazonaws.com/AWSServiceRoleForDynamoDBReplication`, { "iam:AWSServiceName": "replication.dynamodb.amazonaws.com" });
+  for (const a of ["route53:CreateHostedZone", "route53:AssociateVPCWithHostedZone", "route53:CreateHealthCheck"]) allowed(a, "*", { "aws:RequestedRegion": "us-east-1" });
+  // Lab 17: Kinesis, Firehose, Glue, Athena.
+  for (const [a, r] of [["kinesis:CreateStream", "stream/lab-saa-17-data-pipeline-events"], ["firehose:CreateDeliveryStream", "deliverystream/lab-saa-17-data-pipeline-to-s3"], ["glue:CreateDatabase", "database/lab_saa_17_data_pipeline"], ["glue:CreateCrawler", "crawler/lab-saa-17-data-pipeline-events"], ["athena:CreateWorkGroup", "workgroup/lab-saa-17-data-pipeline-wg"]]) allowed(a, arn(a.split(":")[0], r), NEW);
+  for (const [a, r] of [["kinesis:DeleteStream", "stream/lab-saa-17-data-pipeline-events"], ["glue:DeleteCrawler", "crawler/lab-saa-17-data-pipeline-events"], ["athena:DeleteWorkGroup", "workgroup/lab-saa-17-data-pipeline-wg"]]) allowed(a, arn(a.split(":")[0], r), LAB);
+  allowed("glue:DeleteDatabase", arn("glue", "database/lab_saa_17_data_pipeline"), { "aws:RequestedRegion": "eu-west-2" });
+  pass("lab-saa-17-data-pipeline-firehose", "firehose");
+  pass("lab-saa-17-data-pipeline-crawler", "glue");
+  // Lab 18: the Spot service-linked role. Lab 19: EKS, its roles.
+  allowed("iam:CreateServiceLinkedRole", `arn:aws:iam::${A}:role/aws-service-role/spot.amazonaws.com/AWSServiceRoleForEC2Spot`, { "iam:AWSServiceName": "spot.amazonaws.com" });
+  allowed("eks:CreateCluster", arn("eks", "cluster/lab-saa-19-eks"), NEW);
+  allowed("eks:CreateNodegroup", arn("eks", "nodegroup/lab-saa-19-eks/lab-saa-19-eks-ng/*"), NEW);
+  for (const [a, r] of [["eks:DeleteNodegroup", "nodegroup/lab-saa-19-eks/lab-saa-19-eks-ng/0abc"], ["eks:DeleteCluster", "cluster/lab-saa-19-eks"]]) allowed(a, arn("eks", r), LAB);
+  pass("lab-saa-19-eks-cluster", "eks");
+  pass("lab-saa-19-eks-node", "ec2");
+  allowed("iam:AttachRolePolicy", `arn:aws:iam::${A}:role/cloudlabs-lab/lab-saa-19-eks-cluster`, { ...BOUNDED, "iam:PolicyARN": "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy" });
+});
+
+test("ruling P22: a lab may delete an untagged network interface in its VPC (EFS mount targets); the VPN server's and the default VPC's stay refused", { skip }, () => {
+  const { POLICIES } = files();
+  const eni = `arn:aws:ec2:eu-west-2:${A}:network-interface/eni-0123456789abcdef0`;
+  const R = { "aws:RequestedRegion": "eu-west-2" };
+  for (const [who, docs] of [["role", POLICIES.role], ["boundary", [POLICIES.boundary]]]) {
+    assert.equal(decide(docs, { action: "ec2:DeleteNetworkInterface", resource: eni, ctx: R }), "allowed", `${who}: an untagged lab-VPC ENI`);
+    assert.notEqual(decide(docs, { action: "ec2:DeleteNetworkInterface", resource: eni, ctx: { ...R, "aws:ResourceTag/wg-admin": "vpn" } }), "allowed", `${who}: the VPN server's ENI`);
+    assert.notEqual(decide(docs, { action: "ec2:DeleteNetworkInterface", resource: eni, ctx: { ...R, "ec2:Vpc": FILL.vpcArns[0] } }), "allowed", `${who}: a default-VPC ENI`);
   }
 });

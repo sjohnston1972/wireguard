@@ -225,6 +225,13 @@ export const AWS_IAM_USER_LABS: readonly string[] = ["soa-07-iam-kms"];
 export const AWS_CONFIG_LABS: readonly string[] = ["soa-02-systems-manager"];
 /** Labs that touch global-service regions. */
 export const AWS_GLOBAL_LABS: readonly string[] = ["soa-09-route53-cloudfront", "ans-26-edge"];
+/**
+ * Ruling P5: labs outside AWS_GLOBAL_LABS with Route 53 zones or health checks. The tagging API lists Route 53 items
+ * in us-east-1 only, so Parse payload adds us-east-1 (never us-west-2) to their LAB_REGIONS and the Worker reads it.
+ */
+export const AWS_DNS_LABS: readonly string[] = ["saa-16-dr-pilot-light"];
+/** Whether an AWS lab has items the tagging API lists only in us-east-1 (a global lab's, or a DNS lab's Route 53). */
+export const readsUsEast1 = (id: string): boolean => AWS_GLOBAL_LABS.includes(id) || AWS_DNS_LABS.includes(id);
 /** The instance types a lab may list in capacity.instance_types. */
 export const AWS_INSTANCE_TYPES: readonly string[] = ["t4g.nano", "t4g.micro", "t4g.small", "t3.micro", "t3.small", "t4g.medium"];
 /** The only lab that may list t4g.medium. */

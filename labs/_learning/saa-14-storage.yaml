@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Measure block, file and object storage side by side and choose between them on speed and cost.
+learn:
+  - Compare gp3 and io2 volumes and what their IOPS cost
+  - Share files between instances with EFS mount targets
+  - Move objects between S3 storage classes with lifecycle rules
+learning_min: 60

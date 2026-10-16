@@ -71,6 +71,14 @@ test("Parse payload: a global lab also sweeps us-east-1 and us-west-2, and keeps
   assert.equal(r.env.TF_VAR_secondary_region, "eu-west-1");
 });
 
+test("ruling P5: a DNS lab's regions add us-east-1 only (Route 53 is listed there); its secondary is Ireland", { skip: skipParse }, () => {
+  const d = { ...LAB, id: "saa-16-dr-pilot-light", version: 1 };
+  const r = parseRun("aws", { ...PAYLOAD, lab_id: d.id, version: 1, name_prefix: "a16k3x9q", secondary_region: "eu-west-1" }, d);
+  assert.equal(r.status, 0, r.out);
+  assert.equal(r.env.LAB_REGIONS, "eu-west-2 eu-west-1 us-east-1");
+  assert.equal(r.env.TF_VAR_secondary_region, "eu-west-1");
+});
+
 test("Parse payload: an Azure run gains only LAB_CLOUD=azure", { skip: skipParse }, () => {
   const az = { id: "az104-08-vms", version: 1, connectivity: { peering: "optional", dns_link: false }, timing: { deploy_min: 5, destroy_min: 5 }, identity: { creates: [] } };
   const r = parseRun("azure", { ...PAYLOAD, lab_id: az.id, version: 1, region: "uksouth", name_prefix: "l08k3x9q", gateway_cidr: undefined }, az);
@@ -230,6 +238,29 @@ test("the ready check counts deleted and not-found items as gone, and asks only 
   assert.match(d.out, /not ready: ec2:natgateway nat-0old \(could not ask AWS\)/);
   w.cleanup();
   down.cleanup();
+});
+
+test("ruling P17: the ready check fails at once on an ElastiCache cluster in incompatible-network", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: JSON.stringify({ ResourceTagMappingList: [{ ResourceARN: "arn:aws:elasticache:eu-west-2:123456789012:cluster:ca11k3x9q-001" }] }) },
+    { cmd: "aws", match: "^elasticache describe-cache-clusters", out: '{"CacheClusters":[{"CacheClusterStatus":"incompatible-network"}]}' },
+  ]);
+  const r = w.run("infra/ci/lab-ready-aws.sh", ["saa-11-three-tier", "20"], { LAB_REGIONS: "eu-west-2", LAB_READY_POLL_SECONDS: "0" });
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /not ready: elasticache:cluster ca11k3x9q-001 \(incompatible-network\)/);
+  assert.equal(w.calls().filter((c) => c.startsWith("aws elasticache describe-cache-clusters")).length, 1, "no waiting");
+  w.cleanup();
+});
+
+test("ruling P9: a Spot instance AWS took back mid-check is gone, never failed; the rest ready means ready", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: JSON.stringify({ ResourceTagMappingList: [{ ResourceARN: "arn:aws:ec2:eu-west-2:123456789012:instance/i-0spot" }, { ResourceARN: "arn:aws:ec2:eu-west-2:123456789012:instance/i-0base" }] }) },
+    { cmd: "aws", match: "^ec2 describe-instance-status --instance-ids i-0spot", out: '{"InstanceStatuses":[{"InstanceState":{"Name":"terminated"}}]}' },
+    { cmd: "aws", match: "^ec2 describe-instance-status --instance-ids i-0base", out: '{"InstanceStatuses":[{"InstanceState":{"Name":"running"},"InstanceStatus":{"Status":"ok"},"SystemStatus":{"Status":"ok"}}]}' },
+  ]);
+  const r = w.run("infra/ci/lab-ready-aws.sh", ["saa-18-cost-compute", "5"], { LAB_REGIONS: "eu-west-2", LAB_READY_POLL_SECONDS: "0" });
+  assert.equal(r.status, 0, r.out);
+  w.cleanup();
 });
 
 test("the ready check and peering refuse a bad lab id with exit 2", { skip: BASH ? false : "no bash found" }, () => {

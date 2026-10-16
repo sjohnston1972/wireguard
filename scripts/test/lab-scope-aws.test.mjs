@@ -11,7 +11,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AWS_CONFIG_LABS, AWS_GLOBAL_LABS, AWS_IAM_USER_LABS, AWS_INSTANCE_TYPES, AWS_MEDIUM_LABS, LAB_ID_RE } from "../lib/labs.mjs";
+import { AWS_CONFIG_LABS, AWS_DNS_LABS, AWS_GLOBAL_LABS, AWS_IAM_USER_LABS, AWS_INSTANCE_TYPES, AWS_MEDIUM_LABS, LAB_ID_RE } from "../lib/labs.mjs";
 import * as scope from "../../infra/ci/lab-scope-aws.mjs";
 import { planResources } from "../../infra/ci/lab-scope.mjs";
 import { realisticPlan } from "./fixtures/labs/plans/realistic.mjs";
@@ -30,7 +30,7 @@ test("the template's plan passes, and with an instance", () => {
 
 test("the constants equal the contract's copies", () => {
   assert.equal(scope.LAB_ID_RE.source, LAB_ID_RE.source);
-  for (const [a, b] of [[scope.AWS_CONFIG_LABS, AWS_CONFIG_LABS], [scope.AWS_GLOBAL_LABS, AWS_GLOBAL_LABS], [scope.AWS_IAM_USER_LABS, AWS_IAM_USER_LABS], [scope.AWS_INSTANCE_TYPES, AWS_INSTANCE_TYPES], [scope.AWS_MEDIUM_LABS, AWS_MEDIUM_LABS]]) assert.deepEqual([...a], [...b]);
+  for (const [a, b] of [[scope.AWS_CONFIG_LABS, AWS_CONFIG_LABS], [scope.AWS_DNS_LABS, AWS_DNS_LABS], [scope.AWS_GLOBAL_LABS, AWS_GLOBAL_LABS],[scope.AWS_IAM_USER_LABS, AWS_IAM_USER_LABS], [scope.AWS_INSTANCE_TYPES, AWS_INSTANCE_TYPES], [scope.AWS_MEDIUM_LABS, AWS_MEDIUM_LABS]]) assert.deepEqual([...a], [...b]);
 });
 
 const role = (over = {}) => ({
@@ -102,7 +102,7 @@ const EVIL = [
   ["provider", "a resource in another region (aws provider 6's own region)", () => plan([{ address: "aws_sns_topic.far", values: tagged(c, { name: "far", region: "us-east-1" }), refs: {} }])],
   ["provisioner", "a provisioner", () => { const p = plan(); p.configuration.root_module.resources.find((r) => r.address === "aws_vpc.lab").provisioners = [{ type: "local-exec" }]; return p; }],
   ["import", "adopting an existing VPC", () => plan([{ ...templateResources(c)[1], address: "aws_vpc.adopted", importing: { id: "vpc-0123456789abcdef0" } }])],
-  ["type", "a type not on the allow-list", () => plan([{ address: "aws_eks_cluster.x", values: tagged(c, { name: "x" }), refs: {} }])],
+  ["type", "a type not on the allow-list", () => plan([{ address: "aws_lightsail_instance.x", values: tagged(c, { name: "x" }), refs: {} }])],
   ["type", "a data source that looks up a VPC", () => realisticPlan({ resources: templateResources(c), data: [...awsData(), { address: "data.aws_vpc.wg", values: { tags: { Name: "vpc-x" } }, refs: {} }], providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: c.variables })],
   ["type", "a Config recorder outside lab 02", () => plan([{ address: "aws_config_configuration_recorder.r", values: { name: `lab-${ID}-recorder` }, unknown: ["role_arn"], refs: {} }])],
   // Ruling A48: what AWS made untagged with a VPC, or tags on an item that is already there: wg-admin-labs may not.
@@ -141,22 +141,22 @@ const EVIL = [
   ["gateway", "a tag key wg-admin", () => plan([{ address: "aws_sns_topic.x", values: { name: "x", tags: { "wg-admin": "vpn" }, tags_all: { ...c.tags, "wg-admin": "vpn" } }, refs: {} }])],
   ["gateway", "an alarm on an existing instance (dimensions InstanceId, review round 1)", () => plan([{ address: "aws_cloudwatch_metric_alarm.cpu", values: tagged(c, { alarm_name: "cpu", comparison_operator: "GreaterThanThreshold", evaluation_periods: 1, metric_name: "CPUUtilization", namespace: "AWS/EC2", period: 300, statistic: "Average", threshold: 80, dimensions: { InstanceId: "i-0123456789abcdef0" } }), refs: {} }])],
   ["gateway", "an SSM association targeting existing instances by id", () => plan([{ address: "aws_ssm_association.patch", values: tagged(c, { name: "AWS-RunPatchBaseline", targets: [{ key: "InstanceIds", values: ["i-0123456789abcdef0"] }] }), refs: {} }])],
-  ["gateway", "an EventBridge target running a command on existing instances", () => plan([{ address: "aws_cloudwatch_event_target.run", values: { arn: "arn:aws:ssm:eu-west-2::document/AWS-RunShellScript", run_command_targets: [{ key: "InstanceIds", values: ["i-0123456789abcdef0"] }] }, unknown: ["rule", "role_arn"], refs: {} }])],
+  ["gateway", "an EventBridge target running a command on existing instances", () => plan([{ address: "aws_cloudwatch_event_target.run", values: { arn: "arn:aws:ssm:eu-west-2::document/AWS-RunShellScript", run_command_targets: [{ key: "InstanceIds", values: ["i-0123456789abcdef0"] }] }, unknown: ["rule", "role_arn"], refs: { role_arn: ref("aws_iam_role.vm", "arn") } }, role()])],
   // Final review, Important 3: the VPN server's other names, and instance targets that select every instance.
   ...["vm-wg", "nic-wg", "pip-wg", "osdisk-wg", "sg-workloads", "vm-test", "osdisk-test"].map((n) => ["gateway", `an SSM association targeting tag:Name = ${n}`, () => plan([{ address: "aws_ssm_association.x", values: tagged(c, { name: "AWS-RunShellScript", targets: [{ key: "tag:Name", values: [n] }] }), refs: {} }])]),
   ["gateway", "an SSM association targeting InstanceIds = *", () => plan([{ address: "aws_ssm_association.all", values: tagged(c, { name: "AWS-RunShellScript", targets: [{ key: "InstanceIds", values: ["*"] }] }), refs: {} }])],
   ["gateway", "an SSM association on instance_id = *", () => plan([{ address: "aws_ssm_association.all", values: tagged(c, { name: "AWS-RunShellScript", instance_id: "*" }), refs: {} }])],
   ["gateway", "an SSM association targeting every instance with a Name tag (tag-key)", () => plan([{ address: "aws_ssm_association.all", values: tagged(c, { name: "AWS-RunShellScript", targets: [{ key: "tag-key", values: ["Name"] }] }), refs: {} }])],
   ["gateway", "an SSM association targeting a wildcard tag value", () => plan([{ address: "aws_ssm_association.all", values: tagged(c, { name: "AWS-RunShellScript", targets: [{ key: "tag:Name", values: ["vm-*"] }] }), refs: {} }])],
-  ["gateway", "an EventBridge target running a command on InstanceIds *", () => plan([{ address: "aws_cloudwatch_event_target.run", values: { arn: "arn:aws:ssm:eu-west-2::document/AWS-RunShellScript", run_command_targets: [{ key: "InstanceIds", values: ["*"] }] }, unknown: ["rule", "role_arn"], refs: {} }])],
-  ["gateway", "an EventBridge target running a command on vm-wg by name", () => plan([{ address: "aws_cloudwatch_event_target.run", values: { arn: "arn:aws:ssm:eu-west-2::document/AWS-RunShellScript", run_command_targets: [{ key: "tag:Name", values: ["vm-wg"] }] }, unknown: ["rule", "role_arn"], refs: {} }])],
+  ["gateway", "an EventBridge target running a command on InstanceIds *", () => plan([{ address: "aws_cloudwatch_event_target.run", values: { arn: "arn:aws:ssm:eu-west-2::document/AWS-RunShellScript", run_command_targets: [{ key: "InstanceIds", values: ["*"] }] }, unknown: ["rule", "role_arn"], refs: { role_arn: ref("aws_iam_role.vm", "arn") } }, role()])],
+  ["gateway", "an EventBridge target running a command on vm-wg by name", () => plan([{ address: "aws_cloudwatch_event_target.run", values: { arn: "arn:aws:ssm:eu-west-2::document/AWS-RunShellScript", run_command_targets: [{ key: "tag:Name", values: ["vm-wg"] }] }, unknown: ["rule", "role_arn"], refs: { role_arn: ref("aws_iam_role.vm", "arn") } }, role()])],
   ["gateway", "a backup selection naming an existing instance by ARN", () => plan([{ address: "aws_backup_selection.vms", values: { name: "vms", resources: ["arn:aws:ec2:eu-west-2:123456789012:instance/i-0123456789abcdef0"] }, unknown: ["plan_id", "iam_role_arn"], refs: {} }])],
   ["address", "a VPC outside the slot", () => { const base = templateResources(c); base[1] = { ...base[1], values: { ...base[1].values, cidr_block: "10.65.0.0/20" } }; return plan([], { base }); }],
   ["address", "a route to another lab's slot", () => plan([{ address: "aws_route.other", values: { destination_cidr_block: "10.66.0.0/18" }, unknown: ["route_table_id", "vpc_peering_connection_id"], refs: { route_table_id: ref("aws_route_table.private", "id"), vpc_peering_connection_id: ref("aws_vpc_peering_connection.other", "id") } }])],
   ["public", "an instance with a public IP", () => { const i = al2023Instance(c, { key: "app", name: "vm-app" }); i.values.associate_public_ip_address = true; return plan([i]); }],
   ["public", "a subnet that maps public IPs", () => { const base = templateResources(c); base[2] = { ...base[2], values: { ...base[2].values, map_public_ip_on_launch: true } }; return plan([], { base }); }],
   ["public", "SSH from the internet", () => plan([{ address: "aws_vpc_security_group_ingress_rule.ssh_world", values: tagged(c, { cidr_ipv4: "0.0.0.0/0", ip_protocol: "tcp", from_port: 22, to_port: 22 }), unknown: ["security_group_id"], refs: { security_group_id: ref("aws_security_group.vms", "id") } }])],
-  ["lingering", "a database that keeps a final snapshot", () => plan([{ address: "aws_db_instance.db", values: tagged(c, { instance_class: "db.t4g.micro", allocated_storage: 20, skip_final_snapshot: false, deletion_protection: false, delete_automated_backups: true, copy_tags_to_snapshot: true }), unknown: ["db_subnet_group_name"], refs: {} }])],
+  ["lingering", "a database that keeps a final snapshot", () => plan([{ address: "aws_db_subnet_group.db", values: tagged(c, { name: `lab-${ID}-db` }), unknown: ["subnet_ids"], refs: { subnet_ids: ["aws_subnet.private"] } }, { address: "aws_db_instance.db", values: tagged(c, { instance_class: "db.t4g.micro", allocated_storage: 20, skip_final_snapshot: false, deletion_protection: false, delete_automated_backups: true, copy_tags_to_snapshot: true }), unknown: ["db_subnet_group_name"], refs: { db_subnet_group_name: ref("aws_db_subnet_group.db", "name") } }])],
   ["lingering", "a bucket that cannot be force-destroyed", () => plan([{ address: "aws_s3_bucket.b", values: tagged(c, { bucket: `cloudlabs-${c.prefix}-x`, force_destroy: false }), refs: {} }])],
   ["lingering", "a log group kept for 30 days", () => plan([{ address: "aws_cloudwatch_log_group.g", values: tagged(c, { name: `/cloudlabs/${ID}/x`, retention_in_days: 30, skip_destroy: false }), refs: {} }])],
   ["lingering", "a log group with deletion protection on", () => plan([{ address: "aws_cloudwatch_log_group.g", values: tagged(c, { name: `/cloudlabs/${ID}/x`, retention_in_days: 1, skip_destroy: false, deletion_protection_enabled: true }), refs: {} }])],
@@ -200,6 +200,9 @@ const EVIL = [
   // Preflight C12: a topic's own (inline) policy is read too.
   ["public", "a topic whose own policy allows Principal *", () => plan([{ address: "aws_sns_topic.open", values: tagged(c, { name: `lab-${ID}-open`, policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: "*", Action: "sns:Publish", Resource: "*" }] }) }), refs: {} }])],
   ["public", "a Lambda permission for anyone (principal *)", () => plan([{ address: "aws_lambda_permission.p", values: { action: "lambda:InvokeFunction", principal: "*", statement_id: "all" }, unknown: ["function_name"], refs: {} }])],
+  // Task 3 fix round 1, I-1: a queue's own policy.
+  ["public", "a queue whose own policy allows Principal *", () => plan([{ address: "aws_sqs_queue.open", values: tagged(c, { name: `lab-${ID}-open`, policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: "*", Action: "sqs:*", Resource: "*" }] }) }), refs: {} }])],
+  ["public", "a queue whose own policy allows another account", () => plan([{ address: "aws_sqs_queue.open", values: tagged(c, { name: `lab-${ID}-open`, policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { AWS: "999999999999" }, Action: "sqs:SendMessage", Resource: "*" }] }) }), refs: {} }])],
   ["public", "an ECS service giving its tasks public IPs", () => plan([ecsService({ network_configuration: [{ assign_public_ip: true }] })])],
   ["size", "a distribution in every edge location (PriceClass_All)", () => plan9([{ address: "aws_cloudfront_distribution.d", values: tagged(c9, { enabled: true, price_class: "PriceClass_All", retain_on_delete: false }), refs: {} }]), "soa-09-route53-cloudfront"],
   ["size", "an ECS service of 10 tasks", () => plan([ecsService({ desired_count: 10 })])],
@@ -298,11 +301,15 @@ test("labs 01, 02 and 04's shapes pass: their alarms, associations, run-command 
     { address: "aws_cloudwatch_metric_alarm.cpu", values: tagged(c, { alarm_name: `lab-${ID}-cpu`, comparison_operator: "GreaterThanThreshold", evaluation_periods: 1, metric_name: "CPUUtilization", namespace: "AWS/EC2", period: 300, statistic: "Average", threshold: 80, dimensions: {} }), unknown: ["dimensions.InstanceId"], refs: { dimensions: own } },
     { address: "aws_ssm_association.by_id", values: tagged(c, { name: "AWS-RunPatchBaseline", targets: [{ key: "InstanceIds" }] }), unknown: ["targets.0.values"], refs: { "targets.0.values": own } },
     { address: "aws_ssm_association.by_tag", values: tagged(c, { name: "AWS-RunPatchBaseline", targets: [{ key: "tag:cloudlabs-lab", values: [ID] }] }), refs: { "targets.0.values": ["var.lab_id"] } },
-    { address: "aws_cloudwatch_event_target.run", values: { arn: "arn:aws:ssm:eu-west-2::document/AWS-RunShellScript", run_command_targets: [{ key: "InstanceIds" }] }, unknown: ["rule", "role_arn", "run_command_targets.0.values"], refs: { "run_command_targets.0.values": own } },
     { address: "aws_backup_selection.vms", values: { name: "vms", resources: [] }, unknown: ["plan_id", "iam_role_arn", "resources.0"], refs: { plan_id: ref("aws_backup_plan.p", "id"), resources: ref("aws_instance.web", "arn") } },
     { address: "aws_backup_selection.tagged", values: { name: "tagged", selection_tag: [{ type: "STRINGEQUALS", key: "cloudlabs-lab", value: ID }] }, unknown: ["plan_id", "iam_role_arn"], refs: { plan_id: ref("aws_backup_plan.p", "id"), "selection_tag.0.value": ["var.lab_id"] } },
   ];
   assert.deepEqual(rules(plan(extra)), []);
+  // Batch 3, ruling P14: an EventBridge target's arn is the lab's own topic, queue, function, state machine, stream or
+  // log group by reference, so a run-command target (an SSM document) is refused now, even on the lab's own instance
+  // and running as the lab's own role.
+  const runCommand = { address: "aws_cloudwatch_event_target.run", values: { arn: "arn:aws:ssm:eu-west-2::document/AWS-RunShellScript", run_command_targets: [{ key: "InstanceIds" }] }, unknown: ["rule", "role_arn", "run_command_targets.0.values"], refs: { role_arn: ref("aws_iam_role.vm", "arn"), "run_command_targets.0.values": own } };
+  assert.deepEqual(rules(plan([vm, role(), runCommand])), ["gateway: aws_cloudwatch_event_target.run"]);
   // A role's managed_policy_arns may list MANAGED_POLICIES and the lab's own policies.
   const extraPolicy = policy({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Action: ["logs:PutLogEvents"], Resource: "*" }] });
   const r = role({ managed_policy_arns: ["arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"] });
@@ -508,16 +515,18 @@ test("re-review N-2: an alarm notifying the lab's own topic passes; its dimensio
 });
 
 test("a Lambda permission's function_url_auth_type: NONE is refused; unset (null, not configured) passes; configured null is refused (lab 07 fix round 1)", () => {
-  const perm = (v, refs = {}) => ({ address: "aws_lambda_permission.p", values: { action: "lambda:InvokeFunction", principal: "secretsmanager.amazonaws.com", statement_id: "x", ...v }, unknown: ["function_name"], refs });
+  // Batch 3, ruling P13: the permission names its source, the lab's own secret by reference (as lab 07's does).
+  const secret = { address: "aws_secretsmanager_secret.app", values: tagged(c7, { name: "lab-soa-07-iam-kms-app", recovery_window_in_days: 0 }), refs: {} };
+  const perm = (v, refs = {}) => ({ address: "aws_lambda_permission.p", values: { action: "lambda:InvokeFunction", principal: "secretsmanager.amazonaws.com", statement_id: "x", ...v }, unknown: ["function_name", "source_arn"], refs: { source_arn: ref("aws_secretsmanager_secret.app", "arn"), ...refs } });
   const pub = (p) => rules(p, "soa-07-iam-kms").filter((r) => r.startsWith("public"));
-  assert.equal(pub(plan7([perm({ function_url_auth_type: "NONE" })])).length, 1, "NONE");
+  assert.equal(pub(plan7([secret, perm({ function_url_auth_type: "NONE" })])).length, 1, "NONE");
   // realisticPlan treats every key in values as configured, so the unset case is made by printing the null into the finished plan, as Terraform does.
-  const unset = plan7([perm({})]);
+  const unset = plan7([secret, perm({})]);
   const printNull = (o) => { if (o && typeof o === "object") { if (o.address === "aws_lambda_permission.p") { if (o.values) o.values.function_url_auth_type = null; if (o.change?.after) o.change.after.function_url_auth_type = null; } Object.values(o).forEach(printNull); } };
   printNull(unset);
   assert.deepEqual(pub(unset), [], "unset: a plan prints null, nothing configured");
   // An attribute the configuration sets to null is still refused: it is configured and not AWS_IAM (conservative).
-  assert.equal(pub(plan7([perm({ function_url_auth_type: null }, { function_url_auth_type: ["var.x"] })])).length, 1, "configured null");
+  assert.equal(pub(plan7([secret, perm({ function_url_auth_type: null }, { function_url_auth_type: ["var.x"] })])).length, 1, "configured null");
 });
 
 test("an ECS task definition: an unset task role is no role (null passes); an unknown role with no reference, a literal ARN and a non-role reference are refused", () => {
@@ -534,4 +543,373 @@ test("an ECS task definition: an unset task role is no role (null passes); an un
   assert.deepEqual(rules(plan([role(), tdLogs, td({}, ["execution_role_arn", "task_role_arn"], both({}))])), ["iam: aws_ecs_task_definition.t"], "unknown with no reference");
   assert.deepEqual(rules(plan([role(), tdLogs, td({ task_role_arn: `arn:aws:iam::${ACCOUNT}:role/someone-else` })])), ["iam: aws_ecs_task_definition.t"], "a foreign role by ARN");
   assert.deepEqual(rules(plan([role(), tdLogs, td({}, ["execution_role_arn", "task_role_arn"], both({ task_role_arn: ref("aws_iam_user.u", "arn") }))])), ["iam: aws_ecs_task_definition.t"], "a reference that is not a lab role");
+});
+
+// ── Batch 3 (labs 11–19) ──
+
+const c11 = ctxAws("saa-11-three-tier", "11");
+const c12 = ctxAws("saa-12-serverless-api", "12");
+const c13 = ctxAws("saa-13-decoupling", "13");
+const c15 = ctxAws("saa-15-data-security", "15");
+const c16b = ctxAws("saa-16-dr-pilot-light", "16");
+const c16 = { ...c16b, variables: { ...c16b.variables, secondary_region: "eu-west-1" } };
+const c17 = ctxAws("saa-17-data-pipeline", "17");
+const c19 = ctxAws("saa-19-eks", "19");
+const T = (cx, address, values, more = {}) => ({ address, values: tagged(cx, values), refs: {}, ...more });
+const U = (address, values, more = {}) => ({ address, values, refs: {}, ...more });
+const rulesFor = (cx, extra, base) => rules(realisticPlan({ resources: [...(base ?? templateMainResources(cx)), ...extra], data: awsData(), providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: cx.variables }), cx.id);
+const DB = { identifier: "db-a11k3x9q", engine: "mysql", instance_class: "db.t4g.micro", allocated_storage: 20, skip_final_snapshot: true, deletion_protection: false, delete_automated_backups: true, copy_tags_to_snapshot: true, db_subnet_group_name: "lab-saa-11-three-tier-db" };
+
+test("rulings P16 and P13: refuses a public database and a Lambda permission with no own source; an own rule passes", () => {
+  assert.deepEqual(rulesFor(c11, [dbGroup(c11), T(c11, "aws_db_instance.app", { ...DB, publicly_accessible: true })], templateResources(c11)), ["public: aws_db_instance.app"]);
+  assert.deepEqual(rulesFor(c11, [dbGroup(c11), T(c11, "aws_db_instance.app", { ...DB, publicly_accessible: false })], templateResources(c11)), []);
+  const rule = T(c17, "aws_cloudwatch_event_rule.tick", { name: "lab-saa-17-data-pipeline-tick", schedule_expression: "rate(1 minute)" });
+  const perm = (over) => U("aws_lambda_permission.tick", { statement_id: "events", action: "lambda:InvokeFunction", function_name: "lab-saa-17-data-pipeline-producer", principal: "events.amazonaws.com", ...over.values }, over.more ?? {});
+  assert.deepEqual(rulesFor(c17, [rule, perm({ values: {} })]), ["public: aws_lambda_permission.tick"]);
+  assert.deepEqual(rulesFor(c17, [rule, perm({ values: {}, more: { unknown: ["source_arn"], refs: { source_arn: ref("aws_cloudwatch_event_rule.tick", "arn") } } })]), []);
+});
+
+test("Review Focus 5 / P14: refuses a target, subscription, workflow, stream or path outside the lab", () => {
+  const other = "arn:aws:sqs:eu-west-2:999999999999:theirs";
+  assert.deepEqual(rulesFor(c13, [U("aws_cloudwatch_event_target.x", { rule: "lab-saa-13-decoupling-placed", target_id: "x", arn: other })]), ["gateway: aws_cloudwatch_event_target.x"]);
+  assert.deepEqual(rulesFor(c13, [U("aws_sns_topic_subscription.x", { protocol: "https", endpoint: "https://example.com/hook" }, { unknown: ["topic_arn"], refs: { topic_arn: ref("aws_sns_topic.orders", "arn") } }), T(c13, "aws_sns_topic.orders", { name: "lab-saa-13-decoupling-orders" })]), ["gateway: aws_sns_topic_subscription.x"]);
+  const wf = (Resource) => JSON.stringify({ StartAt: "A", States: { A: { Type: "Task", Resource, End: true } } });
+  const sm = (def) => T(c13, "aws_sfn_state_machine.orders", { name: "lab-saa-13-decoupling-orders", type: "STANDARD", definition: def }, { unknown: ["role_arn"], refs: { role_arn: ref("aws_iam_role.sfn", "arn") } });
+  const sfnRole = { ...role({ name: "lab-saa-13-decoupling-sfn", assume_role_policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: "states.amazonaws.com" }, Action: "sts:AssumeRole" }] }) }), address: "aws_iam_role.sfn", values: tagged(c13, { name: "lab-saa-13-decoupling-sfn", path: "/cloudlabs-lab/", permissions_boundary: BOUNDARY, assume_role_policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: "states.amazonaws.com" }, Action: "sts:AssumeRole" }] }) }) };
+  assert.deepEqual(rulesFor(c13, [sfnRole, sm(wf("arn:aws:states:::aws-sdk:iam:createUser"))]), ["gateway: aws_sfn_state_machine.orders"]);
+  assert.deepEqual(rulesFor(c13, [sfnRole, sm(wf(`arn:aws:lambda:eu-west-2:${ACCOUNT}:function:lab-saa-13-decoupling-validate`))]), []);
+  assert.equal(scope.workflowProblem({ States: { A: { Type: "Task", Resource: "arn:aws:states:::sns:publish", Parameters: { TopicArn: "arn:aws:sns:eu-west-2:1:someone" } } } }, "saa-13-decoupling") !== null, true);
+  const svcRole = (cx, key, name, svc) => ({ address: `aws_iam_role.${key}`, values: tagged(cx, { name, path: "/cloudlabs-lab/", permissions_boundary: BOUNDARY, assume_role_policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: `${svc}.amazonaws.com` }, Action: "sts:AssumeRole" }] }) }), refs: {} });
+  const crawlerRole = svcRole(c17, "crawler", "lab-saa-17-data-pipeline-crawler", "glue");
+  const crawler = (path) => T(c17, "aws_glue_crawler.events", { name: "lab-saa-17-data-pipeline-events", database_name: "lab_saa_17_data_pipeline", s3_target: [{ path }] }, { unknown: ["role"], refs: { role: ref("aws_iam_role.crawler", "arn") } });
+  assert.deepEqual(rulesFor(c17, [crawlerRole, crawler("s3://cloudlabs-a17k3x9q-lake/events/")]), []);
+  assert.deepEqual(rulesFor(c17, [crawlerRole, crawler("s3://someone-else/events/")]), ["gateway: aws_glue_crawler.events"]);
+  assert.deepEqual(rulesFor(c17, [T(c17, "aws_athena_workgroup.wg", { name: "lab-saa-17-data-pipeline-wg", force_destroy: true, configuration: [{ enforce_workgroup_configuration: true, bytes_scanned_cutoff_per_query: 10485760, result_configuration: [{ output_location: "s3://someone-else/results/" }] }] })]), ["gateway: aws_athena_workgroup.wg"]);
+  const fhRole = svcRole(c17, "firehose", "lab-saa-17-data-pipeline-firehose", "firehose");
+  const fhRefs = { unknown: ["kinesis_source_configuration.0.role_arn", "extended_s3_configuration.0.role_arn"], refs: { "kinesis_source_configuration.0.role_arn": ref("aws_iam_role.firehose", "arn"), "extended_s3_configuration.0.role_arn": ref("aws_iam_role.firehose", "arn") } };
+  assert.deepEqual(rulesFor(c17, [fhRole, T(c17, "aws_kinesis_firehose_delivery_stream.x", { name: "lab-saa-17-data-pipeline-to-s3", destination: "extended_s3", kinesis_source_configuration: [{ kinesis_stream_arn: "arn:aws:kinesis:eu-west-2:999999999999:stream/theirs" }], extended_s3_configuration: [{ bucket_arn: "arn:aws:s3:::someone-else" }] }, fhRefs)]), ["gateway: aws_kinesis_firehose_delivery_stream.x"]);
+});
+
+test("ruling P6: refuses a private zone on another VPC or with a real name, and a health check on another alarm", () => {
+  const zone = (over, more = {}) => T(c16, "aws_route53_zone.dr", { name: "dr.a16k3x9q.internal", force_destroy: true, vpc: [{ vpc_region: "eu-west-2" }], ...over }, { unknown: ["vpc.0.vpc_id"], refs: { "vpc.0.vpc_id": ref("aws_vpc.lab", "id") }, ...more });
+  assert.deepEqual(rulesFor(c16, [zone({})], templateResources(c16)), []);
+  assert.deepEqual(rulesFor(c16, [zone({ name: "corp.example.com" })], templateResources(c16)), ["gateway: aws_route53_zone.dr"]);
+  assert.deepEqual(rulesFor(c16, [zone({ vpc: [{ vpc_id: "vpc-0123456789abcdef0", vpc_region: "eu-west-2" }] }, { unknown: [], refs: {} })], templateResources(c16)), ["gateway: aws_route53_zone.dr"]);
+  assert.deepEqual(rulesFor(c16, [zone({ vpc: [{ vpc_region: "us-east-2" }] })], templateResources(c16)), ["provider: aws_route53_zone.dr"]);
+  const hc = (name) => T(c16, "aws_route53_health_check.app", { type: "CLOUDWATCH_METRIC", cloudwatch_alarm_name: name, cloudwatch_alarm_region: "eu-west-2", insufficient_data_health_status: "Healthy" });
+  assert.deepEqual(rulesFor(c16, [hc("lab-saa-16-dr-pilot-light-app-down")]), []);
+  assert.deepEqual(rulesFor(c16, [hc("someone-elses-alarm")]), ["gateway: aws_route53_health_check.app"]);
+});
+
+test("ruling P18: refuses an endpoint policy allowing another bucket; the lab's buckets and AL2023's repositories pass", () => {
+  const pol = (Resource) => JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: "*", Action: "s3:*", Resource }] });
+  const ep = (Resource) => U("aws_vpc_endpoint_policy.s3", { policy: pol(Resource) }, { unknown: ["vpc_endpoint_id"], refs: { vpc_endpoint_id: ref("aws_vpc_endpoint.s3", "id") } });
+  assert.deepEqual(rulesFor(c15, [ep(["arn:aws:s3:::cloudlabs-a15k3x9q-data", "arn:aws:s3:::cloudlabs-a15k3x9q-data/*", "arn:aws:s3:::al2023-repos-eu-west-2-de612dc2/*"])], templateResources(c15)), []);
+  assert.deepEqual(rulesFor(c15, [ep(["arn:aws:s3:::*"])], templateResources(c15)), ["public: aws_vpc_endpoint_policy.s3"]);
+  assert.match(scope.endpointPolicyProblem({ Statement: [{ Effect: "Allow", Principal: "*", Action: "s3:*", NotResource: "arn:aws:s3:::x" }] }, "a15k3x9q", "eu-west-2"), /NotResource/);
+});
+
+test("Review Focus 1: a DynamoDB table or an AMI copy not named lab-<id>-*, a copy of anything but the public parameter, a misnamed Glue database are refused", () => {
+  const table = (name, extra = {}) => T(c16, "aws_dynamodb_table.orders", { name, billing_mode: "PAY_PER_REQUEST", hash_key: "id", deletion_protection_enabled: false, ...extra });
+  assert.deepEqual(rulesFor(c16, [table("orders")]), ["untaggable: aws_dynamodb_table.orders"]);
+  assert.deepEqual(rulesFor(c16, [table("lab-saa-16-dr-pilot-light-orders", { replica: [{ region_name: "eu-west-1", propagate_tags: true }] })]), []);
+  assert.deepEqual(rulesFor(c16, [table("lab-saa-16-dr-pilot-light-orders", { replica: [{ region_name: "us-east-2", propagate_tags: true }] })]), ["provider: aws_dynamodb_table.orders"]);
+  assert.deepEqual(rulesFor(c16, [table("lab-saa-16-dr-pilot-light-orders", { replica: [{ region_name: "eu-west-1", propagate_tags: false }] })]), ["tag: aws_dynamodb_table.orders"]);
+  assert.deepEqual(rulesFor(c16, [table("lab-saa-16-dr-pilot-light-orders", { billing_mode: "PROVISIONED" })]), ["size: aws_dynamodb_table.orders"]);
+  const copy = (name, src) => T(c16, "aws_ami_copy.dr", { name, source_ami_id: src, source_ami_region: "eu-west-2" });
+  assert.deepEqual(rulesFor(c16, [copy("lab-saa-16-dr-pilot-light-al2023", AMI)], templateResources(c16)), []);
+  assert.deepEqual(rulesFor(c16, [copy("al2023-copy", AMI)], templateResources(c16)), ["untaggable: aws_ami_copy.dr"]);
+  assert.deepEqual(rulesFor(c16, [copy("lab-saa-16-dr-pilot-light-al2023", "ami-0fedcba9876543210")], templateResources(c16)), ["gateway: aws_ami_copy.dr"]);
+  assert.deepEqual(rulesFor(c17, [T(c17, "aws_glue_catalog_database.lake", { name: "events" })]), ["untaggable: aws_glue_catalog_database.lake"]);
+  assert.deepEqual(rulesFor(c17, [T(c17, "aws_glue_catalog_database.lake", { name: "lab_saa_17_data_pipeline" })]), []);
+});
+
+test("ruling P12: API Gateway and Cognito: an HTTP proxy, an authoriser on another pool, an unthrottled stage, a PLUS pool are refused", () => {
+  const api = T(c12, "aws_apigatewayv2_api.lab", { name: "lab-saa-12-serverless-api", protocol_type: "HTTP" });
+  const apiRef = { unknown: ["api_id"], refs: { api_id: ref("aws_apigatewayv2_api.lab", "id") } };
+  assert.deepEqual(rulesFor(c12, [api, U("aws_apigatewayv2_integration.x", { integration_type: "HTTP_PROXY", integration_uri: "https://example.com", integration_method: "ANY" }, apiRef)]), ["gateway: aws_apigatewayv2_integration.x"]);
+  assert.deepEqual(rulesFor(c12, [api, U("aws_apigatewayv2_authorizer.jwt", { authorizer_type: "JWT", name: "cognito", identity_sources: ["$request.header.Authorization"], jwt_configuration: [{ issuer: "https://cognito-idp.eu-west-2.amazonaws.com/eu-west-2_Theirs", audience: ["their-client"] }] }, apiRef)]), ["gateway: aws_apigatewayv2_authorizer.jwt"]);
+  assert.deepEqual(rulesFor(c12, [api, T(c12, "aws_apigatewayv2_stage.default", { name: "$default", auto_deploy: true }, apiRef)]), ["size: aws_apigatewayv2_stage.default"]);
+  assert.deepEqual(rulesFor(c12, [api, T(c12, "aws_apigatewayv2_stage.default", { name: "$default", auto_deploy: true, default_route_settings: [{ throttling_burst_limit: 10, throttling_rate_limit: 5 }] }, apiRef)]), []);
+  assert.deepEqual(rulesFor(c12, [T(c12, "aws_cognito_user_pool.users", { name: "lab-saa-12-serverless-api-users", user_pool_tier: "PLUS", deletion_protection: "INACTIVE" })]), ["size: aws_cognito_user_pool.users"]);
+  assert.deepEqual(rulesFor(c12, [T(c12, "aws_cognito_user_pool.users", { name: "lab-saa-12-serverless-api-users", user_pool_tier: "LITE", deletion_protection: "ACTIVE" })]), ["lingering: aws_cognito_user_pool.users"]);
+});
+
+test("Review Focus 3: EKS: refuses creator admin, extended support, control-plane logs, another node size and a node group over 2", () => {
+  const cluster = (over = {}) => T(c19, "aws_eks_cluster.lab", { name: "lab-saa-19-eks", access_config: [{ authentication_mode: "API", bootstrap_cluster_creator_admin_permissions: false }], upgrade_policy: [{ support_type: "STANDARD" }], vpc_config: [{ endpoint_private_access: true, endpoint_public_access: true }], ...over }, { unknown: ["role_arn", "vpc_config.0.subnet_ids"], refs: { role_arn: ref("aws_iam_role.cluster", "arn"), "vpc_config.0.subnet_ids": ["aws_subnet.private"] } });
+  const crole = { ...role(), address: "aws_iam_role.cluster", values: tagged(c19, { name: "lab-saa-19-eks-cluster", path: "/cloudlabs-lab/", permissions_boundary: BOUNDARY, assume_role_policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: "eks.amazonaws.com" }, Action: "sts:AssumeRole" }] }) }) };
+  const base = templateResources(c19);
+  assert.deepEqual(rulesFor(c19, [crole, cluster()], base), []);
+  assert.deepEqual(rulesFor(c19, [crole, cluster({ access_config: [{ authentication_mode: "API", bootstrap_cluster_creator_admin_permissions: true }] })], base), ["iam: aws_eks_cluster.lab"]);
+  assert.deepEqual(rulesFor(c19, [crole, cluster({ upgrade_policy: [{ support_type: "EXTENDED" }] })], base), ["size: aws_eks_cluster.lab"]);
+  assert.deepEqual(rulesFor(c19, [crole, cluster({ enabled_cluster_log_types: ["api", "audit"] })], base), ["lingering: aws_eks_cluster.lab"]);
+  const ng = (over = {}) => T(c19, "aws_eks_node_group.lab", { cluster_name: "lab-saa-19-eks", node_group_name: "lab-saa-19-eks-ng", instance_types: ["t4g.medium"], scaling_config: [{ desired_size: 1, min_size: 1, max_size: 2 }], ...over }, { unknown: ["node_role_arn", "subnet_ids"], refs: { node_role_arn: ref("aws_iam_role.cluster", "arn"), subnet_ids: ["aws_subnet.private"] } });
+  assert.deepEqual(rulesFor(c19, [crole, ng()], base), []);
+  assert.deepEqual(rulesFor(c19, [crole, ng({ instance_types: ["m5.large"] })], base), ["size: aws_eks_node_group.lab"]);
+  assert.deepEqual(rulesFor(c19, [crole, ng({ scaling_config: [{ desired_size: 1, min_size: 1, max_size: 3 }] })], base), ["size: aws_eks_node_group.lab"]);
+});
+
+test("lingering: an Athena workgroup without force_destroy, a stream without enforce_consumer_deletion, an ElastiCache final snapshot", () => {
+  const wg = (force) => T(c17, "aws_athena_workgroup.wg", { name: "lab-saa-17-data-pipeline-wg", force_destroy: force, configuration: [{ enforce_workgroup_configuration: true, bytes_scanned_cutoff_per_query: 10485760, result_configuration: [{ output_location: "s3://cloudlabs-a17k3x9q-lake/athena/" }] }] });
+  assert.deepEqual(rulesFor(c17, [wg(true)]), []);
+  assert.deepEqual(rulesFor(c17, [wg(false)]), ["lingering: aws_athena_workgroup.wg"]);
+  assert.deepEqual(rulesFor(c17, [T(c17, "aws_kinesis_stream.events", { name: "lab-saa-17-data-pipeline-events", shard_count: 1, retention_period: 24, enforce_consumer_deletion: false, stream_mode_details: [{ stream_mode: "PROVISIONED" }] })]), ["lingering: aws_kinesis_stream.events"]);
+  assert.deepEqual(rulesFor(c11, [cacheGroup(c11), T(c11, "aws_elasticache_replication_group.app", { replication_group_id: "ca11k3x9q", description: "x", engine: "valkey", node_type: "cache.t4g.micro", num_cache_clusters: 1, subnet_group_name: "lab-saa-11-three-tier-data", final_snapshot_identifier: "keep-me" })]), ["lingering: aws_elasticache_replication_group.app"]);
+});
+
+test("ruling P5: a secondary provider needs a plan with secondary_region set", () => {
+  const sec = { ...AWS_PROVIDER_CONFIG, "aws.secondary": { name: "aws", full_name: "registry.terraform.io/hashicorp/aws", alias: "secondary", expressions: { alias: { constant_value: "secondary" }, region: { references: ["var.secondary_region"] }, default_tags: [{ tags: { references: ["var.tags"] } }] } } };
+  const p16 = (variables) => realisticPlan({ resources: templateMainResources(c16), data: awsData(), providers: ["aws"], providerConfig: sec, variables });
+  assert.deepEqual(rules(p16(c16.variables), c16.id), []);
+  assert.deepEqual(rules(p16({ ...c16.variables, secondary_region: "" }), c16.id), ["provider: provider.aws.secondary"]);
+});
+
+// ── Task 3 fix round 1 (task-3-review.md): each evil plan passed before its fix ──
+
+const svcRoleFor = (cx, key, svc) => ({ address: `aws_iam_role.${key}`, values: tagged(cx, { name: `lab-${cx.id}-${key}`, path: "/cloudlabs-lab/", permissions_boundary: BOUNDARY, assume_role_policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: `${svc}.amazonaws.com` }, Action: "sts:AssumeRole" }] }) }), refs: {} });
+/** A wholly unknown block: a dynamic block whose for_each is not known at plan (left out of the configuration). */
+const dyn = (...blocks) => ({ unknown: blocks, dynamic: blocks });
+const opaqueRef = (attr) => ({ unknown: [attr], refs: { [attr]: ref("aws_vpc.lab", "id") } });
+const cacheGroup = (cx) => T(cx, "aws_elasticache_subnet_group.data", { name: `lab-${cx.id}-data`, description: "x" }, { unknown: ["subnet_ids"], refs: { subnet_ids: ["aws_subnet.private"] } });
+const dbGroup = (cx) => T(cx, "aws_db_subnet_group.db", { name: `lab-${cx.id}-db` }, { unknown: ["subnet_ids"], refs: { subnet_ids: ["aws_subnet.private"] } });
+
+test("fix round 1, I-1: a queue's own policy is read like any resource policy (ruling P10)", () => {
+  const q = (Principal) => T(c13, "aws_sqs_queue.open", { name: "lab-saa-13-decoupling-open", policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal, Action: "sqs:SendMessage", Resource: "*" }] }) });
+  assert.deepEqual(rulesFor(c13, [q("*")]), ["public: aws_sqs_queue.open"]);
+  assert.deepEqual(rulesFor(c13, [q({ AWS: "arn:aws:iam::999999999999:root" })]), ["public: aws_sqs_queue.open"]);
+  assert.deepEqual(rulesFor(c13, [q({ Service: "sns.amazonaws.com" })]), []);
+  assert.deepEqual(rulesFor(c13, [T(c13, "aws_sqs_queue.plain", { name: "lab-saa-13-decoupling-plain" })]), [], "no policy written: the computed one is AWS's default");
+});
+
+test("fix round 1, I-2: a workflow reaches only the lab's own account and regions; no other SNS target, JSONata or credentials (ruling P14)", () => {
+  const id = "saa-13-decoupling";
+  const opts = { account: ACCOUNT, regions: ["eu-west-2"] };
+  const task = (Resource, Parameters, extra = {}) => ({ StartAt: "A", States: { A: { Type: "Task", Resource, ...(Parameters ? { Parameters } : {}), End: true, ...extra } } });
+  const fn = (acct, region = "eu-west-2") => `arn:aws:lambda:${region}:${acct}:function:lab-${id}-validate`;
+  const topic = (acct, region = "eu-west-2") => `arn:aws:sns:${region}:${acct}:lab-${id}-orders`;
+  const queue = (acct, region = "eu-west-2") => `https://sqs.${region}.amazonaws.com/${acct}/lab-${id}-billing`;
+  const ok = [
+    task(fn(ACCOUNT)),
+    task("arn:aws:states:::lambda:invoke", { FunctionName: fn(ACCOUNT), "Payload.$": "$" }),
+    task("arn:aws:states:::lambda:invoke", { FunctionName: `lab-${id}-validate` }),
+    task("arn:aws:states:::sns:publish", { TopicArn: topic(ACCOUNT), "Message.$": "$" }),
+    task("arn:aws:states:::sqs:sendMessage", { QueueUrl: queue(ACCOUNT), "MessageBody.$": "$" }),
+  ];
+  for (const d of ok) assert.equal(scope.workflowProblem(d, id, opts), null, JSON.stringify(d));
+  const bad = [
+    task(fn("999999999999")),
+    task("arn:aws:states:::lambda:invoke", { FunctionName: fn("999999999999") }),
+    task("arn:aws:states:::lambda:invoke", { FunctionName: fn(ACCOUNT, "us-east-1") }),
+    task("arn:aws:states:::sns:publish", { TopicArn: topic("999999999999") }),
+    task("arn:aws:states:::sqs:sendMessage", { QueueUrl: queue("999999999999") }),
+    task("arn:aws:states:::sns:publish", { TargetArn: "arn:aws:sns:eu-west-2:999999999999:endpoint/APNS/x/y", Message: "hi" }),
+    task("arn:aws:states:::sns:publish", { PhoneNumber: "+447700900000", Message: "hi" }),
+    task("arn:aws:states:::sns:publish", { "TargetArn.$": "$.where", Message: "hi" }),
+    task("arn:aws:states:::sns:publish", { "PhoneNumber.$": "$.who", Message: "hi" }),
+    { QueryLanguage: "JSONata", StartAt: "A", States: { A: { Type: "Task", Resource: "arn:aws:states:::sns:publish", Arguments: "{% $states.input.args %}", End: true } } },
+    { StartAt: "A", States: { A: { Type: "Task", Resource: "arn:aws:states:::sns:publish", Arguments: { TopicArn: "{% $states.input.topic %}" }, End: true } } },
+    task("arn:aws:states:::lambda:invoke", { FunctionName: fn(ACCOUNT) }, { Credentials: { RoleArn: "arn:aws:iam::999999999999:role/x" } }),
+  ];
+  for (const d of bad) assert.notEqual(scope.workflowProblem(d, id, opts), null, JSON.stringify(d));
+  // Through the plan: the lab's own account is the plan's caller identity, its region the session's.
+  const sfnRole = svcRoleFor(c13, "sfn", "states");
+  const sm = (acct) => T(c13, "aws_sfn_state_machine.orders", { name: `lab-${id}-orders`, type: "STANDARD", definition: JSON.stringify(task("arn:aws:states:::sns:publish", { TopicArn: topic(acct), "Message.$": "$" })) }, { unknown: ["role_arn"], refs: { role_arn: ref("aws_iam_role.sfn", "arn") } });
+  assert.deepEqual(rulesFor(c13, [sfnRole, sm(ACCOUNT)]), []);
+  assert.deepEqual(rulesFor(c13, [sfnRole, sm("999999999999")]), ["gateway: aws_sfn_state_machine.orders"]);
+});
+
+test("fix round 1, I-3: a block wholly unknown at plan (dynamic, for_each unknown) is refused where its elements are read", () => {
+  const table = (more) => T(c16, "aws_dynamodb_table.orders", { name: "lab-saa-16-dr-pilot-light-orders", billing_mode: "PAY_PER_REQUEST", hash_key: "id", deletion_protection_enabled: false }, more);
+  assert.deepEqual(rulesFor(c16, [table(dyn("replica"))]), ["provider: aws_dynamodb_table.orders"]);
+  assert.deepEqual(rulesFor(c16, [T(c16, "aws_dynamodb_table.orders", { name: "lab-saa-16-dr-pilot-light-orders", billing_mode: "PAY_PER_REQUEST", hash_key: "id", global_table_witness: [{ region_name: "us-east-1" }] })]), ["provider: aws_dynamodb_table.orders"], "a witness is a third region");
+  const zone = T(c16, "aws_route53_zone.z", { name: `${c16.prefix}.labs.clydeford.net`, force_destroy: true }, dyn("vpc"));
+  assert.deepEqual(rulesFor(c16, [zone], templateResources(c16)), ["gateway: aws_route53_zone.z"]);
+  const crole = svcRoleFor(c19, "nodes", "ec2");
+  const ng = T(c19, "aws_eks_node_group.lab", { cluster_name: "lab-saa-19-eks", node_group_name: "lab-saa-19-eks-ng", instance_types: ["t4g.medium"], scaling_config: [{ desired_size: 1, min_size: 1, max_size: 2 }] }, { unknown: ["node_role_arn", "subnet_ids", "remote_access"], dynamic: ["remote_access"], refs: { node_role_arn: ref("aws_iam_role.nodes", "arn"), subnet_ids: ["aws_subnet.private"] } });
+  assert.deepEqual(rulesFor(c19, [crole, ng], templateResources(c19)), ["public: aws_eks_node_group.lab"]);
+  const crawlerRole = svcRoleFor(c17, "crawler", "glue");
+  const crawler = T(c17, "aws_glue_crawler.events", { name: "lab-saa-17-data-pipeline-events", database_name: "lab_saa_17_data_pipeline", s3_target: [{ path: "s3://cloudlabs-a17k3x9q-lake/events/" }] }, { unknown: ["role", "jdbc_target"], dynamic: ["jdbc_target"], refs: { role: ref("aws_iam_role.crawler", "arn") } });
+  assert.deepEqual(rulesFor(c17, [crawlerRole, crawler]), ["gateway: aws_glue_crawler.events"]);
+  const clusterRole = svcRoleFor(c19, "cluster", "eks");
+  const cluster = (blocks) => T(c19, "aws_eks_cluster.lab", { name: "lab-saa-19-eks", access_config: [{ authentication_mode: "API", bootstrap_cluster_creator_admin_permissions: false }], upgrade_policy: [{ support_type: "STANDARD" }], vpc_config: [{ endpoint_private_access: true, endpoint_public_access: true }] }, { unknown: ["role_arn", "vpc_config.0.subnet_ids", ...blocks], dynamic: blocks, refs: { role_arn: ref("aws_iam_role.cluster", "arn"), "vpc_config.0.subnet_ids": ["aws_subnet.private"] } });
+  assert.deepEqual(rulesFor(c19, [clusterRole, cluster([])], templateResources(c19)), []);
+  assert.deepEqual(rulesFor(c19, [clusterRole, cluster(["remote_network_config"])], templateResources(c19)), ["gateway: aws_eks_cluster.lab"]);
+  // Fix round 2, R2-1: compute_config is Optional and Computed, so a plan prints it wholly unknown when the lab leaves
+  // it unset, exactly as a dynamic block: it cannot be refused unread (Auto Mode is a cost, not a reach outside the lab).
+  assert.deepEqual(rulesFor(c19, [clusterRole, cluster(["compute_config"])], templateResources(c19)), []);
+  assert.deepEqual(rulesFor(c19, [clusterRole, T(c19, "aws_eks_cluster.lab", { name: "lab-saa-19-eks", access_config: [{ authentication_mode: "API", bootstrap_cluster_creator_admin_permissions: false }], upgrade_policy: [{ support_type: "STANDARD" }], vpc_config: [{ endpoint_private_access: true, endpoint_public_access: true }], compute_config: [{ enabled: true }] }, { unknown: ["role_arn", "vpc_config.0.subnet_ids"], refs: { role_arn: ref("aws_iam_role.cluster", "arn"), "vpc_config.0.subnet_ids": ["aws_subnet.private"] } })], templateResources(c19)), ["size: aws_eks_cluster.lab"], "a written Auto Mode is still refused");
+});
+
+test("fix round 1, I-4: a Firehose stream sends records only to the lab's own bucket: no backup, processor, conversion or other destination (ruling P14)", () => {
+  const fhRole = svcRoleFor(c17, "firehose", "firehose");
+  const stream = T(c17, "aws_kinesis_stream.events", { name: "lab-saa-17-data-pipeline-events", shard_count: 1, retention_period: 24, enforce_consumer_deletion: true, stream_mode_details: [{ stream_mode: "PROVISIONED" }] });
+  const bucket = T(c17, "aws_s3_bucket.lake", { bucket: "cloudlabs-a17k3x9q-lake", force_destroy: true });
+  const fh = (s3extra = {}, extra = {}) => T(c17, "aws_kinesis_firehose_delivery_stream.x", { name: "lab-saa-17-data-pipeline-to-s3", destination: "extended_s3", kinesis_source_configuration: [{}], extended_s3_configuration: [{ prefix: "events/", ...s3extra }], ...extra }, {
+    unknown: ["kinesis_source_configuration.0.kinesis_stream_arn", "kinesis_source_configuration.0.role_arn", "extended_s3_configuration.0.bucket_arn", "extended_s3_configuration.0.role_arn"],
+    refs: { "kinesis_source_configuration.0.kinesis_stream_arn": ref("aws_kinesis_stream.events", "arn"), "kinesis_source_configuration.0.role_arn": ref("aws_iam_role.firehose", "arn"), "extended_s3_configuration.0.bucket_arn": ref("aws_s3_bucket.lake", "arn"), "extended_s3_configuration.0.role_arn": ref("aws_iam_role.firehose", "arn") },
+  });
+  const base = [fhRole, stream, bucket];
+  assert.deepEqual(rulesFor(c17, [...base, fh()]), []);
+  assert.deepEqual(rulesFor(c17, [...base, fh({ s3_backup_mode: "Enabled", s3_backup_configuration: [{ bucket_arn: "arn:aws:s3:::someone-else", role_arn: `arn:aws:iam::${ACCOUNT}:role/x` }] })]), ["gateway: aws_kinesis_firehose_delivery_stream.x"]);
+  assert.deepEqual(rulesFor(c17, [...base, fh({ processing_configuration: [{ enabled: true, processors: [{ type: "Lambda", parameters: [{ parameter_name: "LambdaArn", parameter_value: "arn:aws:lambda:eu-west-2:999999999999:function:x" }] }] }] })]), ["gateway: aws_kinesis_firehose_delivery_stream.x"]);
+  assert.deepEqual(rulesFor(c17, [...base, fh({ data_format_conversion_configuration: [{ enabled: true, schema_configuration: [{ database_name: "x", table_name: "y", role_arn: `arn:aws:iam::${ACCOUNT}:role/x`, catalog_id: "999999999999" }] }] })]), ["gateway: aws_kinesis_firehose_delivery_stream.x"]);
+  assert.deepEqual(rulesFor(c17, [...base, fh({}, { http_endpoint_configuration: [{ url: "https://example.com", s3_backup_mode: "FailedDataOnly" }] })]), ["gateway: aws_kinesis_firehose_delivery_stream.x"]);
+});
+
+test("fix round 1, I-5: a cache or database names the lab's own subnet group (never unset or default: the default VPC)", () => {
+  const rg = (over = {}) => T(c11, "aws_elasticache_replication_group.app", { replication_group_id: "ca11k3x9q", description: "x", engine: "valkey", node_type: "cache.t4g.micro", num_cache_clusters: 1, ...over });
+  const base = templateResources(c11);
+  assert.deepEqual(rulesFor(c11, [cacheGroup(c11), rg({ subnet_group_name: "lab-saa-11-three-tier-data" })], base), []);
+  assert.deepEqual(rulesFor(c11, [cacheGroup(c11), rg({}, )], base), ["gateway: aws_elasticache_replication_group.app"], "unset: the default subnet group");
+  assert.deepEqual(rulesFor(c11, [cacheGroup(c11), rg({ subnet_group_name: "default" })], base), ["gateway: aws_elasticache_replication_group.app"]);
+  assert.deepEqual(rulesFor(c11, [cacheGroup(c11), { ...rg(), unknown: ["subnet_group_name"], refs: { subnet_group_name: ref("aws_elasticache_subnet_group.data", "name") } }], base), [], "by reference");
+  const { db_subnet_group_name: _group, ...noGroup } = DB;
+  const db = (over = {}) => T(c11, "aws_db_instance.app", { ...noGroup, ...over });
+  assert.deepEqual(rulesFor(c11, [dbGroup(c11), db({ db_subnet_group_name: "lab-saa-11-three-tier-db" })], base), []);
+  assert.deepEqual(rulesFor(c11, [dbGroup(c11), db()], base), ["gateway: aws_db_instance.app"], "unset: the default VPC");
+  assert.deepEqual(rulesFor(c11, [dbGroup(c11), db({ db_subnet_group_name: "default" })], base), ["gateway: aws_db_instance.app"]);
+  // A replica in the same region takes its source's subnet group; its source is the lab's own database.
+  const replica = (src) => T(c11, "aws_db_instance.replica", { ...noGroup, identifier: "db-a11k3x9q-replica", replicate_source_db: src });
+  assert.deepEqual(rulesFor(c11, [dbGroup(c11), db({ db_subnet_group_name: "lab-saa-11-three-tier-db" }), replica("db-a11k3x9q")], base), []);
+  assert.deepEqual(rulesFor(c11, [dbGroup(c11), db({ db_subnet_group_name: "lab-saa-11-three-tier-db" }), replica("someone-elses-db")], base), ["gateway: aws_db_instance.replica"]);
+});
+
+test("fix round 1, I-6 and M-2, M-3: a value rule refuses a value built from references that is not known at plan", () => {
+  const base11 = templateResources(c11);
+  const cases = [
+    [c11, T(c11, "aws_db_instance.app", { ...DB, db_subnet_group_name: "lab-saa-11-three-tier-db" }, opaqueRef("publicly_accessible")), "public", [dbGroup(c11)], base11],
+    [c11, T(c11, "aws_elasticache_replication_group.app", { replication_group_id: "ca11k3x9q", description: "x", engine: "valkey", node_type: "cache.t4g.micro", num_cache_clusters: 1, subnet_group_name: "lab-saa-11-three-tier-data" }, opaqueRef("final_snapshot_identifier")), "lingering", [cacheGroup(c11)], base11],
+    [c11, T(c11, "aws_elasticache_replication_group.app", { replication_group_id: "ca11k3x9q", description: "x", engine: "valkey", node_type: "cache.t4g.micro", subnet_group_name: "lab-saa-11-three-tier-data" }, opaqueRef("num_cache_clusters")), "size", [cacheGroup(c11)], base11],
+    [c11, T(c11, "aws_elasticache_replication_group.app", { replication_group_id: "ca11k3x9q", description: "x", engine: "valkey", node_type: "cache.t4g.micro", num_cache_clusters: 1, subnet_group_name: "lab-saa-11-three-tier-data" }, opaqueRef("num_node_groups")), "size", [cacheGroup(c11)], base11],
+    [c12, T(c12, "aws_cognito_user_pool.users", { name: "lab-saa-12-serverless-api-users", user_pool_tier: "LITE" }, opaqueRef("deletion_protection")), "lingering"],
+    [c12, T(c12, "aws_cognito_user_pool.users", { name: "lab-saa-12-serverless-api-users", deletion_protection: "INACTIVE" }, opaqueRef("user_pool_tier")), "size"],
+    [c17, T(c17, "aws_glue_crawler.events", { name: "lab-saa-17-data-pipeline-events", database_name: "lab_saa_17_data_pipeline", s3_target: [{ path: "s3://cloudlabs-a17k3x9q-lake/events/" }] }, { unknown: ["role", "schedule"], refs: { role: ref("aws_iam_role.crawler", "arn"), schedule: ref("aws_vpc.lab", "id") } }), "size", [svcRoleFor(c17, "crawler", "glue")]],
+    [c11, T(c11, "aws_efs_file_system.shared", { encrypted: true }, opaqueRef("throughput_mode")), "size", [], base11],
+    [c16, T(c16, "aws_route53_zone.dr", { force_destroy: true, vpc: [{ vpc_region: "eu-west-2" }] }, { unknown: ["vpc.0.vpc_id", "name"], refs: { "vpc.0.vpc_id": ref("aws_vpc.lab", "id"), name: ref("aws_vpc.lab", "id") } }), "gateway", [], templateResources(c16)],
+    [c12, U("aws_apigatewayv2_authorizer.a", { name: "cognito", identity_sources: ["$request.header.Authorization"] }, { unknown: ["api_id", "authorizer_type"], refs: { api_id: ref("aws_apigatewayv2_api.lab", "id"), authorizer_type: ref("aws_vpc.lab", "id") } }), "gateway", [T(c12, "aws_apigatewayv2_api.lab", { name: "lab-saa-12-serverless-api", protocol_type: "HTTP" })], templateResources(c12)],
+  ];
+  for (const [cx, r, rule, extra = [], base] of cases) assert.deepEqual(rulesFor(cx, [...extra, r], base), [`${rule}: ${r.address}`], `${r.address} ${JSON.stringify(r.unknown)}`);
+  // Firehose error logging built from references.
+  const fh = T(c17, "aws_kinesis_firehose_delivery_stream.x", { name: "lab-saa-17-data-pipeline-to-s3", destination: "extended_s3", kinesis_source_configuration: [{}], extended_s3_configuration: [{ cloudwatch_logging_options: [{}] }] }, {
+    unknown: ["kinesis_source_configuration.0.kinesis_stream_arn", "kinesis_source_configuration.0.role_arn", "extended_s3_configuration.0.bucket_arn", "extended_s3_configuration.0.role_arn", "extended_s3_configuration.0.cloudwatch_logging_options.0.enabled"],
+    refs: { "kinesis_source_configuration.0.kinesis_stream_arn": ref("aws_kinesis_stream.events", "arn"), "kinesis_source_configuration.0.role_arn": ref("aws_iam_role.firehose", "arn"), "extended_s3_configuration.0.bucket_arn": ref("aws_s3_bucket.lake", "arn"), "extended_s3_configuration.0.role_arn": ref("aws_iam_role.firehose", "arn"), "extended_s3_configuration.0.cloudwatch_logging_options.0.enabled": ref("aws_vpc.lab", "id") },
+  });
+  const fbase = [svcRoleFor(c17, "firehose", "firehose"), T(c17, "aws_kinesis_stream.events", { name: "lab-saa-17-data-pipeline-events", shard_count: 1, retention_period: 24, enforce_consumer_deletion: true }), T(c17, "aws_s3_bucket.lake", { bucket: "cloudlabs-a17k3x9q-lake", force_destroy: true })];
+  assert.deepEqual(rulesFor(c17, [...fbase, fh], templateResources(c17)), ["lingering: aws_kinesis_firehose_delivery_stream.x"]);
+  // M-2: one route's own throttle above the cap.
+  const api = T(c12, "aws_apigatewayv2_api.lab", { name: "lab-saa-12-serverless-api", protocol_type: "HTTP" });
+  const stage = (route) => T(c12, "aws_apigatewayv2_stage.default", { name: "$default", auto_deploy: true, default_route_settings: [{ throttling_burst_limit: 10, throttling_rate_limit: 5 }], route_settings: [{ route_key: "GET /items", ...route }] }, { unknown: ["api_id"], refs: { api_id: ref("aws_apigatewayv2_api.lab", "id") } });
+  assert.deepEqual(rulesFor(c12, [api, stage({ throttling_burst_limit: 5, throttling_rate_limit: 2 })]), []);
+  assert.deepEqual(rulesFor(c12, [api, stage({ throttling_burst_limit: 5000, throttling_rate_limit: 10000 })]), ["size: aws_apigatewayv2_stage.default"]);
+});
+
+test("fix round 1, M-1, M-4, M-5: an AMI copy only of the parameter's AMI; roles API Gateway passes; no outside data brought in", () => {
+  // M-1: a known source equal to a string some other data source read is not the parameter's AMI.
+  const other = { address: "data.aws_region.current", values: { name: "ami-0fedcba9876543210" }, refs: {} };
+  const p16 = (extra) => rules(realisticPlan({ resources: [...templateResources(c16), ...extra], data: [...awsData(), other], providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: c16.variables }), c16.id);
+  const copy = (src, more = {}) => T(c16, "aws_ami_copy.dr", { name: "lab-saa-16-dr-pilot-light-al2023", source_ami_region: "eu-west-2", ...(src ? { source_ami_id: src } : {}) }, more);
+  assert.deepEqual(p16([copy(AMI)]), []);
+  assert.deepEqual(p16([copy("ami-0fedcba9876543210")]), ["gateway: aws_ami_copy.dr"]);
+  assert.deepEqual(p16([copy(null, { unknown: ["source_ami_id"], refs: { source_ami_id: ["data.aws_ssm_parameter.al2023_arm64.insecure_value", "data.aws_ssm_parameter.al2023_arm64", "aws_vpc.lab.id", "aws_vpc.lab"] } })]), ["gateway: aws_ami_copy.dr"], "the parameter mixed with something else");
+  // Task 12: a mocked plan's stream holds no data sources (labs-tf), so a known source cannot be read there; plan mode still refuses it.
+  const noData = realisticPlan({ resources: [...templateResources(c16), copy(AMI)], data: [], providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: c16.variables });
+  const copyRules = (mode) => scope.scopeProblemsAws({ ...planResources(noData), configKeys: {}, providerConfigs: {} }, c16.id, { mode }).filter((x) => x.address === "aws_ami_copy.dr").map((x) => x.rule);
+  assert.deepEqual(copyRules("mock"), []);
+  assert.deepEqual(copyRules("plan"), ["gateway"]);
+  // M-4: an integration or authoriser passing a role that is not the lab's own.
+  const api = T(c12, "aws_apigatewayv2_api.lab", { name: "lab-saa-12-serverless-api", protocol_type: "HTTP" });
+  const fnRole = svcRoleFor(c12, "fn", "lambda");
+  const fn = T(c12, "aws_lambda_function.api", { function_name: "lab-saa-12-serverless-api-api", memory_size: 128, timeout: 10 }, { unknown: ["role"], refs: { role: ref("aws_iam_role.fn", "arn") } });
+  const integ = (over) => U("aws_apigatewayv2_integration.x", { integration_type: "AWS_PROXY", payload_format_version: "2.0", ...over }, { unknown: ["api_id", "integration_uri"], refs: { api_id: ref("aws_apigatewayv2_api.lab", "id"), integration_uri: ref("aws_lambda_function.api", "invoke_arn") } });
+  const only = (rs, a) => rs.filter((x) => x.endsWith(a));
+  assert.deepEqual(only(rulesFor(c12, [api, fnRole, fn, integ({})]), "integration.x"), []);
+  assert.deepEqual(only(rulesFor(c12, [api, fnRole, fn, integ({ credentials_arn: `arn:aws:iam::${ACCOUNT}:role/wg-admin-labs` })]), "integration.x"), ["iam: aws_apigatewayv2_integration.x"]);
+  // M-5: a table restored or imported from outside the lab, a cache seeded from a snapshot, a Glue database linked elsewhere.
+  const table = (extra) => T(c16, "aws_dynamodb_table.orders", { name: "lab-saa-16-dr-pilot-light-orders", billing_mode: "PAY_PER_REQUEST", hash_key: "id", ...extra });
+  assert.deepEqual(rulesFor(c16, [table({ restore_source_table_arn: "arn:aws:dynamodb:eu-west-2:999999999999:table/theirs" })]), ["gateway: aws_dynamodb_table.orders"]);
+  assert.deepEqual(rulesFor(c16, [table({ import_table: [{ input_format: "CSV", s3_bucket_source: [{ bucket: "someone-else" }] }] })]), ["gateway: aws_dynamodb_table.orders"]);
+  assert.deepEqual(rulesFor(c11, [cacheGroup(c11), T(c11, "aws_elasticache_replication_group.app", { replication_group_id: "ca11k3x9q", description: "x", engine: "valkey", node_type: "cache.t4g.micro", num_cache_clusters: 1, subnet_group_name: "lab-saa-11-three-tier-data", snapshot_arns: ["arn:aws:s3:::someone-else/dump.rdb"] })], templateResources(c11)), ["gateway: aws_elasticache_replication_group.app"]);
+  assert.deepEqual(rulesFor(c17, [T(c17, "aws_glue_catalog_database.lake", { name: "lab_saa_17_data_pipeline", target_database: [{ catalog_id: "999999999999", database_name: "theirs" }] })]), ["gateway: aws_glue_catalog_database.lake"]);
+});
+
+test("fix round 1, M-6: P9's run-command target check still reports first on an EventBridge target (plan mode), ahead of P14", () => {
+  const target = (targets) => plan([role(), { address: "aws_cloudwatch_event_target.run", values: { arn: "arn:aws:ssm:eu-west-2::document/AWS-RunShellScript", run_command_targets: targets }, unknown: ["rule", "role_arn"], refs: { role_arn: ref("aws_iam_role.vm", "arn") } }]);
+  const msg = (targets) => scope.checkPlanAws(target(targets), ID).find((p) => p.address === "aws_cloudwatch_event_target.run")?.message ?? "";
+  assert.match(msg([{ key: "tag:managed", values: ["terraform"] }]), /ruling P9/);
+  assert.match(msg([{ key: "InstanceIds", values: ["*"] }]), /every instance/);
+  assert.match(msg([{ key: "InstanceIds", values: ["i-0123456789abcdef0"] }]), /names an existing AWS resource/);
+  assert.match(msg([{ key: "tag:Name", values: ["vm-wg"] }]), /VPN server/);
+});
+
+// ── Task 3 fix round 2 (task-3-review.md, Round 2) ──
+
+test("fix round 2, R2-1: an unset Optional+Computed block planned wholly unknown passes (lab 16's table, lab 19's cluster); a written witness is refused", () => {
+  const table = (extra = {}) => T(c16, "aws_dynamodb_table.orders", { name: "lab-saa-16-dr-pilot-light-orders", billing_mode: "PAY_PER_REQUEST", hash_key: "id", deletion_protection_enabled: false, replica: [{ region_name: "eu-west-1", propagate_tags: true }], ...extra });
+  const planned = realisticPlan({ resources: [...templateMainResources(c16), table()], data: awsData(), providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: c16.variables });
+  assert.equal(planned.resource_changes.find((x) => x.address === "aws_dynamodb_table.orders").change.after_unknown.global_table_witness, true, "an unset witness is planned wholly unknown (UNSET_BLOCKS_UNKNOWN)");
+  assert.deepEqual(rules(planned, c16.id), []);
+  assert.deepEqual(rulesFor(c16, [table({ global_table_witness: [{ region_name: "eu-west-3" }] })]), ["provider: aws_dynamodb_table.orders"]);
+  assert.deepEqual(rulesFor(c16, [table({ replica: [{ region_name: "eu-west-1", propagate_tags: true, consistency_mode: "STRONG" }] })]), ["provider: aws_dynamodb_table.orders"], "strong consistency needs a third region");
+  const clusterRole = svcRoleFor(c19, "cluster", "eks");
+  const cluster = T(c19, "aws_eks_cluster.lab", { name: "lab-saa-19-eks", access_config: [{ authentication_mode: "API", bootstrap_cluster_creator_admin_permissions: false }], upgrade_policy: [{ support_type: "STANDARD" }], vpc_config: [{ endpoint_private_access: true, endpoint_public_access: true }] }, { unknown: ["role_arn", "vpc_config.0.subnet_ids"], refs: { role_arn: ref("aws_iam_role.cluster", "arn"), "vpc_config.0.subnet_ids": ["aws_subnet.private"] } });
+  const p19 = realisticPlan({ resources: [...templateResources(c19), clusterRole, cluster], data: awsData(), providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: c19.variables });
+  assert.equal(p19.resource_changes.find((x) => x.address === "aws_eks_cluster.lab").change.after_unknown.compute_config, true, "an unset compute_config is planned wholly unknown");
+  assert.deepEqual(rules(p19, c19.id), []);
+});
+
+test("fix round 2, R2-2: a value the lab writes that is not known at plan, with no references (an apply-time function), is refused", () => {
+  const noRef = (attr) => ({ unknown: [attr], refs: {} });
+  const base11 = templateResources(c11);
+  const cases = [
+    [c11, T(c11, "aws_db_instance.app", DB, noRef("publicly_accessible")), "public", [dbGroup(c11)], base11],
+    [c11, T(c11, "aws_elasticache_replication_group.app", { replication_group_id: "ca11k3x9q", description: "x", engine: "valkey", node_type: "cache.t4g.micro", num_cache_clusters: 1, subnet_group_name: "lab-saa-11-three-tier-data" }, noRef("final_snapshot_identifier")), "lingering", [cacheGroup(c11)], base11],
+    [c12, T(c12, "aws_cognito_user_pool.users", { name: "lab-saa-12-serverless-api-users", user_pool_tier: "LITE" }, noRef("deletion_protection")), "lingering"],
+    [c11, T(c11, "aws_efs_file_system.shared", { encrypted: true }, noRef("throughput_mode")), "size", [], base11],
+  ];
+  for (const [cx, r, rule, extra = [], base] of cases) assert.deepEqual(rulesFor(cx, [...extra, r], base), [`${rule}: ${r.address}`], `${r.address} ${JSON.stringify(r.unknown)}`);
+});
+
+test("fix round 2, R2-3: a subnet group named outside lab-<id>- (\"default\") is refused even when the lab makes it", () => {
+  const base = templateResources(c11);
+  const group = (name) => T(c11, "aws_elasticache_subnet_group.data", { name, description: "x" }, { unknown: ["subnet_ids"], refs: { subnet_ids: ["aws_subnet.private"] } });
+  const rg = (more = {}) => T(c11, "aws_elasticache_replication_group.app", { replication_group_id: "ca11k3x9q", description: "x", engine: "valkey", node_type: "cache.t4g.micro", num_cache_clusters: 1, subnet_group_name: "default" }, more);
+  assert.deepEqual(rulesFor(c11, [group("default"), rg()], base), ["gateway: aws_elasticache_replication_group.app"]);
+  assert.deepEqual(rulesFor(c11, [group("default"), rg({ unknown: ["subnet_group_name"], refs: { subnet_group_name: ref("aws_elasticache_subnet_group.data", "name") } })], base), ["gateway: aws_elasticache_replication_group.app"], "by reference to a group named default");
+  const dbg = (name) => T(c11, "aws_db_subnet_group.db", { name }, { unknown: ["subnet_ids"], refs: { subnet_ids: ["aws_subnet.private"] } });
+  assert.deepEqual(rulesFor(c11, [dbg("default"), T(c11, "aws_db_instance.app", { ...DB, db_subnet_group_name: "default" })], base), ["gateway: aws_db_instance.app"]);
+  assert.deepEqual(rulesFor(c11, [dbg("lab-saa-11-three-tier-db"), T(c11, "aws_db_instance.app", (({ db_subnet_group_name: _g, ...rest }) => rest)(DB), { unknown: ["db_subnet_group_name"], refs: { db_subnet_group_name: ref("aws_db_subnet_group.db", "name") } })], base), [], "the lab's own group by reference");
+});
+
+test("fix round 2, R2-4: a workflow target key in another case is refused", () => {
+  const id = "saa-13-decoupling";
+  const opts = { account: ACCOUNT, regions: ["eu-west-2"] };
+  const task = (Parameters) => ({ StartAt: "A", States: { A: { Type: "Task", Resource: "arn:aws:states:::sns:publish", Parameters, End: true } } });
+  for (const p of [{ topicArn: "arn:aws:sns:eu-west-2:999999999999:theirs" }, { TOPICARN: "arn:aws:sns:eu-west-2:999999999999:theirs" }, { targetarn: "arn:aws:sns:eu-west-2:999999999999:endpoint/x" }, { "phoneNumber.$": "$.who" }, { "topicarn.$": "$.t" }]) {
+    assert.notEqual(scope.workflowProblem(task({ ...p, Message: "hi" }), id, opts), null, JSON.stringify(p));
+  }
+  assert.notEqual(scope.workflowProblem({ StartAt: "A", States: { A: { Type: "Task", resource: "arn:aws:states:::aws-sdk:iam:createUser", End: true } } }, id, opts), null, "resource in lower case");
+  assert.notEqual(scope.workflowProblem({ queryLanguage: "JSONata", StartAt: "A", States: {} }, id, opts), null);
+  assert.equal(scope.workflowProblem(task({ TopicArn: `arn:aws:sns:eu-west-2:${ACCOUNT}:lab-${id}-orders`, "Message.$": "$" }), id, opts), null);
+});
+
+test("Task 15: a cluster's subnet_ids planned as a list of unknown ids (aws_subnet.private[*].id, count 2) are the lab's own; another resource's ids or a literal id are refused", () => {
+  const clusterRole = svcRoleFor(c19, "cluster", "eks");
+  const cluster = (subnetRefs) => T(c19, "aws_eks_cluster.lab", { name: "lab-saa-19-eks", access_config: [{ authentication_mode: "API", bootstrap_cluster_creator_admin_permissions: false }], upgrade_policy: [{ support_type: "STANDARD" }], vpc_config: [{ endpoint_private_access: true, endpoint_public_access: true }] }, { unknown: ["role_arn", "vpc_config.0.subnet_ids"], refs: { role_arn: ref("aws_iam_role.cluster", "arn"), "vpc_config.0.subnet_ids": subnetRefs } });
+  /** As a real (and a mocked) plan prints a splat over a known count: a two-element list, each element unknown. */
+  const perElement = (p) => {
+    const ch = p.resource_changes.find((x) => x.address === "aws_eks_cluster.lab").change;
+    ch.after.vpc_config[0].subnet_ids = [null, null];
+    ch.after_unknown.vpc_config[0].subnet_ids = [true, true];
+    for (const r of p.planned_values.root_module.resources) if (r.address === "aws_eks_cluster.lab") r.values.vpc_config[0].subnet_ids = [null, null];
+    return p;
+  };
+  const p19 = (subnetRefs) => perElement(realisticPlan({ resources: [...templateResources(c19), clusterRole, cluster(subnetRefs)], data: awsData(), providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: c19.variables }));
+  assert.deepEqual(rules(p19(["aws_subnet.private"]), c19.id), []);
+  assert.deepEqual(rules(p19(ref("aws_vpc.lab", "id")), c19.id), ["gateway: aws_eks_cluster.lab"]);
+  // Mock mode (labs-tf): no configuration, so no references to read; each element unknown passes.
+  const mock = p19(["aws_subnet.private"]);
+  delete mock.configuration;
+  assert.deepEqual(scope.scopeProblemsAws({ ...planResources(mock), configKeys: {}, providerConfigs: {} }, c19.id, { mode: "mock" }).filter((x) => x.address === "aws_eks_cluster.lab"), []);
+  // A literal subnet id is never the lab's own.
+  assert.deepEqual(rulesFor(c19, [clusterRole, T(c19, "aws_eks_cluster.lab", { name: "lab-saa-19-eks", access_config: [{ authentication_mode: "API", bootstrap_cluster_creator_admin_permissions: false }], upgrade_policy: [{ support_type: "STANDARD" }], vpc_config: [{ endpoint_private_access: true, endpoint_public_access: true, subnet_ids: ["subnet-0123456789abcdef0", "subnet-0123456789abcdef1"] }] }, { unknown: ["role_arn"], refs: { role_arn: ref("aws_iam_role.cluster", "arn") } })], templateResources(c19)), ["gateway: aws_eks_cluster.lab"]);
 });

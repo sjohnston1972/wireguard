@@ -27,6 +27,12 @@ export function arnParts(arn: string): { service: string; type: string; id: stri
   const parts = arn.split(":");
   const service = parts[2] ?? "";
   const resource = parts.slice(5).join(":");
+  // Ruling P2: API Gateway's resource is a path, /apis/<id>[/stages/<name>]: the last collection named is the type.
+  if (service === "apigateway" && resource.startsWith("/")) {
+    const seg = resource.slice(1).split("/");
+    if (seg[0] === "apis" && seg[2] === "stages" && seg[3]) return { service, type: "stages", id: `${seg[1]}/${seg.slice(3).join("/")}` };
+    return { service, type: seg[0] ?? "", id: seg.slice(1).join("/") };
+  }
   const m = resource.match(/^([^/:]+)[/:](.+)$/);
   if (m) return { service, type: m[1]!, id: m[2]! };
   return { service, type: service === "s3" ? "bucket" : "", id: resource };

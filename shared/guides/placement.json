@@ -694,6 +694,87 @@
    "height": 618
   }
  ],
+ "saa-11-three-tier": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A load balancer sending traffic to an Auto Scaling group, in one VPC with six subnets.",
+   "width": 2043,
+   "height": 1046
+  }
+ ],
+ "saa-12-serverless-api": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A resource sending traffic to a Lambda function.",
+   "width": 952,
+   "height": 438
+  }
+ ],
+ "saa-13-decoupling": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A Lambda function, a CloudWatch log group, three IAM roles and seven messaging resources.",
+   "width": 1272,
+   "height": 618
+  }
+ ],
+ "saa-14-storage": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. An EC2 Instance Connect Endpoint, an EC2 instance, an S3 bucket, a VPC endpoint and more, in one VPC with two subnets.",
+   "width": 1387,
+   "height": 928
+  }
+ ],
+ "saa-15-data-security": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. An EC2 Instance Connect Endpoint, an EC2 instance, an S3 bucket, a KMS key and more, in one VPC with two subnets.",
+   "width": 1387,
+   "height": 928
+  }
+ ],
+ "saa-16-dr-pilot-light": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two EC2 Instance Connect Endpoints, an EC2 instance, two S3 buckets, a DynamoDB table and more, in two VPCs with three subnets.",
+   "width": 2467,
+   "height": 1146
+  }
+ ],
+ "saa-17-data-pipeline": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A Lambda function, an S3 bucket, a CloudWatch log group, three IAM roles and more.",
+   "width": 1272,
+   "height": 618
+  }
+ ],
+ "saa-18-cost-compute": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. An EC2 Instance Connect Endpoint, an Auto Scaling group, a VPC endpoint, two security groups and more, in one VPC with two subnets.",
+   "width": 1091,
+   "height": 748
+  }
+ ],
+ "saa-19-eks": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. An EC2 Instance Connect Endpoint, an NAT gateway, an internet gateway, two EKS clusters and more, in one VPC with four subnets.",
+   "width": 1459,
+   "height": 966
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",

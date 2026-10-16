@@ -1,0 +1,168 @@
+{
+ "schema": 1,
+ "labId": "saa-12-serverless-api",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:aws_apigatewayv2_api.lab",
+   "key": "apigateway:apis/api-lab",
+   "kind": "generic",
+   "label": "api-lab",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "apigateway:apis",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_apigatewayv2_authorizer.cognito",
+     "label": "cognito",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_apigatewayv2_integration.api",
+     "label": "api",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_apigatewayv2_route.health",
+     "label": "health",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_apigatewayv2_route.items_get",
+     "label": "items_get",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_apigatewayv2_route.items_post",
+     "label": "items_post",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_apigatewayv2_stage.default",
+     "label": "stage-default",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_cloudwatch_log_group.api",
+   "key": "logs:log-group//cloudlabs/saa-12-serverless-api/api",
+   "kind": "logAnalytics",
+   "label": "/cloudlabs/saa-12-serverless-api/api",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "logs:log-group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_cognito_user_pool.users",
+   "key": "cognito-idp:userpool/pool-users",
+   "kind": "generic",
+   "label": "pool-users",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "cognito-idp:userpool",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_cognito_user.labuser",
+     "label": "labuser",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_cognito_user_pool_client.cli",
+     "label": "lab-saa-12-serverless-api-cli",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_dynamodb_table.items",
+   "key": "dynamodb:table/table-items",
+   "kind": "dynamodb",
+   "label": "table-items",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "dynamodb:table",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_iam_role.api",
+   "key": "iam:role/lab-saa-12-serverless-api-api",
+   "kind": "managedIdentity",
+   "label": "lab-saa-12-serverless-api-api",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "iam:role",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_iam_policy.api",
+     "label": "lab-saa-12-serverless-api-api",
+     "armType": "iam:policy"
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.api",
+     "label": "api",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.api_logs",
+     "label": "api_logs",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_lambda_function.api",
+   "key": "lambda:function/fn-api",
+   "kind": "lambda",
+   "label": "fn-api",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "lambda:function",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_lambda_permission.api",
+     "label": "lab-saa-12-serverless-api-api",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_resourcegroups_group.lab",
+   "key": "resource-groups:group/lab-saa-12-serverless-api",
+   "kind": "resourceGroup",
+   "label": "lab-saa-12-serverless-api · London",
+   "props": {
+    "region": "eu-west-2"
+   },
+   "armType": "resource-groups:group",
+   "scope": "lab",
+   "cloud": "aws"
+  }
+ ],
+ "edges": [
+  {
+   "id": "traffic:tf:aws_apigatewayv2_api.lab>tf:aws_lambda_function.api:HTTPS",
+   "from": "tf:aws_apigatewayv2_api.lab",
+   "to": "tf:aws_lambda_function.api",
+   "kind": "traffic",
+   "label": "HTTPS",
+   "via": "tf:aws_apigatewayv2_integration.api"
+  }
+ ],
+ "notes": [
+  "2 resources of a type the diagram draws plainly"
+ ]
+}

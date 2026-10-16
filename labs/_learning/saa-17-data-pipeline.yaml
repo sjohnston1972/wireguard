@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Stream events into S3 with Kinesis and Firehose, catalogue them with Glue and query them with Athena.
+learn:
+  - Put records on a Kinesis stream and watch Firehose deliver them
+  - Turn files in S3 into a table with a Glue crawler
+  - Query the table with Athena inside a workgroup's scan limit
+learning_min: 60

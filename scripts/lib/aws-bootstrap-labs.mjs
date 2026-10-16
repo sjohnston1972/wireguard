@@ -71,6 +71,18 @@ export function simulatorCases(account, defaultVpcArns = []) {
     { name: "a CloudFront distribution", action: "cloudfront:CreateDistribution", resource: "*", context: [ctx("aws:RequestedRegion", ["us-east-1"])], want: "allowed" },
     { name: "a Route 53 hosted zone", action: "route53:CreateHostedZone", resource: "*", context: [ctx("aws:RequestedRegion", ["us-east-1"])], want: "allowed" },
     { name: "an ECS cluster in us-east-1", action: "ecs:CreateCluster", resource: "*", context: [ctx("aws:RequestedRegion", ["us-east-1"]), ...labTag], want: "denied" },
+    // Batch 3 (labs 11–19).
+    { name: "a global table's replica in Ireland", action: "dynamodb:CreateTable", resource: `arn:aws:dynamodb:eu-west-1:${account}:table/lab-saa-16-dr-pilot-light-orders`, context: [ctx("aws:RequestedRegion", ["eu-west-1"])], want: "allowed" },
+    { name: "an untagged table not named for a lab", action: "dynamodb:CreateTable", resource: `arn:aws:dynamodb:eu-west-2:${account}:table/orders`, context: [region], want: "denied" },
+    { name: "copy an AMI to Ireland", action: "ec2:CopyImage", resource: "arn:aws:ec2:eu-west-1::image/*", context: [ctx("aws:RequestedRegion", ["eu-west-1"])], want: "allowed" },
+    { name: "a tagged HTTP API", action: "apigateway:POST", resource: "arn:aws:apigateway:eu-west-2::/apis", context: [region, ...labTag], want: "allowed" },
+    { name: "an untagged HTTP API", action: "apigateway:POST", resource: "arn:aws:apigateway:eu-west-2::/apis", context: [region], want: "denied" },
+    { name: "a route on a lab API", action: "apigateway:POST", resource: "arn:aws:apigateway:eu-west-2::/apis/a1b2c3d4e5/routes", context: [region], want: "allowed" },
+    { name: "delete an untagged API", action: "apigateway:DELETE", resource: "arn:aws:apigateway:eu-west-2::/apis/a1b2c3d4e5", context: [region], want: "denied" },
+    { name: "API Gateway's account settings", action: "apigateway:PATCH", resource: "arn:aws:apigateway:eu-west-2::/account", context: [region], want: "denied" },
+    { name: "delete a load balancer Kubernetes made for lab 19", action: "elasticloadbalancing:DeleteLoadBalancer", resource: `arn:aws:elasticloadbalancing:eu-west-2:${account}:loadbalancer/a1b2c3d4e5f6`, context: [region, ctx("aws:ResourceTag/kubernetes.io/cluster/lab-saa-19-eks", ["owned"])], want: "allowed" },
+    { name: "delete an untagged load balancer", action: "elasticloadbalancing:DeleteLoadBalancer", resource: `arn:aws:elasticloadbalancing:eu-west-2:${account}:loadbalancer/app/other/0123456789abcdef`, context: [region], want: "denied" },
+    { name: "the Spot service-linked role", action: "iam:CreateServiceLinkedRole", resource: `arn:aws:iam::${account}:role/aws-service-role/spot.amazonaws.com/AWSServiceRoleForEC2Spot`, context: [ctx("iam:AWSServiceName", ["spot.amazonaws.com"])], want: "allowed" },
     ...defaultVpcCase(account, defaultVpcArns),
   ];
 }
@@ -92,6 +104,9 @@ function fabricCases(account, prefix = "") {
     { name: `${prefix}move a lab subnet's ACL association`, action: "ec2:ReplaceNetworkAclAssociation", resource: subnet, context: [region, ctx(`aws:ResourceTag/${LAB_TAG}`, ["soa-01-x"])], want: "allowed" },
     { name: `${prefix}move an untagged subnet's ACL association`, action: "ec2:ReplaceNetworkAclAssociation", resource: subnet, context: [region], want: "denied" },
     { name: `${prefix}move the VPN server's subnet's ACL association`, action: "ec2:ReplaceNetworkAclAssociation", resource: subnet, context: [region, ctx("aws:ResourceTag/wg-admin", ["vpn"])], want: "denied" },
+    // Ruling P22: EFS's DeleteMountTarget asks about its untagged ENI as the caller; the VPN server's ENI stays refused.
+    { name: `${prefix}delete an untagged network interface (an EFS mount target's)`, action: "ec2:DeleteNetworkInterface", resource: `arn:aws:ec2:eu-west-2:${account}:network-interface/eni-0123456789abcdef0`, context: [region], want: "allowed" },
+    { name: `${prefix}delete the VPN server's network interface`, action: "ec2:DeleteNetworkInterface", resource: `arn:aws:ec2:eu-west-2:${account}:network-interface/eni-0123456789abcdef0`, context: [region, ctx("aws:ResourceTag/wg-admin", ["vpn"])], want: "denied" },
   ];
 }
 /** An account-wide EC2 setting (fix round 2): VPC Block Public Access would cut the VPN server off the internet. */

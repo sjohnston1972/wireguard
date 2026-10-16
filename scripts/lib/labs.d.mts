@@ -41,6 +41,8 @@ export const AWS_BOUNDARY: "wg-admin-lab-boundary";
 export const AWS_IAM_USER_LABS: readonly string[];
 export const AWS_CONFIG_LABS: readonly string[];
 export const AWS_GLOBAL_LABS: readonly string[];
+export const AWS_DNS_LABS: readonly string[];
+export function readsUsEast1(id: string): boolean;
 export const AWS_INSTANCE_TYPES: readonly string[];
 export const AWS_MEDIUM_LABS: readonly string[];
 export const AWS_USAGE_PREFIX: Readonly<Record<string, string>>;

@@ -1,0 +1,62 @@
+# Lab saa-11 (AWS labs batch 3). SAA-C03 ((V) the wording against the current
+# exam guide): Design Resilient Architectures (a tier per job, Multi-AZ, an
+# Auto Scaling group behind a load balancer); Design High-Performing
+# Architectures (a cache in front of the database).
+# London list prices × 0.75 (labs-verify --aws-prices); the NAT gateway and the
+# ALB bill each started hour whole (V, A20). ElastiCache for Valkey's price
+# filter is (V): if labs-verify finds no single product the item becomes
+# authored-only (Task 16). RDS and ElastiCache bill by the second.
+id: saa-11-three-tier
+version: 1
+cloud: aws
+title: "Three-tier web app across two AZs"
+summary: >-
+  A web tier behind an internet-facing load balancer, an app tier of two instances in an Auto Scaling group, and a
+  data tier of RDS MySQL Multi-AZ and an ElastiCache node, each in its own subnets across two Availability Zones.
+exam: SAA-C03
+skill_areas: [saa.resilient, saa.performance]
+level: associate
+type: explore
+prerequisites: [soa-03-auto-scaling, soa-05-rds]
+cost:
+  items:
+    - name: "NAT gateway, hourly"
+      gbp_h: 0.0375
+      whole_hours: true
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { productFamily: "NAT Gateway", usagetype: "{usage}-NatGateway-Hours" } }
+    - name: "Application Load Balancer, hourly"
+      gbp_h: 0.0199
+      whole_hours: true
+      aws_price: { service: AWSELB, unit: Hrs, filters: { productFamily: "Load Balancer-Application", usagetype: "{usage}-LoadBalancerUsage" } }
+    - { name: "ALB capacity units, light test traffic", gbp_h: 0.0060 }
+    - name: "Public IPv4 addresses (the ALB's 2 and the NAT gateway's)"
+      gbp_h: 0.0038
+      qty: 3
+      aws_price: { service: AmazonVPC, unit: Hrs, filters: { group: VPCPublicIPv4Address, usagetype: "{usage}-PublicIPv4:InUseAddress" } }
+    - name: "EC2 t4g.micro, Linux (2 running)"
+      gbp_h: 0.0071
+      qty: 2
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.micro, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      qty: 2
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - name: "RDS for MySQL db.t4g.micro, Multi-AZ (primary and standby)"
+      gbp_h: 0.0270
+      aws_price: { service: AmazonRDS, unit: Hrs, filters: { instanceType: db.t4g.micro, databaseEngine: MySQL, deploymentOption: Multi-AZ } }
+    - name: "RDS General Purpose (gp2) storage, 20 GiB, Multi-AZ"
+      gbp_h: 0.0055
+      aws_price: { service: AmazonRDS, unit: GB-Mo, gb: 20, filters: { productFamily: Database Storage, volumeType: General Purpose, databaseEngine: MySQL, deploymentOption: Multi-AZ } }
+    - name: "ElastiCache for Valkey cache.t4g.micro, one node"
+      gbp_h: 0.0107
+      aws_price: { service: AmazonElastiCache, unit: Hrs, filters: { instanceType: cache.t4g.micro, cacheEngine: Valkey } }
+    - { name: "EC2 Instance Connect Endpoint", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 20, destroy_min: 15, session_h: 2, max_h: 4 }
+capacity: { instance_types: [t4g.micro, t4g.micro, t4g.micro, t4g.micro] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false

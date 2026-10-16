@@ -240,7 +240,10 @@
                 "vpc-lattice.amazonaws.com",
                 "ssm.amazonaws.com",
                 "ec2-instance-connect.amazonaws.com",
-                "access-analyzer.amazonaws.com"
+                "access-analyzer.amazonaws.com",
+                "spot.amazonaws.com",
+                "replication.dynamodb.amazonaws.com",
+                "elasticfilesystem.amazonaws.com"
               ]
             }
           }
@@ -298,27 +301,6 @@
           }
         },
         {
-          "Sid": "TagOnlyAtCreate",
-          "Effect": "Deny",
-          "Action": "ec2:CreateTags",
-          "Resource": [
-            "arn:aws:ec2:*:*:network-acl/*",
-            "arn:aws:ec2:*:*:route-table/*",
-            "arn:aws:ec2:*:*:security-group/*",
-            "arn:aws:ec2:*:*:vpc/*",
-            "arn:aws:ec2:*:*:subnet/*",
-            "arn:aws:ec2:*:*:internet-gateway/*",
-            "arn:aws:ec2:*:*:network-interface/*",
-            "arn:aws:ec2:*:*:instance/*"
-          ],
-          "Condition": {
-            "Null": {
-              "ec2:CreateAction": "true",
-              "aws:ResourceTag/cloudlabs-lab": "true"
-            }
-          }
-        },
-        {
           "Sid": "NoDeleteAllTags",
           "Effect": "Deny",
           "Action": "ec2:DeleteTags",
@@ -341,19 +323,37 @@
           }
         },
         {
-          "Sid": "LabDashboardsOnly",
+          "Sid": "DenyOtherRoles",
           "Effect": "Deny",
-          "Action": [
-            "cloudwatch:PutDashboard",
-            "cloudwatch:DeleteDashboards"
-          ],
-          "NotResource": "arn:aws:cloudwatch::__ACCOUNT__:dashboard/lab-*"
+          "Action": "sts:AssumeRole*",
+          "Resource": "*"
         }
       ]
     },
     {
       "Version": "2012-10-17",
       "Statement": [
+        {
+          "Sid": "TagOnlyAtCreate",
+          "Effect": "Deny",
+          "Action": "ec2:CreateTags",
+          "Resource": [
+            "arn:aws:ec2:*:*:network-acl/*",
+            "arn:aws:ec2:*:*:route-table/*",
+            "arn:aws:ec2:*:*:security-group/*",
+            "arn:aws:ec2:*:*:vpc/*",
+            "arn:aws:ec2:*:*:subnet/*",
+            "arn:aws:ec2:*:*:internet-gateway/*",
+            "arn:aws:ec2:*:*:network-interface/*",
+            "arn:aws:ec2:*:*:instance/*"
+          ],
+          "Condition": {
+            "Null": {
+              "ec2:CreateAction": "true",
+              "aws:ResourceTag/cloudlabs-lab": "true"
+            }
+          }
+        },
         {
           "Sid": "VpcFabricNeedsLabTag",
           "Effect": "Deny",
@@ -408,6 +408,27 @@
               "aws:ResourceTag/cloudlabs-lab": "true"
             }
           }
+        },
+        {
+          "Sid": "ElbDeleteLabOrEks",
+          "Effect": "Deny",
+          "Action": "elasticloadbalancing:DeleteLoadBalancer",
+          "Resource": "*",
+          "Condition": {
+            "Null": {
+              "aws:ResourceTag/cloudlabs-lab": "true",
+              "aws:ResourceTag/kubernetes.io/cluster/lab-saa-19-eks": "true"
+            }
+          }
+        },
+        {
+          "Sid": "LabDashboardsOnly",
+          "Effect": "Deny",
+          "Action": [
+            "cloudwatch:PutDashboard",
+            "cloudwatch:DeleteDashboards"
+          ],
+          "NotResource": "arn:aws:cloudwatch::__ACCOUNT__:dashboard/lab-*"
         },
         {
           "Sid": "LabRecordersOnly",
@@ -521,42 +542,6 @@
           "Resource": "*"
         },
         {
-          "Sid": "AttachListedPoliciesOnly",
-          "Effect": "Deny",
-          "Action": [
-            "iam:AttachRolePolicy",
-            "iam:AttachUserPolicy"
-          ],
-          "Resource": "*",
-          "Condition": {
-            "ArnNotLike": {
-              "iam:PolicyARN": [
-                "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
-                "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy",
-                "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy",
-                "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
-                "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
-                "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
-                "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
-                "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-                "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
-                "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole",
-                "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup",
-                "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores",
-                "arn:aws:iam::aws:policy/service-role/AmazonSSMAutomationRole",
-                "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole",
-                "arn:aws:iam::__ACCOUNT__:policy/cloudlabs-lab/lab-*"
-              ]
-            }
-          }
-        },
-        {
-          "Sid": "DenyOtherRoles",
-          "Effect": "Deny",
-          "Action": "sts:AssumeRole*",
-          "Resource": "*"
-        },
-        {
           "Sid": "DenyOtherRegions",
           "Effect": "Deny",
           "NotAction": [
@@ -591,10 +576,6 @@
             "acm:ImportCertificate",
             "acm:RequestCertificate",
             "apigateway:CreatePortal*",
-            "apigateway:DELETE",
-            "apigateway:PATCH",
-            "apigateway:POST",
-            "apigateway:PUT",
             "application-autoscaling:RegisterScalableTarget",
             "athena:CreateCapacityReservation",
             "athena:CreateDataCatalog",
@@ -614,6 +595,36 @@
     {
       "Version": "2012-10-17",
       "Statement": [
+        {
+          "Sid": "AttachListedPoliciesOnly",
+          "Effect": "Deny",
+          "Action": [
+            "iam:AttachRolePolicy",
+            "iam:AttachUserPolicy"
+          ],
+          "Resource": "*",
+          "Condition": {
+            "ArnNotLike": {
+              "iam:PolicyARN": [
+                "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
+                "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy",
+                "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy",
+                "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
+                "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
+                "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+                "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
+                "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+                "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole",
+                "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole",
+                "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup",
+                "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores",
+                "arn:aws:iam::aws:policy/service-role/AmazonSSMAutomationRole",
+                "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole",
+                "arn:aws:iam::__ACCOUNT__:policy/cloudlabs-lab/lab-*"
+              ]
+            }
+          }
+        },
         {
           "Sid": "DenyGlobalRegionsForLabServices",
           "Effect": "Deny",
@@ -703,7 +714,6 @@
             "config:PutServiceLinkedConfigurationRecorder",
             "config:PutStoredQuery",
             "config:PutThirdPartyServiceLinkedConfigurationRecorder",
-            "dynamodb:CreateTable",
             "ecr:CreateRepository",
             "ecs:Create*",
             "ecs:Register*",
@@ -794,7 +804,24 @@
             "scheduler:CreateScheduleGroup",
             "secretsmanager:CreateSecret",
             "sns:CreateTopic",
-            "sqs:CreateQueue",
+            "sqs:CreateQueue"
+          ],
+          "Resource": "*",
+          "Condition": {
+            "Null": {
+              "aws:RequestTag/cloudlabs-lab": "true"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "CreateNeedsLabTag3",
+          "Effect": "Deny",
+          "Action": [
             "ssm:CreateActivation",
             "ssm:CreateCloudConnector",
             "ssm:CreateDocument",
@@ -832,19 +859,14 @@
           }
         },
         {
-          "Sid": "CreateNeedsLabTag5",
+          "Sid": "CreateNeedsLabTag4",
           "Effect": "Deny",
           "Action": [
-            "ec2:CreateTransitGatewayVpcAttachment",
-            "ec2:CreateVpcEndpoint",
-            "ec2:ImportImage",
-            "ec2:RegisterImage"
+            "dynamodb:CreateTable"
           ],
-          "Resource": [
-            "arn:aws:ec2:*:*:import-image-task/*",
-            "arn:aws:ec2:*:*:transit-gateway-attachment/*",
-            "arn:aws:ec2:*:*:vpc-endpoint/*",
-            "arn:aws:ec2:*::image/*"
+          "NotResource": [
+            "arn:aws:dynamodb:*:*:table/lab-*",
+            "arn:aws:dynamodb:*:*:table/lab-*/*"
           ],
           "Condition": {
             "Null": {
@@ -853,35 +875,31 @@
           }
         },
         {
-          "Sid": "CreateNeedsLabTag7",
+          "Sid": "CreateNeedsLabTag5",
           "Effect": "Deny",
           "Action": [
-            "ec2:Request*"
+            "apigateway:POST"
           ],
           "Resource": [
-            "arn:aws:ec2:*:*:spot-fleet-request/*",
-            "arn:aws:ec2:*:*:spot-instances-request/*"
+            "arn:aws:apigateway:*::/apis",
+            "arn:aws:apigateway:*::/restapis",
+            "arn:aws:apigateway:*::/vpclinks",
+            "arn:aws:apigateway:*::/domainnames"
           ],
           "Condition": {
             "Null": {
               "aws:RequestTag/cloudlabs-lab": "true"
             }
           }
-        }
-      ]
-    },
-    {
-      "Version": "2012-10-17",
-      "Statement": [
+        },
         {
-          "Sid": "CreateNeedsLabTag3",
+          "Sid": "CreateNeedsLabTag6",
           "Effect": "Deny",
           "Action": [
             "ec2:AcceptAddressTransfer",
             "ec2:Allocate*",
             "ec2:AssociateIpamResourceDiscovery",
             "ec2:AuthorizeSecurity*",
-            "ec2:CopyImage",
             "ec2:CopySnapshot",
             "ec2:CopyVolumes",
             "ec2:CreateApplicationStatusCheck",
@@ -916,7 +934,89 @@
             "ec2:CreateNetworkInsightsAccessScope",
             "ec2:CreatePlacementGroup",
             "ec2:CreateRestoreImageTask",
-            "ec2:CreateRouteServer",
+            "ec2:CreateRouteServer"
+          ],
+          "Resource": [
+            "arn:aws:ec2:*:*:application-status-check/*",
+            "arn:aws:ec2:*:*:capacity-manager-data-export/*",
+            "arn:aws:ec2:*:*:capacity-reservation-fleet/*",
+            "arn:aws:ec2:*:*:capacity-reservation/*",
+            "arn:aws:ec2:*:*:carrier-gateway/*",
+            "arn:aws:ec2:*:*:client-vpn-endpoint/*",
+            "arn:aws:ec2:*:*:coip-pool/*",
+            "arn:aws:ec2:*:*:customer-gateway/*",
+            "arn:aws:ec2:*:*:dedicated-host/*",
+            "arn:aws:ec2:*:*:dhcp-options/*",
+            "arn:aws:ec2:*:*:egress-only-internet-gateway/*",
+            "arn:aws:ec2:*:*:elastic-ip/*",
+            "arn:aws:ec2:*:*:export-instance-task/*",
+            "arn:aws:ec2:*:*:fpga-image/*",
+            "arn:aws:ec2:*:*:import-snapshot-task/*",
+            "arn:aws:ec2:*:*:instance-connect-endpoint/*",
+            "arn:aws:ec2:*:*:instance-event-window/*",
+            "arn:aws:ec2:*:*:internet-gateway/*",
+            "arn:aws:ec2:*:*:ipam-pool-allocation/*",
+            "arn:aws:ec2:*:*:key-pair/*",
+            "arn:aws:ec2:*:*:launch-template/*",
+            "arn:aws:ec2:*:*:local-gateway-route-table-virtual-interface-group-association/*",
+            "arn:aws:ec2:*:*:local-gateway-route-table-vpc-association/*",
+            "arn:aws:ec2:*:*:local-gateway-virtual-interface/*",
+            "arn:aws:ec2:*:*:mac-modification-task/*",
+            "arn:aws:ec2:*:*:network-acl/*",
+            "arn:aws:ec2:*:*:network-insights-access-scope/*",
+            "arn:aws:ec2:*:*:network-insights-analysis/*",
+            "arn:aws:ec2:*:*:placement-group/*",
+            "arn:aws:ec2:*:*:prefix-list/*",
+            "arn:aws:ec2:*:*:route-server-peer/*",
+            "arn:aws:ec2:*:*:route-server/*",
+            "arn:aws:ec2:*:*:route-table/*",
+            "arn:aws:ec2:*:*:secondary-network/*",
+            "arn:aws:ec2:*:*:security-group-rule/*",
+            "arn:aws:ec2:*:*:traffic-mirror-filter/*",
+            "arn:aws:ec2:*:*:traffic-mirror-target/*",
+            "arn:aws:ec2:*:*:transit-gateway-connect-peer/*",
+            "arn:aws:ec2:*:*:transit-gateway-metering-policy/*",
+            "arn:aws:ec2:*:*:transit-gateway-multicast-domain/*",
+            "arn:aws:ec2:*:*:transit-gateway-policy-table/*",
+            "arn:aws:ec2:*:*:transit-gateway-route-table/*",
+            "arn:aws:ec2:*:*:verified-access-endpoint/*",
+            "arn:aws:ec2:*:*:verified-access-instance/*",
+            "arn:aws:ec2:*:*:verified-access-trust-provider/*",
+            "arn:aws:ec2:*:*:volume/*",
+            "arn:aws:ec2:*:*:vpc-block-public-access-exclusion/*",
+            "arn:aws:ec2:*:*:vpc-encryption-control/*",
+            "arn:aws:ec2:*:*:vpc-endpoint-service/*",
+            "arn:aws:ec2:*:*:vpc-flow-log/*",
+            "arn:aws:ec2:*:*:vpc-peering-connection/*",
+            "arn:aws:ec2:*:*:vpn-concentrator/*",
+            "arn:aws:ec2:*:*:vpn-gateway/*",
+            "arn:aws:ec2:*::image/*",
+            "arn:aws:ec2:*::snapshot/*",
+            "arn:aws:ec2::*:ipam-external-resource-verification-token/*",
+            "arn:aws:ec2::*:ipam-internet-registry-association/*",
+            "arn:aws:ec2::*:ipam-policy/*",
+            "arn:aws:ec2::*:ipam-prefix-list-resolver/*",
+            "arn:aws:ec2::*:ipam-resource-discovery-association/*",
+            "arn:aws:elasticache:*:*:cluster:*",
+            "arn:aws:elasticache:*:*:usergroup:*",
+            "arn:aws:elasticache::*:globalreplicationgroup:*",
+            "arn:aws:kinesis:*:*:stream/*"
+          ],
+          "Condition": {
+            "Null": {
+              "aws:RequestTag/cloudlabs-lab": "true"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "CreateNeedsLabTag7",
+          "Effect": "Deny",
+          "Action": [
             "ec2:CreateRouteServerPeer",
             "ec2:CreateRouteTable",
             "ec2:CreateSecondaryNetwork",
@@ -1019,59 +1119,7 @@
           }
         },
         {
-          "Sid": "CreateNeedsLabTag6",
-          "Effect": "Deny",
-          "Action": [
-            "ec2:CreateIpamScope",
-            "ec2:CreateNetworkInsightsPath",
-            "ec2:CreateReplaceRootVolumeTask",
-            "ec2:CreateSubnet",
-            "ec2:CreateTransitGatewayPeeringAttachment",
-            "elasticache:CreateSnapshot"
-          ],
-          "Resource": [
-            "arn:aws:ec2:*:*:network-insights-path/*",
-            "arn:aws:ec2:*:*:replace-root-volume-task/*",
-            "arn:aws:ec2:*:*:subnet/*",
-            "arn:aws:ec2:*:*:transit-gateway-attachment/*",
-            "arn:aws:ec2:*:*:volume/*",
-            "arn:aws:ec2::*:ipam-scope/*",
-            "arn:aws:elasticache:*:*:snapshot:*"
-          ],
-          "Condition": {
-            "Null": {
-              "aws:RequestTag/cloudlabs-lab": "true"
-            }
-          }
-        },
-        {
           "Sid": "CreateNeedsLabTag8",
-          "Effect": "Deny",
-          "Action": [
-            "ec2:CreateSnapshot*",
-            "ec2:CreateTransitGatewayRouteTableAnnouncement",
-            "ec2:CreateVpc",
-            "ec2:CreateVpnConnection"
-          ],
-          "Resource": [
-            "arn:aws:ec2:*:*:transit-gateway-route-table-announcement/*",
-            "arn:aws:ec2:*:*:vpc/*",
-            "arn:aws:ec2:*:*:vpn-connection/*",
-            "arn:aws:ec2:*::snapshot/*"
-          ],
-          "Condition": {
-            "Null": {
-              "aws:RequestTag/cloudlabs-lab": "true"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Sid": "CreateNeedsLabTag4",
           "Effect": "Deny",
           "Action": [
             "ec2:CreateCapacityReservationCancellationQuote",
@@ -1123,6 +1171,95 @@
             "arn:aws:ec2::*:ipam-resource-discovery/*",
             "arn:aws:ec2::*:ipam/*",
             "arn:aws:elasticache:*:*:replicationgroup:*"
+          ],
+          "Condition": {
+            "Null": {
+              "aws:RequestTag/cloudlabs-lab": "true"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "CreateNeedsLabTag9",
+          "Effect": "Deny",
+          "Action": [
+            "ec2:CreateTransitGatewayVpcAttachment",
+            "ec2:CreateVpcEndpoint",
+            "ec2:ImportImage",
+            "ec2:RegisterImage"
+          ],
+          "Resource": [
+            "arn:aws:ec2:*:*:import-image-task/*",
+            "arn:aws:ec2:*:*:transit-gateway-attachment/*",
+            "arn:aws:ec2:*:*:vpc-endpoint/*",
+            "arn:aws:ec2:*::image/*"
+          ],
+          "Condition": {
+            "Null": {
+              "aws:RequestTag/cloudlabs-lab": "true"
+            }
+          }
+        },
+        {
+          "Sid": "CreateNeedsLabTag10",
+          "Effect": "Deny",
+          "Action": [
+            "ec2:CreateIpamScope",
+            "ec2:CreateNetworkInsightsPath",
+            "ec2:CreateReplaceRootVolumeTask",
+            "ec2:CreateSubnet",
+            "ec2:CreateTransitGatewayPeeringAttachment",
+            "elasticache:CreateSnapshot"
+          ],
+          "Resource": [
+            "arn:aws:ec2:*:*:network-insights-path/*",
+            "arn:aws:ec2:*:*:replace-root-volume-task/*",
+            "arn:aws:ec2:*:*:subnet/*",
+            "arn:aws:ec2:*:*:transit-gateway-attachment/*",
+            "arn:aws:ec2:*:*:volume/*",
+            "arn:aws:ec2::*:ipam-scope/*",
+            "arn:aws:elasticache:*:*:snapshot:*"
+          ],
+          "Condition": {
+            "Null": {
+              "aws:RequestTag/cloudlabs-lab": "true"
+            }
+          }
+        },
+        {
+          "Sid": "CreateNeedsLabTag11",
+          "Effect": "Deny",
+          "Action": [
+            "ec2:Request*"
+          ],
+          "Resource": [
+            "arn:aws:ec2:*:*:spot-fleet-request/*",
+            "arn:aws:ec2:*:*:spot-instances-request/*"
+          ],
+          "Condition": {
+            "Null": {
+              "aws:RequestTag/cloudlabs-lab": "true"
+            }
+          }
+        },
+        {
+          "Sid": "CreateNeedsLabTag12",
+          "Effect": "Deny",
+          "Action": [
+            "ec2:CreateSnapshot*",
+            "ec2:CreateTransitGatewayRouteTableAnnouncement",
+            "ec2:CreateVpc",
+            "ec2:CreateVpnConnection"
+          ],
+          "Resource": [
+            "arn:aws:ec2:*:*:transit-gateway-route-table-announcement/*",
+            "arn:aws:ec2:*:*:vpc/*",
+            "arn:aws:ec2:*:*:vpn-connection/*",
+            "arn:aws:ec2:*::snapshot/*"
           ],
           "Condition": {
             "Null": {
@@ -1264,13 +1401,7 @@
             "cloudwatch:DeleteIngestionEndpoint",
             "cloudwatch:DeleteInsightRules",
             "cloudwatch:DeleteIntegration",
-            "cloudwatch:DeleteMetricStream",
-            "cloudwatch:DeleteOmniDashboard",
-            "cloudwatch:DeletePipelineRule",
-            "cloudwatch:DeleteServiceLevelObjective",
-            "cloudwatch:DeleteSpace",
-            "cloudwatch:DeleteView",
-            "cloudwatch:Disable*"
+            "cloudwatch:DeleteMetricStream"
           ],
           "Resource": "*",
           "Condition": {
@@ -1288,6 +1419,12 @@
           "Sid": "ChangeNeedsLabTag2",
           "Effect": "Deny",
           "Action": [
+            "cloudwatch:DeleteOmniDashboard",
+            "cloudwatch:DeletePipelineRule",
+            "cloudwatch:DeleteServiceLevelObjective",
+            "cloudwatch:DeleteSpace",
+            "cloudwatch:DeleteView",
+            "cloudwatch:Disable*",
             "cloudwatch:EnableAlarmActions",
             "cloudwatch:EnableInsightRules",
             "cloudwatch:PutMetricData",
@@ -1361,34 +1498,6 @@
             "config:PutExternalEvaluation",
             "config:PutOrganization*",
             "config:StartConfigRulesEvaluation",
-            "dynamodb:AssociateTableReplica",
-            "dynamodb:BatchWriteItem",
-            "dynamodb:CreateBackup",
-            "dynamodb:CreateGlobalTableWitness",
-            "dynamodb:CreateTableReplica",
-            "dynamodb:DeleteGlobalTableWitness",
-            "dynamodb:DeleteItem",
-            "dynamodb:DeleteResourcePolicy",
-            "dynamodb:DeleteTable*",
-            "dynamodb:DisableKinesisStreamingDestination",
-            "dynamodb:EnableKinesisStreamingDestination",
-            "dynamodb:ExportTableToPointInTime",
-            "dynamodb:ImportTable",
-            "dynamodb:PartiQLDelete",
-            "dynamodb:PartiQLInsert",
-            "dynamodb:PartiQLUpdate",
-            "dynamodb:Put*",
-            "dynamodb:ReplicateSettings",
-            "dynamodb:RestoreTableFromAwsBackup",
-            "dynamodb:RestoreTableToPointInTime",
-            "dynamodb:StartAwsBackupJob",
-            "dynamodb:UpdateContinuousBackups",
-            "dynamodb:UpdateContributorInsights",
-            "dynamodb:UpdateItem",
-            "dynamodb:UpdateKinesisStreamingDestination",
-            "dynamodb:UpdateTable*",
-            "dynamodb:UpdateTimeToLive",
-            "dynamodb:WriteDataForReplication",
             "ec2:AcceptCapacityReservationBillingOwnership",
             "ec2:AcceptReservedInstancesExchangeQuote",
             "ec2:AcceptTransit*",
@@ -1461,7 +1570,9 @@
             "ec2:DeleteLocalGatewayRouteTable*",
             "ec2:DeleteLocalGatewayVirtual*",
             "ec2:DeleteNatGateway",
-            "ec2:DeleteNetwork*",
+            "ec2:DeleteNetworkAcl*",
+            "ec2:DeleteNetworkInsights*",
+            "ec2:DeleteNetworkInterfacePermission",
             "ec2:DeleteOdbNetworkPeering",
             "ec2:DeletePlacementGroup",
             "ec2:DeletePublicIpv4Pool",
@@ -1474,7 +1585,12 @@
             "ec2:DeleteTraffic*",
             "ec2:DeleteTransitGateway",
             "ec2:DeleteTransitGatewayClientVpnAttachment",
-            "ec2:DeleteTransitGatewayConnect*"
+            "ec2:DeleteTransitGatewayConnect*",
+            "ec2:DeleteTransitGatewayMetering*",
+            "ec2:DeleteTransitGatewayMulticastDomain",
+            "ec2:DeleteTransitGatewayPeeringAttachment",
+            "ec2:DeleteTransitGatewayPolicy*",
+            "ec2:DeleteTransitGatewayRoute*"
           ],
           "Resource": "*",
           "Condition": {
@@ -1493,11 +1609,6 @@
           "Sid": "ChangeNeedsLabTag3",
           "Effect": "Deny",
           "Action": [
-            "ec2:DeleteTransitGatewayMetering*",
-            "ec2:DeleteTransitGatewayMulticastDomain",
-            "ec2:DeleteTransitGatewayPeeringAttachment",
-            "ec2:DeleteTransitGatewayPolicy*",
-            "ec2:DeleteTransitGatewayRoute*",
             "ec2:DeleteTransitGatewayVpcAttachment",
             "ec2:DeleteVerified*",
             "ec2:DeleteVolume",
@@ -1680,12 +1791,7 @@
             "elasticache:InterruptClusterAzPower",
             "elasticache:ModifyCacheParameterGroup",
             "elasticache:ModifyCacheSubnetGroup",
-            "elasticache:ModifyGlobalReplicationGroup",
-            "elasticache:ModifyReplicationGroupShardConfiguration",
-            "elasticache:ModifyServerlessCache",
-            "elasticache:ModifyUser*",
-            "elasticache:RebalanceSlotsInGlobalReplicationGroup",
-            "elasticache:RebootCacheCluster"
+            "elasticache:ModifyGlobalReplicationGroup"
           ],
           "Resource": "*",
           "Condition": {
@@ -1704,6 +1810,11 @@
           "Sid": "ChangeNeedsLabTag4",
           "Effect": "Deny",
           "Action": [
+            "elasticache:ModifyReplicationGroupShardConfiguration",
+            "elasticache:ModifyServerlessCache",
+            "elasticache:ModifyUser*",
+            "elasticache:RebalanceSlotsInGlobalReplicationGroup",
+            "elasticache:RebootCacheCluster",
             "elasticache:ResetCacheParameterGroup",
             "elasticache:RevokeCacheSecurityGroupIngress",
             "elasticache:StartMigration",
@@ -1734,7 +1845,14 @@
             "elasticloadbalancing:CreateLoadBalancerListeners",
             "elasticloadbalancing:CreateLoadBalancerPolicy",
             "elasticloadbalancing:CreateWebACLAssociation",
-            "elasticloadbalancing:Delete*",
+            "elasticloadbalancing:DeleteListener",
+            "elasticloadbalancing:DeleteLoadBalancerListeners",
+            "elasticloadbalancing:DeleteLoadBalancerPolicy",
+            "elasticloadbalancing:DeleteRule",
+            "elasticloadbalancing:DeleteSharedTrustStoreAssociation",
+            "elasticloadbalancing:DeleteTargetGroup",
+            "elasticloadbalancing:DeleteTrustStore",
+            "elasticloadbalancing:DeleteWebACLAssociation",
             "elasticloadbalancing:Deregister*",
             "elasticloadbalancing:DetachLoadBalancerFromSubnets",
             "elasticloadbalancing:DisableAvailabilityZonesForLoadBalancer",
@@ -1865,7 +1983,24 @@
             "lambda:CreateWebFunctionRevision",
             "lambda:DeleteAlias",
             "lambda:DeleteCapacityProvider",
-            "lambda:DeleteCodeSigningConfig",
+            "lambda:DeleteCodeSigningConfig"
+          ],
+          "Resource": "*",
+          "Condition": {
+            "Null": {
+              "aws:ResourceTag/cloudlabs-lab": "true"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "ChangeNeedsLabTag5",
+          "Effect": "Deny",
+          "Action": [
             "lambda:DeleteEventSourceMapping",
             "lambda:DeleteFunction*",
             "lambda:DeleteMicrovm*",
@@ -1895,24 +2030,7 @@
             "network-firewall:Delete*",
             "network-firewall:DetachRuleGroupsFromProxyConfiguration",
             "network-firewall:Disassociate*",
-            "network-firewall:PutResourcePolicy"
-          ],
-          "Resource": "*",
-          "Condition": {
-            "Null": {
-              "aws:ResourceTag/cloudlabs-lab": "true"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Sid": "ChangeNeedsLabTag5",
-          "Effect": "Deny",
-          "Action": [
+            "network-firewall:PutResourcePolicy",
             "network-firewall:RejectNetworkFirewallTransitGatewayAttachment",
             "network-firewall:Start*",
             "network-firewall:Update*",
@@ -2061,9 +2179,50 @@
           "Sid": "ChangeNeedsLabTag6",
           "Effect": "Deny",
           "Action": [
+            "apigateway:DELETE",
+            "apigateway:PATCH",
+            "apigateway:PUT"
+          ],
+          "Resource": [
+            "arn:aws:apigateway:*::/account",
+            "arn:aws:apigateway:*::/apis/??????????",
+            "arn:aws:apigateway:*::/apis/??????????/stages/*",
+            "arn:aws:apigateway:*::/restapis/??????????",
+            "arn:aws:apigateway:*::/domainnames/*",
+            "arn:aws:apigateway:*::/vpclinks/*"
+          ],
+          "Condition": {
+            "Null": {
+              "aws:ResourceTag/cloudlabs-lab": "true"
+            }
+          }
+        },
+        {
+          "Sid": "ChangeNeedsLabTag7",
+          "Effect": "Deny",
+          "Action": [
             "logs:AssociateKmsKey",
             "logs:CreateExportTask",
-            "logs:CreateLogStream",
+            "logs:CreateLogStream"
+          ],
+          "NotResource": [
+            "arn:aws:logs:*:*:log-group:/cloudlabs/*"
+          ],
+          "Condition": {
+            "Null": {
+              "aws:ResourceTag/cloudlabs-lab": "true"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "ChangeNeedsLabTag8",
+          "Effect": "Deny",
+          "Action": [
             "logs:DeleteDataProtectionPolicy",
             "logs:DeleteDelivery*",
             "logs:DeleteDestination",
@@ -2104,12 +2263,50 @@
               "aws:ResourceTag/cloudlabs-lab": "true"
             }
           }
-        }
-      ]
-    },
-    {
-      "Version": "2012-10-17",
-      "Statement": [
+        },
+        {
+          "Sid": "ChangeNeedsLabTag9",
+          "Effect": "Deny",
+          "Action": [
+            "dynamodb:AssociateTableReplica",
+            "dynamodb:BatchWriteItem",
+            "dynamodb:CreateBackup",
+            "dynamodb:CreateGlobalTableWitness",
+            "dynamodb:CreateTableReplica",
+            "dynamodb:DeleteGlobalTableWitness",
+            "dynamodb:DeleteItem",
+            "dynamodb:DeleteResourcePolicy",
+            "dynamodb:DeleteTable*",
+            "dynamodb:DisableKinesisStreamingDestination",
+            "dynamodb:EnableKinesisStreamingDestination",
+            "dynamodb:ExportTableToPointInTime",
+            "dynamodb:ImportTable",
+            "dynamodb:PartiQLDelete",
+            "dynamodb:PartiQLInsert",
+            "dynamodb:PartiQLUpdate",
+            "dynamodb:Put*",
+            "dynamodb:ReplicateSettings",
+            "dynamodb:RestoreTableFromAwsBackup",
+            "dynamodb:RestoreTableToPointInTime",
+            "dynamodb:StartAwsBackupJob",
+            "dynamodb:UpdateContinuousBackups",
+            "dynamodb:UpdateContributorInsights",
+            "dynamodb:UpdateItem",
+            "dynamodb:UpdateKinesisStreamingDestination",
+            "dynamodb:UpdateTable*",
+            "dynamodb:UpdateTimeToLive",
+            "dynamodb:WriteDataForReplication"
+          ],
+          "NotResource": [
+            "arn:aws:dynamodb:*:*:table/lab-*",
+            "arn:aws:dynamodb:*:*:table/lab-*/*"
+          ],
+          "Condition": {
+            "Null": {
+              "aws:ResourceTag/cloudlabs-lab": "true"
+            }
+          }
+        },
         {
           "Sid": "KeepLabTag",
           "Effect": "Deny",
@@ -2117,6 +2314,7 @@
             "access-analyzer:UntagResource",
             "acm:RemoveTagsFromCertificate",
             "acm:UntagResource",
+            "apigateway:DELETE",
             "application-autoscaling:UntagResource",
             "athena:UntagResource",
             "autoscaling:DeleteTags",

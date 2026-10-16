@@ -1,0 +1,251 @@
+{
+ "schema": 1,
+ "labId": "saa-17-data-pipeline",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:aws_athena_workgroup.wg",
+   "key": "athena:workgroup/athena-wg",
+   "kind": "generic",
+   "label": "athena-wg",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "athena:workgroup",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_cloudwatch_event_rule.every_minute",
+   "key": "events:rule/rule-every-minute",
+   "kind": "messaging",
+   "label": "rule-every-minute",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "events:rule",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_cloudwatch_event_target.producer",
+     "label": "producer",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_cloudwatch_log_group.producer",
+   "key": "logs:log-group//cloudlabs/saa-17-data-pipeline/producer",
+   "kind": "logAnalytics",
+   "label": "/cloudlabs/saa-17-data-pipeline/producer",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "logs:log-group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_glue_catalog_database.lake",
+   "key": "glue:database/glue-lake",
+   "kind": "generic",
+   "label": "glue-lake",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "glue:database",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_glue_crawler.events",
+   "key": "glue:crawler/crawler-events",
+   "kind": "generic",
+   "label": "crawler-events",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "glue:crawler",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_iam_role.crawler",
+   "key": "iam:role/lab-saa-17-data-pipeline-crawler",
+   "kind": "managedIdentity",
+   "label": "lab-saa-17-data-pipeline-crawler",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "iam:role",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_iam_policy.crawler",
+     "label": "lab-saa-17-data-pipeline-crawler",
+     "armType": "iam:policy"
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.crawler",
+     "label": "crawler",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_iam_role.firehose",
+   "key": "iam:role/lab-saa-17-data-pipeline-firehose",
+   "kind": "managedIdentity",
+   "label": "lab-saa-17-data-pipeline-firehose",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "iam:role",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_iam_policy.firehose",
+     "label": "lab-saa-17-data-pipeline-firehose",
+     "armType": "iam:policy"
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.firehose",
+     "label": "firehose",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_iam_role.producer",
+   "key": "iam:role/lab-saa-17-data-pipeline-producer",
+   "kind": "managedIdentity",
+   "label": "lab-saa-17-data-pipeline-producer",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "iam:role",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_iam_policy.producer",
+     "label": "lab-saa-17-data-pipeline-producer",
+     "armType": "iam:policy"
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.producer",
+     "label": "producer",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.producer_logs",
+     "label": "producer_logs",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_kinesis_firehose_delivery_stream.to_s3",
+   "key": "firehose:deliverystream/firehose-to-s3",
+   "kind": "stream",
+   "label": "firehose-to-s3",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "firehose:deliverystream",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_kinesis_stream.events",
+   "key": "kinesis:stream/stream-events",
+   "kind": "stream",
+   "label": "stream-events",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "kinesis:stream",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_lambda_function.producer",
+   "key": "lambda:function/fn-producer",
+   "kind": "lambda",
+   "label": "fn-producer",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "lambda:function",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_lambda_permission.every_minute",
+     "label": "lab-saa-17-data-pipeline-producer",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_resourcegroups_group.lab",
+   "key": "resource-groups:group/lab-saa-17-data-pipeline",
+   "kind": "resourceGroup",
+   "label": "lab-saa-17-data-pipeline · London",
+   "props": {
+    "region": "eu-west-2"
+   },
+   "armType": "resource-groups:group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_s3_bucket.lake",
+   "key": "s3:bucket/lake",
+   "kind": "storage",
+   "label": "lake",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "s3:bucket",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_s3_bucket_public_access_block.lake",
+     "label": "lake",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:aws_cloudwatch_event_rule.every_minute>tf:aws_lambda_function.producer:",
+   "from": "tf:aws_cloudwatch_event_rule.every_minute",
+   "to": "tf:aws_lambda_function.producer",
+   "kind": "dependency",
+   "via": "tf:aws_cloudwatch_event_target.producer"
+  },
+  {
+   "id": "dependency:tf:aws_glue_crawler.events>tf:aws_glue_catalog_database.lake:catalogues",
+   "from": "tf:aws_glue_crawler.events",
+   "to": "tf:aws_glue_catalog_database.lake",
+   "kind": "dependency",
+   "label": "catalogues",
+   "via": "tf:aws_glue_crawler.events"
+  },
+  {
+   "id": "dependency:tf:aws_kinesis_firehose_delivery_stream.to_s3>tf:aws_s3_bucket.lake:delivers",
+   "from": "tf:aws_kinesis_firehose_delivery_stream.to_s3",
+   "to": "tf:aws_s3_bucket.lake",
+   "kind": "dependency",
+   "label": "delivers",
+   "via": "tf:aws_kinesis_firehose_delivery_stream.to_s3"
+  },
+  {
+   "id": "dependency:tf:aws_kinesis_stream.events>tf:aws_kinesis_firehose_delivery_stream.to_s3:reads",
+   "from": "tf:aws_kinesis_stream.events",
+   "to": "tf:aws_kinesis_firehose_delivery_stream.to_s3",
+   "kind": "dependency",
+   "label": "reads",
+   "via": "tf:aws_kinesis_firehose_delivery_stream.to_s3"
+  }
+ ],
+ "notes": [
+  "3 resources of a type the diagram draws plainly"
+ ]
+}

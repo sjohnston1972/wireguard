@@ -1,0 +1,39 @@
+# Lab saa-15 (AWS labs batch 3). SAA-C03 ((V) the wording against the current
+# exam guide): Design Secure Architectures (encryption with a customer
+# managed key, bucket policies, VPC endpoint policies); SOA-C03 Security and
+# Compliance.
+# London list prices × 0.75 (labs-verify --aws-prices). A customer managed
+# key bills $1 a month, prorated by the hour (authored, V), and nothing while
+# it waits 7 days to delete (spec §15, V).
+id: saa-15-data-security
+version: 1
+cloud: aws
+title: "Data security: KMS, bucket and endpoint policies"
+summary: >-
+  A bucket encrypted with the lab's own KMS key, a bucket policy that refuses unencrypted transport and the wrong
+  encryption, and an S3 endpoint policy that lets the lab's instance reach only that bucket.
+exam: SAA-C03
+skill_areas: [saa.secure, soa.security]
+level: associate
+type: explore
+prerequisites: [soa-07-iam-kms]
+cost:
+  items:
+    - name: "EC2 t4g.nano, Linux"
+      gbp_h: 0.0035
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - { name: "KMS customer managed key ($1 a month, by the hour) and its requests", gbp_h: 0.0011 }
+    - { name: "S3 storage and requests, a few kB", gbp_h: 0.0001 }
+    - { name: "EC2 Instance Connect Endpoint", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 4, destroy_min: 6, session_h: 2, max_h: 6 }
+capacity: { instance_types: [t4g.nano] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: [role]
+  roles: []
+  governance: false

@@ -56,6 +56,8 @@ export const AWS_LIVE_SKIP: ReadonlySet<string> = new Set([
   "ec2:security-group-rule",
   "ec2:snapshot",
   "ec2:launch-template",
+  "apigateway:stages",
+  "elasticache:cluster",
   "ec2:elastic-ip",
   "ec2:vpc-peering-connection",
   "ec2:transit-gateway-attachment",
@@ -96,7 +98,10 @@ export function awsLiveGraph(rows: readonly AwsRow[], ctx: AwsLiveCtx): Topology
   // Ruling P19: what a CloudFormation stack made carries the stack's tags too, and CloudFormation's own
   // aws:cloudformation:stack-name: the planned graph draws only the stack, so the live one folds them into it.
   const fromStack = (row: AwsRow) => typeof row.tags["aws:cloudformation:stack-name"] === "string" && row.type !== "cloudformation:stack";
-  const kept = rows.filter((r) => !AWS_LIVE_SKIP.has(lower(r.type)) && !fromStack(r));
+  // Ruling P20: a global table's replica (the same name, the secondary region) folds into its table, as the plan draws one card.
+  const primaryTables = new Set(rows.filter((r) => r.type === "dynamodb:table" && regionKind(r) === "primary").map((r) => r.id));
+  const replica = (r: AwsRow) => r.type === "dynamodb:table" && regionKind(r) === "secondary" && primaryTables.has(r.id);
+  const kept = rows.filter((r) => !AWS_LIVE_SKIP.has(lower(r.type)) && !fromStack(r) && !replica(r));
   // Pass 1: containers, then everything else (parents are looked up by node id, so order does not matter for them).
   for (const r of kept) {
     const kind = kindOfAws(r.type);

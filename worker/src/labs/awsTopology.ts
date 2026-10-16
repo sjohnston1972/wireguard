@@ -1,7 +1,7 @@
 // labs/awsTopology.ts
 //
 // Plain English: the reads behind an AWS lab's live diagram (AWS labs spec §6,
-// §10). At most AWS_TOPOLOGY_CALLS_MAX (14) calls, all counted on the Net and
+// §10). At most AWS_TOPOLOGY_CALLS_MAX (15) calls, all counted on the Net and
 // all filtered by the lab's tag (cloudlabs-lab = <id>): in the session's own
 // region (London) the tagged resources, VPCs, subnets, instances, route
 // tables, VPC peering connections, Transit Gateway attachments, NAT gateways,
@@ -14,13 +14,13 @@
 
 import type { Env } from "../env";
 import { awsQuery, ec2, filters, xmlAll, xmlFirst, xmlItems, xmlOwn, xmlOwnItems } from "../cloud/awsApi";
-import { AWS_GLOBAL_LABS, LAB_TAG } from "../../../shared/labs";
+import { LAB_TAG, readsUsEast1 } from "../../../shared/labs";
 import type { AwsRow } from "../../../shared/topology/awsLive";
 import { arnParts, labTagged, type TaggedArn } from "./awsReads";
 import type { Net } from "./net";
 
-/** Calls one live refresh may make: 10 in the lab's region, 4 in its secondary one. */
-export const AWS_TOPOLOGY_CALLS_MAX = 14;
+/** Calls one live refresh may make: 10 in the lab's region, 4 in its secondary one, 1 in us-east-1 for a global or DNS lab (ruling P5: lab 16 has all three). */
+export const AWS_TOPOLOGY_CALLS_MAX = 15;
 
 const ELB_VERSION = "2015-12-01";
 
@@ -226,9 +226,9 @@ export async function readAwsTopology(env: Env, net: Net, labId: string, region:
     rows.push(...joinRows(t2, [...v2, ...s2, ...i2], secondary));
     truncated = truncated || t2.truncated;
   }
-  // Ruling P7: a global lab's CloudFront and Route 53 items, tagged in us-east-1, sit in the lab's own container (the
+  // Rulings P7 and P5: a global lab's CloudFront and Route 53 items, and a DNS lab's Route 53 items, tagged in us-east-1, sit in the lab's own container (the
   // planned graph draws them there): one more tagging call, no describes.
-  if (AWS_GLOBAL_LABS.includes(labId)) {
+  if (readsUsEast1(labId)) {
     const tg = await labTagged(env, net, "us-east-1", labId);
     rows.push(...joinRows(tg, [], region));
     truncated = truncated || tg.truncated;

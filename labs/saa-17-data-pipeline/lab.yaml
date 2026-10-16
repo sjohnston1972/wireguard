@@ -1,0 +1,36 @@
+# Lab saa-17 (AWS labs batch 3). SAA-C03 ((V) the wording against the current
+# exam guide): Design High-Performing Architectures (streaming ingestion,
+# data transformation and analytics: Kinesis, Firehose, Glue, Athena).
+# London list prices × 0.75; the shard hour's filter is (V): if labs-verify
+# finds no single product it becomes authored-only (Task 16). A Glue crawler
+# run (about 5p) and Athena scans (pennies per GB, cut off at 10 MB a query)
+# are per use, named in the readme.
+id: saa-17-data-pipeline
+version: 1
+cloud: aws
+title: "Streaming data pipeline to Athena"
+summary: >-
+  A Lambda function puts shop events on a Kinesis stream every minute; Firehose delivers them to S3; a Glue crawler
+  turns the files into a table; Athena queries it with SQL, in a workgroup that caps what each query may scan.
+exam: SAA-C03
+skill_areas: [saa.performance]
+level: associate
+type: explore
+prerequisites: []
+cost:
+  items:
+    - name: "Kinesis Data Streams, one provisioned shard"
+      gbp_h: 0.0124
+    - { name: "Kinesis PUT payload units and Firehose ingestion (20 events a minute)", gbp_h: 0.0005 }
+    - { name: "Lambda arm64, one call a minute", gbp_h: 0.0001 }
+    - { name: "S3 storage and requests, a few MB", gbp_h: 0.0001 }
+    - { name: "CloudWatch Logs (one day)", gbp_h: 0.0001 }
+  pricey: null
+timing: { deploy_min: 5, destroy_min: 5, session_h: 2, max_h: 4 }
+capacity: { instance_types: [] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
+identity:
+  creates: [role]
+  roles: []
+  governance: false

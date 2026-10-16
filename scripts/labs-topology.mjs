@@ -34,7 +34,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { hclResources } from "../infra/ci/lab-scope.mjs";
-import { mockedProviders, mockPlanFile, withTfRunner } from "./labs-tf.mjs";
+import { declaresSecondary, mockedProviders, mockPlanFile, withTfRunner } from "./labs-tf.mjs";
 import { labFolders } from "./lib/labs.mjs";
 import { diagnostics, planFromTestStream, refsFromHcl } from "./lib/topology-stream.mjs";
 import { BICEP_VERSION, bicepAsset, bicepMatchesPin, pinnedBicep } from "./lib/bicep.mjs";
@@ -76,7 +76,7 @@ function planInput({ folder, labsDir, scratch, run, hcl2json, bicep }) {
   if (missing(init)) return { error: "terraform is not installed (the generator needs it: a stale diagram is a failure, never a skip)" };
   if (init.status !== 0) return { error: `terraform init failed: ${(init.stderr || "").trim().split("\n").slice(-3).join(" | ")}` };
   mkdirSync(join(copy, "tests"), { recursive: true });
-  writeFileSync(join(copy, "tests", "labs-mock.tftest.hcl"), mockPlanFile(folder, mockedProviders(copy)));
+  writeFileSync(join(copy, "tests", "labs-mock.tftest.hcl"), mockPlanFile(folder, mockedProviders(copy), { secondary: declaresSecondary(copy) }));
   const t = run("terraform", ["test", "-verbose", "-json", "-no-color"], { cwd: copy });
   if (missing(t)) return { error: "terraform is not installed (the generator needs it: a stale diagram is a failure, never a skip)" };
   if (t.status !== 0) {

@@ -76,6 +76,8 @@ POOL = ipaddress.ip_network("10.64.0.0/13")
 AWS_PREFIXES = ("soa-", "saa-", "ans-")
 # Labs with parts in us-east-1 (CloudFront) or us-west-2 (Global Accelerator): kept equal to scripts/lib/labs.mjs by a test.
 AWS_GLOBAL_LABS = ("soa-09-route53-cloudfront", "ans-26-edge")
+# Labs outside that list with Route 53 items, which the tagging API lists in us-east-1 only (ruling P5): equal to the contract's, by a test.
+AWS_DNS_LABS = ("saa-16-dr-pilot-light",)
 AWS_ID_MAX = 30
 
 if action not in ACTIONS:
@@ -281,7 +283,7 @@ if aws:
     out.update({
         "LAB_ENTRA": "false",
         "LAB_DNS_LINK": "false",
-        "LAB_REGIONS": " ".join(["eu-west-2", "eu-west-1"] + (["us-east-1", "us-west-2"] if lab_id in AWS_GLOBAL_LABS else [])),
+        "LAB_REGIONS": " ".join(["eu-west-2", "eu-west-1"] + (["us-east-1", "us-west-2"] if lab_id in AWS_GLOBAL_LABS else ["us-east-1"] if lab_id in AWS_DNS_LABS else [])),
         "LAB_DELETE_POLL_SECONDS": "30",
         "LAB_UNBLOCK_VAULT_WAIT_SECONDS": "300",
         "TF_VAR_gateway_cidr": gateway,

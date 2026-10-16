@@ -8,6 +8,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setCatalogueForTest } from "../src/labs/catalogue";
+import { arnParts, taggedName } from "../src/labs/awsReads";
 import { sweepAwsOrphans, sweepOrphans, readOrphans, AWS_CONFIRM_CALLS, AWS_SWEEP_CALLS } from "../src/labs/orphans";
 import { leftoversMessage } from "../src/labs/availability";
 import { fetchAwsLabCostDays } from "../src/labs/cost";
@@ -465,6 +466,31 @@ describe("capacity, permissions and resources", () => {
     expect(r.json.resources).toEqual([
       { name: "vpc-lab", type: "ec2:vpc", group: "lab-soa-03-auto-scaling (London)", state: null },
       { name: "i-0b", type: "ec2:instance", group: "lab-soa-03-auto-scaling (London)", state: null },
+    ]);
+  });
+});
+describe("batch 3 reads", () => {
+  it("ruling P2: an API Gateway ARN names its collection as the type", () => {
+    expect(arnParts("arn:aws:apigateway:eu-west-2::/apis/a1b2c3")).toEqual({ service: "apigateway", type: "apis", id: "a1b2c3" });
+    expect(arnParts("arn:aws:apigateway:eu-west-2::/apis/a1b2c3/stages/$default")).toEqual({ service: "apigateway", type: "stages", id: "a1b2c3/$default" });
+    expect(taggedName("arn:aws:apigateway:eu-west-2::/apis/a1b2c3")).toBe("apigateway:apis a1b2c3");
+    expect(arnParts("arn:aws:dynamodb:eu-west-1:123456789012:table/lab-saa-16-dr-pilot-light-orders")).toEqual({ service: "dynamodb", type: "table", id: "lab-saa-16-dr-pilot-light-orders" });
+  });
+
+  it("ruling P5: a DNS lab's resources come from London, Ireland and us-east-1", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    await runningLab(env, world, "saa-16-dr-pilot-light");
+    const tag = (Name: string) => ({ "cloudlabs-lab": "saa-16-dr-pilot-light", Name });
+    world.labAws.tagged["eu-west-2"] = [{ arn: "arn:aws:ec2:eu-west-2:123456789012:instance/i-0app", tags: tag("vm-app") }];
+    world.labAws.tagged["eu-west-1"] = [{ arn: "arn:aws:dynamodb:eu-west-1:123456789012:table/lab-saa-16-dr-pilot-light-orders", tags: tag("table-orders") }];
+    world.labAws.tagged["us-east-1"] = [{ arn: "arn:aws:route53:::hostedzone/Z0LAB", tags: tag("zone-dr") }];
+    const r = await api(env, "GET", "/labs/saa-16-dr-pilot-light");
+    expect(r.json.resources).toEqual([
+      { name: "vm-app", type: "ec2:instance", group: "lab-saa-16-dr-pilot-light (London)", state: null },
+      { name: "table-orders", type: "dynamodb:table", group: "lab-saa-16-dr-pilot-light (Ireland)", state: null },
+      { name: "zone-dr", type: "route53:hostedzone", group: "lab-saa-16-dr-pilot-light (global: Route 53)", state: null },
     ]);
   });
 });
