@@ -8,10 +8,11 @@
 # and vm-db its own security group, sg-db. THREE THINGS HERE ARE BROKEN ON
 # PURPOSE (readme, What was broken); each is marked FAULT.
 #
-# Tear-down note (ruling A78, pre-flight C10): destroying the ACL association
-# hands snet-db back to the VPC's untagged default network ACL, which the
-# lab role's guard refuses; the destroy ends on the safety net, which removes
-# snet-db and acl-db itself. That is by design and the run still ends clean.
+# Tear-down note (ruling A82, superseding A78): destroying the ACL
+# association hands snet-db back to the VPC's untagged default network ACL.
+# A82 lets the lab role move a subnet's association off or onto that default
+# ACL, so Terraform's destroy re-associates the default ACL itself and no
+# longer ends on the safety net's fallback (pre-flight C10).
 
 locals {
   data_cidr = cidrsubnet(var.address_space, 2, 1)

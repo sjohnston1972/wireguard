@@ -84,6 +84,9 @@ function fabricCases(account, prefix = "") {
     { name: `${prefix}tag an untagged network ACL`, action: "ec2:CreateTags", resource: acl, context: [region, ctx(`aws:RequestTag/${LAB_TAG}`, ["soa-01-x"]), ctx("aws:TagKeys", [LAB_TAG], "stringList")], want: "denied" },
     { name: `${prefix}an entry in an untagged network ACL`, action: "ec2:CreateNetworkAclEntry", resource: acl, context: [region], want: "denied" },
     { name: `${prefix}a rule in an untagged security group`, action: "ec2:AuthorizeSecurityGroupIngress", resource: `arn:aws:ec2:eu-west-2:${account}:security-group/sg-0123456789abcdef0`, context: [region], want: "denied" },
+    // Ruling A82: AWS asks about the (untagged) default ACL being replaced too; a new ACL only in a lab-tagged VPC.
+    { name: `${prefix}replace an ACL association off a default ACL`, action: "ec2:ReplaceNetworkAclAssociation", resource: acl, context: [region], want: "allowed" },
+    { name: `${prefix}a network ACL in an untagged VPC`, action: "ec2:CreateNetworkAcl", resource: `arn:aws:ec2:eu-west-2:${account}:vpc/vpc-0123456789abcdef1`, context: [region, ctx(`aws:RequestTag/${LAB_TAG}`, ["soa-01-x"]), ctx("aws:TagKeys", [LAB_TAG], "stringList")], want: "denied" },
   ];
 }
 /** An account-wide EC2 setting (fix round 2): VPC Block Public Access would cut the VPN server off the internet. */

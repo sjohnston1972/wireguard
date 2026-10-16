@@ -10,7 +10,7 @@
 # Endpoints and peering inside one AZ are free. Reachability Analyzer is
 # charged per analysis (about 7.5p): the readme says so where it suggests one.
 id: soa-08-vpc-fix
-version: 1
+version: 2
 cloud: aws
 title: "Break-fix: VPC connectivity troubleshooting"
 summary: >-
