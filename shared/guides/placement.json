@@ -765,5 +765,14 @@
    "width": 2107,
    "height": 966
   }
+ ],
+ "soa-09-route53-cloudfront": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A CloudFront distribution sending traffic to an S3 bucket.",
+   "width": 632,
+   "height": 438
+  }
  ]
 }

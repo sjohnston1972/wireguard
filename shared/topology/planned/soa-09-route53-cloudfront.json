@@ -1,0 +1,146 @@
+{
+ "schema": 1,
+ "labId": "soa-09-route53-cloudfront",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:aws_cloudfront_distribution.site",
+   "key": "cloudfront:distribution/cdn-site",
+   "kind": "frontDoor",
+   "label": "cdn-site",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "cloudfront:distribution",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_cloudfront_origin_access_control.site",
+     "label": "lab-soa-09-route53-cloudfront-a09…",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_resourcegroups_group.lab",
+   "key": "resource-groups:group/lab-soa-09-route53-cloudfront",
+   "kind": "resourceGroup",
+   "label": "lab-soa-09-route53-cloudfront · London",
+   "props": {
+    "region": "eu-west-2"
+   },
+   "armType": "resource-groups:group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route53_health_check.primary",
+   "key": "route53:healthcheck/hc-primary",
+   "kind": "monitor",
+   "label": "hc-primary",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "route53:healthcheck",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route53_zone.lab",
+   "key": "route53:hostedzone/zone-lab",
+   "kind": "dnsZone",
+   "label": "zone-lab",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "route53:hostedzone",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route53_record.app[\"blue\"]",
+     "label": "app.a09….labs.clydeford.net",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route53_record.app[\"green\"]",
+     "label": "app.a09….labs.clydeford.net",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route53_record.cdn",
+     "label": "cdn.a09….labs.clydeford.net",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route53_record.release[\"blue\"]",
+     "label": "blue.a09….labs.clydeford.net",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route53_record.release[\"green\"]",
+     "label": "green.a09….labs.clydeford.net",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route53_record.release[\"sorry\"]",
+     "label": "sorry.a09….labs.clydeford.net",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route53_record.www_primary",
+     "label": "www.a09….labs.clydeford.net",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route53_record.www_secondary",
+     "label": "www.a09….labs.clydeford.net",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_s3_bucket.site",
+   "key": "s3:bucket/site",
+   "kind": "storage",
+   "label": "site",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "s3:bucket",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_s3_bucket_policy.site",
+     "label": "site",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_s3_bucket_public_access_block.site",
+     "label": "site",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_s3_object.health",
+     "label": "health",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_s3_object.index",
+     "label": "index",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  }
+ ],
+ "edges": [
+  {
+   "id": "traffic:tf:aws_cloudfront_distribution.site>tf:aws_s3_bucket.site:origin",
+   "from": "tf:aws_cloudfront_distribution.site",
+   "to": "tf:aws_s3_bucket.site",
+   "kind": "traffic",
+   "label": "origin",
+   "via": "tf:aws_cloudfront_distribution.site"
+  }
+ ]
+}

@@ -1,0 +1,36 @@
+# Lab soa-09 (AWS labs batch 2). SOA-C03 ((V) the wording against the current
+# exam guide): Networking and Content Delivery (Route 53 routing policies and
+# health checks, CloudFront with an S3 origin); and ANS-C01's Network Design
+# (DNS and edge design). No third provider: CloudFront and Route 53 are global
+# APIs the aws provider signs for us-east-1 itself (ruling P7).
+# Costs, authored (no hourly list price): a hosted zone $0.50/month, not
+# charged when deleted within 12 hours (V, spec §15); one HTTP health check
+# $0.50-0.75/month (V: whether a partial month is prorated; worst case
+# about 56p a session, ruling P8 keeps it to one); CloudFront and S3 requests
+# for a few test pages: pennies a month.
+id: soa-09-route53-cloudfront
+version: 1
+cloud: aws
+title: "Route 53 routing and CloudFront in front of S3"
+summary: >-
+  A private S3 bucket served through CloudFront with origin access control, and a public Route 53 zone of the lab's own
+  with weighted and failover records and a health check, queried straight from its name servers.
+exam: SOA-C03
+skill_areas: [soa.networking, ans.design]
+level: associate
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "Route 53 hosted zone ($0.50/month; none if deleted within 12 hours)", gbp_h: 0.0005 }
+    - { name: "Route 53 health check, HTTP ($0.75/month)", gbp_h: 0.0008 }
+    - { name: "CloudFront and S3 requests, a few test pages", gbp_h: 0.0001 }
+  pricey: null
+timing: { deploy_min: 8, destroy_min: 12, session_h: 2, max_h: 4 }
+capacity: { instance_types: [] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
+identity:
+  creates: []
+  roles: []
+  governance: false

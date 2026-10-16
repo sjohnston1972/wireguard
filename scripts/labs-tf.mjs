@@ -238,7 +238,8 @@ export async function withTfRunner({ maxBuffer } = {}, work) {
 }
 
 /** The contract variables the AWS mock sets, as a plan holds them (the test_plan message carries none). */
-const AWS_MOCK_VARIABLES = () => ({
+const AWS_MOCK_VARIABLES = (labId) => ({
+  name_prefix: { value: `a${/^[a-z0-9]+-(\d{2})-/.exec(labId)?.[1] ?? "00"}k3x9q` },
   region: { value: "eu-west-2" },
   secondary_region: { value: "eu-west-1" },
   address_space: { value: slotCidr(LAB_SLOTS - 1) },
@@ -266,7 +267,7 @@ export function mockPlanScopeProblems(stream, labId) {
   const changes = plan.resource_changes ?? [];
   const mockPlan = {
     ...plan,
-    variables: plan.variables ?? AWS_MOCK_VARIABLES(),
+    variables: plan.variables ?? AWS_MOCK_VARIABLES(labId),
     planned_values: {
       root_module: {
         resources: changes.map((c) => ({ address: c.address, mode: c.mode, type: c.type, name: c.name, index: c.index, provider_name: c.provider_name, values: c.change?.after ?? {} })),

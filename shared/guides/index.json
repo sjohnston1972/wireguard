@@ -575,5 +575,12 @@
    "title": "Break-fix: VPC connectivity troubleshooting: architecture",
    "kind": "architecture"
   }
+ ],
+ "soa-09-route53-cloudfront": [
+  {
+   "file": "architecture.svg",
+   "title": "Route 53 routing and CloudFront in front of S3: architecture",
+   "kind": "architecture"
+  }
  ]
 }

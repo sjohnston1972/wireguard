@@ -860,6 +860,16 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: ["vpc-data -> vpc-lab : peering"],
   },
+  "soa-09-route53-cloudfront": {
+    nodes: [
+      "dnsZone zone-lab < lab-soa-09-route53-cloudfront · London",
+      "frontDoor cdn-site < lab-soa-09-route53-cloudfront · London",
+      "monitor hc-primary < lab-soa-09-route53-cloudfront · London",
+      "resourceGroup lab-soa-09-route53-cloudfront · London",
+      "storage site < lab-soa-09-route53-cloudfront · London",
+    ],
+    edges: ["cdn-site -> site : origin"],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);
