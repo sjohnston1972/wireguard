@@ -174,7 +174,9 @@ test("lab-abac.json is the generator's, sorted, for the allow-listed services on
   assert.ok(ABAC.change.includes("ec2:ReplaceNetworkAclEntry") && !ABAC.change.some((a) => /^ec2:ReplaceNetwork(\*|AclAssociation)$/.test(a)));
   // Batch 3 (2026-10-16): P2's API Gateway verbs moved to the change list, ec2:CopyImage (P4) and
   // elasticloadbalancing:DeleteLoadBalancer (P8) left the lists; nothing else changed in the reference.
-  assert.equal(createHash("sha256").update(JSON.stringify({ create: ABAC.create, change: ABAC.change })).digest("hex"), "53d756b2becbec9c6061d96f0d0ffa78b6fe3714aa02a8edcb54a285db9e0478");
+  // Batch 4 (2026-10-16): the two peering accepts left the change list (P3), so ec2:AcceptTransit* and ec2:AcceptVpc*
+  // split into the other accepts; ec2:CreateTrafficMirrorFilterRule left the create list (P17); nothing else changed.
+  assert.equal(createHash("sha256").update(JSON.stringify({ create: ABAC.create, change: ABAC.change })).digest("hex"), "a54f7161fa227db6f0cca2d3079557f5919f698e773a6b368bd04464f2f7e195");
 });
 
 test("lab-policies.json is what --render makes from lab-abac.json", { skip }, () => {
@@ -326,10 +328,10 @@ test("the Worker user may read lab things in both lab regions, and change nothin
   assert.doesNotMatch(never, /Condition/);
 });
 
-test("the simulator cases are A19's, fix round 1's, batch 2's and batch 3's, and a wrong answer is a problem", () => {
+test("the simulator cases are A19's, fix round 1's, batch 2's, batch 3's and batch 4's, and a wrong answer is a problem", () => {
   const cases = simulatorCases("123456789012", FILL.vpcArns);
   assert.deepEqual(cases.map((c) => [c.name, c.want]), [["tagged VPC", "allowed"], ["bounded lab role", "allowed"], ["untagged VPC", "denied"], ["the VPN server", "denied"], ["role without the boundary", "denied"], ["role outside the path", "denied"], ["access key", "denied"], ["a third region", "denied"],
-    ["an entry in a lab network ACL", "allowed"], ["tag an untagged network ACL", "denied"], ["an entry in an untagged network ACL", "denied"], ["a rule in an untagged security group", "denied"], ["replace an ACL association off a default ACL", "allowed"], ["a network ACL in an untagged VPC", "denied"], ["move a lab subnet's ACL association", "allowed"], ["move an untagged subnet's ACL association", "denied"], ["move the VPN server's subnet's ACL association", "denied"], ["delete an untagged network interface (an EFS mount target's)", "allowed"], ["delete the VPN server's network interface", "denied"], ["the VPN server's user data", "denied"], ["pass the deploy role", "denied"], ["AdministratorAccess on a lab role", "denied"], ["change the boundary", "denied"], ["remove a boundary", "denied"], ["block public access for the account", "denied"], ["EBS encryption by default", "denied"], ["a launch whose volume has no lab tag", "denied"], ["EICE's network interface", "allowed"], ["an SSM association", "allowed"], ["retention on a new lab log group", "allowed"], ["retention on another log group", "denied"], ["SSM default host management", "denied"], ["reset an SSM setting", "denied"], ["a lab 07 user under the boundary", "allowed"], ["a user for another lab", "denied"], ["remove a hand-made key from the lab 07 user", "allowed"], ["delete the lab's analyzer", "allowed"], ["an untagged CloudFormation stack", "denied"], ["a CloudFront distribution", "allowed"], ["a Route 53 hosted zone", "allowed"], ["an ECS cluster in us-east-1", "denied"], ["a global table's replica in Ireland", "allowed"], ["an untagged table not named for a lab", "denied"], ["copy an AMI to Ireland", "allowed"], ["a tagged HTTP API", "allowed"], ["an untagged HTTP API", "denied"], ["a route on a lab API", "allowed"], ["delete an untagged API", "denied"], ["API Gateway's account settings", "denied"], ["delete a load balancer Kubernetes made for lab 19", "allowed"], ["delete an untagged load balancer", "denied"], ["the Spot service-linked role", "allowed"], ["a subnet in the default VPC", "denied"], ["an ACL move in the default VPC", "denied"]]);
+    ["an entry in a lab network ACL", "allowed"], ["tag an untagged network ACL", "denied"], ["an entry in an untagged network ACL", "denied"], ["a rule in an untagged security group", "denied"], ["replace an ACL association off a default ACL", "allowed"], ["a network ACL in an untagged VPC", "denied"], ["move a lab subnet's ACL association", "allowed"], ["move an untagged subnet's ACL association", "denied"], ["move the VPN server's subnet's ACL association", "denied"], ["delete an untagged network interface (an EFS mount target's)", "allowed"], ["delete the VPN server's network interface", "denied"], ["the VPN server's user data", "denied"], ["pass the deploy role", "denied"], ["AdministratorAccess on a lab role", "denied"], ["change the boundary", "denied"], ["remove a boundary", "denied"], ["block public access for the account", "denied"], ["EBS encryption by default", "denied"], ["a launch whose volume has no lab tag", "denied"], ["EICE's network interface", "allowed"], ["an SSM association", "allowed"], ["retention on a new lab log group", "allowed"], ["retention on another log group", "denied"], ["SSM default host management", "denied"], ["reset an SSM setting", "denied"], ["a lab 07 user under the boundary", "allowed"], ["a user for another lab", "denied"], ["remove a hand-made key from the lab 07 user", "allowed"], ["delete the lab's analyzer", "allowed"], ["an untagged CloudFormation stack", "denied"], ["a CloudFront distribution", "allowed"], ["a Route 53 hosted zone", "allowed"], ["an ECS cluster in us-east-1", "denied"], ["a global table's replica in Ireland", "allowed"], ["an untagged table not named for a lab", "denied"], ["copy an AMI to Ireland", "allowed"], ["a tagged HTTP API", "allowed"], ["an untagged HTTP API", "denied"], ["a route on a lab API", "allowed"], ["delete an untagged API", "denied"], ["API Gateway's account settings", "denied"], ["delete a load balancer Kubernetes made for lab 19", "allowed"], ["delete an untagged load balancer", "denied"], ["the Spot service-linked role", "allowed"], ["a tagged transit gateway", "allowed"], ["an untagged transit gateway", "denied"], ["accept a peering attachment in Ireland, untagged there", "allowed"], ["accept a VPC peering into a lab VPC", "allowed"], ["accept a VPC peering into an untagged VPC", "denied"], ["accept a VPC peering into the VPN server's VPC", "denied"], ["a tagged Client VPN endpoint", "allowed"], ["a tagged Network Firewall", "allowed"], ["a Global Accelerator in us-west-2", "allowed"], ["a WAF web ACL for CloudFront in us-east-1", "allowed"], ["CloudWatch Logs' account resource policy", "denied"], ["the IPAM service-linked role", "allowed"], ["vended log delivery to a lab bucket", "allowed"], ["a lab log bucket's policy", "allowed"], ["a mirror filter rule, untagged", "allowed"], ["a subnet in the default VPC", "denied"], ["an ACL move in the default VPC", "denied"]]);
   // With no default VPC in the account there is nothing to ask about it.
   assert.ok(!simulatorCases("123456789012", []).some((c) => /default VPC/.test(c.name)));
   assert.deepEqual(boundaryCases("123456789012", FILL.vpcArns).map((c) => [c.name, c.want]), [["boundary: an entry in a lab network ACL", "allowed"], ["boundary: tag an untagged network ACL", "denied"], ["boundary: an entry in an untagged network ACL", "denied"], ["boundary: a rule in an untagged security group", "denied"], ["boundary: replace an ACL association off a default ACL", "allowed"], ["boundary: a network ACL in an untagged VPC", "denied"], ["boundary: move a lab subnet's ACL association", "allowed"], ["boundary: move an untagged subnet's ACL association", "denied"], ["boundary: move the VPN server's subnet's ACL association", "denied"], ["boundary: delete an untagged network interface (an EFS mount target's)", "allowed"], ["boundary: delete the VPN server's network interface", "denied"], ["boundary: delete every tag", "denied"], ["boundary: block public access for the account", "denied"], ["boundary: SSM default host management", "denied"], ["boundary: reset an SSM setting", "denied"], ["boundary: tag a new snapshot", "allowed"], ["boundary: a subnet in the default VPC", "denied"], ["boundary: an ACL move in the default VPC", "denied"]]);
@@ -400,7 +402,7 @@ test("--labs: every simulator case is asked of the role, quotas below target are
   const r = await runLabsBootstrap(run, { ...O, log: (s) => log.push(s) });
   assert.equal(r.ok, true);
   const sims = calls.filter((c) => c[2] === "simulate-principal-policy");
-  assert.equal(sims.length, 54);
+  assert.equal(sims.length, 69);
   for (const c of sims) assert.equal(c[c.indexOf("--policy-source-arn") + 1], O.roleArn);
   // The boundary, simulated as a policy of its own (simulate-custom-policy), with the document the bootstrap filled.
   const custom = calls.filter((c) => c[2] === "simulate-custom-policy");
@@ -984,4 +986,67 @@ test("ruling P22: a lab may delete an untagged network interface in its VPC (EFS
     assert.notEqual(decide(docs, { action: "ec2:DeleteNetworkInterface", resource: eni, ctx: { ...R, "aws:ResourceTag/wg-admin": "vpn" } }), "allowed", `${who}: the VPN server's ENI`);
     assert.notEqual(decide(docs, { action: "ec2:DeleteNetworkInterface", resource: eni, ctx: { ...R, "ec2:Vpc": FILL.vpcArns[0] } }), "allowed", `${who}: a default-VPC ENI`);
   }
+});
+
+test("Review Focus 1 / P3: an untagged accepter side is accepted in a lab VPC; never into a VPC without the lab tag or the VPN server's", { skip }, () => {
+  const { ABAC, POLICIES } = files();
+  const d = (action, resource, ctx) => decide(POLICIES.role, { action, resource, ctx });
+  const IE = { "aws:RequestedRegion": "eu-west-1" };
+  assert.ok(CHANGE_TAG_EXEMPT.includes("ec2:AcceptVpcPeeringConnection") && CHANGE_TAG_EXEMPT.includes("ec2:AcceptTransitGatewayPeeringAttachment"));
+  const coversIt = (x) => (a) => a.toLowerCase() === x.toLowerCase() || (a.endsWith("*") && x.toLowerCase().startsWith(a.slice(0, -1).toLowerCase()));
+  for (const x of ["ec2:AcceptVpcPeeringConnection", "ec2:AcceptTransitGatewayPeeringAttachment"]) assert.ok(!ABAC.change.some(coversIt(x)), `no change-list entry covers ${x}`);
+  assert.equal(d("ec2:AcceptTransitGatewayPeeringAttachment", `arn:aws:ec2:eu-west-1:${A}:transit-gateway-attachment/tgw-attach-0abc`, IE), "allowed");
+  assert.equal(d("ec2:AcceptVpcPeeringConnection", `arn:aws:ec2:eu-west-1:${A}:vpc-peering-connection/pcx-0abc`, IE), "allowed", "the accepter side's peering, untagged");
+  assert.equal(d("ec2:AcceptVpcPeeringConnection", `arn:aws:ec2:eu-west-1:${A}:vpc/vpc-0abc`, { ...IE, "aws:ResourceTag/cloudlabs-lab": "ans-29-multi-region" }), "allowed");
+  assert.equal(d("ec2:AcceptVpcPeeringConnection", `arn:aws:ec2:eu-west-1:${A}:vpc/vpc-0abc`, IE), "explicitDeny", "VpcFabricNeedsLabTag on the accepter VPC");
+  assert.equal(d("ec2:AcceptVpcPeeringConnection", `arn:aws:ec2:eu-west-2:${A}:vpc/vpc-0abc`, { "aws:RequestedRegion": "eu-west-2", "aws:ResourceTag/cloudlabs-lab": "x", "aws:ResourceTag/wg-admin": "vpn" }), "explicitDeny");
+  assert.equal(d("ec2:AcceptTransitGatewayVpcAttachment", `arn:aws:ec2:eu-west-2:${A}:transit-gateway-attachment/tgw-attach-0abc`, { "aws:RequestedRegion": "eu-west-2" }), "explicitDeny", "other accepts still need the tag");
+});
+
+test("ruling P8: logs resource policies are denied; ruling P4: batch 4's service-linked roles", { skip }, () => {
+  const { POLICIES } = files();
+  const d = (action, resource, ctx) => decide(POLICIES.role, { action, resource, ctx });
+  for (const a of ["logs:PutResourcePolicy", "logs:DeleteResourcePolicy"]) assert.equal(d(a, "*", { "aws:RequestedRegion": "eu-west-2" }), "explicitDeny", a);
+  for (const s of ["ipam", "clientvpn", "route53resolver", "transitgateway", "network-firewall", "globalaccelerator", "vpc-lattice"]) assert.ok(SERVICE_LINKED.includes(`${s}.amazonaws.com`), s);
+});
+
+test("what labs 20–31 do is allowed: tagged creates, their changes, the global services, the roles they pass, vended log delivery", { skip }, () => {
+  const { POLICIES } = files();
+  const allowed = (action, resource, ctx) => assert.equal(decide(POLICIES.role, { action, resource, ctx }), "allowed", `${action} on ${resource}`);
+  const ec2 = (rest, region = "eu-west-2") => `arn:aws:ec2:${region}:${A}:${rest}`;
+  // Lab 20: IPAM, the IPv6 pool, the association, egress-only gateway, prefix list.
+  allowed("ec2:CreateIpam", `arn:aws:ec2::${A}:ipam/*`, NEW);
+  allowed("ec2:CreateIpamPool", `arn:aws:ec2::${A}:ipam-pool/*`, NEW);
+  allowed("ec2:ProvisionIpamPoolCidr", `arn:aws:ec2::${A}:ipam-pool/ipam-pool-0abc`, LAB);
+  allowed("ec2:AssociateVpcCidrBlock", ec2("vpc/vpc-0abc"), LAB);
+  allowed("ec2:AssociateVpcCidrBlock", `arn:aws:ec2::${A}:ipam-pool/ipam-pool-0abc`, LAB);
+  for (const [a, t] of [["ec2:CreateEgressOnlyInternetGateway", "egress-only-internet-gateway"], ["ec2:CreateManagedPrefixList", "prefix-list"]]) allowed(a, ec2(`${t}/*`), NEW);
+  // Labs 21, 27, 29: transit gateways.
+  for (const [a, t] of [["ec2:CreateTransitGateway", "transit-gateway"], ["ec2:CreateTransitGatewayVpcAttachment", "transit-gateway-attachment"], ["ec2:CreateTransitGatewayRouteTable", "transit-gateway-route-table"], ["ec2:CreateTransitGatewayPeeringAttachment", "transit-gateway-attachment"]]) allowed(a, ec2(`${t}/*`), NEW);
+  for (const [a, t] of [["ec2:CreateTransitGatewayRoute", "transit-gateway-route-table/tgw-rtb-0abc"], ["ec2:AssociateTransitGatewayRouteTable", "transit-gateway-attachment/tgw-attach-0abc"], ["ec2:DeleteTransitGateway", "transit-gateway/tgw-0abc"]]) allowed(a, ec2(t), LAB);
+  // Lab 22: VPN.
+  for (const [a, t] of [["ec2:CreateVpnGateway", "vpn-gateway"], ["ec2:CreateCustomerGateway", "customer-gateway"], ["ec2:CreateVpnConnection", "vpn-connection"]]) allowed(a, ec2(`${t}/*`), NEW);
+  for (const [a, t] of [["ec2:AttachVpnGateway", "vpn-gateway/vgw-0abc"], ["ec2:EnableVgwRoutePropagation", "route-table/rtb-0abc"], ["ec2:DeleteVpnConnection", "vpn-connection/vpn-0abc"]]) allowed(a, ec2(t), LAB);
+  // Labs 23: Resolver; 27: Network Firewall; 30: Lattice; 25, 31: ACM.
+  for (const a of ["route53resolver:CreateResolverEndpoint", "route53resolver:CreateResolverRule", "route53resolver:CreateFirewallDomainList", "route53resolver:CreateFirewallRuleGroup", "route53resolver:CreateResolverQueryLogConfig", "network-firewall:CreateFirewall", "network-firewall:CreateFirewallPolicy", "network-firewall:CreateRuleGroup", "vpc-lattice:CreateServiceNetwork", "vpc-lattice:CreateService", "vpc-lattice:CreateTargetGroup", "acm:ImportCertificate"]) allowed(a, "*", NEW);
+  for (const [a, r] of [["route53resolver:AssociateResolverRule", `arn:aws:route53resolver:eu-west-2:${A}:resolver-rule/rslvr-rr-0abc`], ["network-firewall:UpdateLoggingConfiguration", `arn:aws:network-firewall:eu-west-2:${A}:firewall/lab-x`], ["vpc-lattice:RegisterTargets", `arn:aws:vpc-lattice:eu-west-2:${A}:targetgroup/tg-0abc`], ["vpc-lattice:PutAuthPolicy", `arn:aws:vpc-lattice:eu-west-2:${A}:service/svc-0abc`], ["acm:DeleteCertificate", `arn:aws:acm:eu-west-2:${A}:certificate/0abc`]]) allowed(a, r, LAB);
+  // Lab 31: Client VPN; lab 28: mirroring and the flow-log role; lab 24, 25: endpoint services.
+  allowed("ec2:CreateClientVpnEndpoint", ec2("client-vpn-endpoint/*"), NEW);
+  allowed("ec2:AssociateClientVpnTargetNetwork", ec2("client-vpn-endpoint/cvpn-endpoint-0abc"), LAB);
+  for (const [a, t] of [["ec2:CreateTrafficMirrorTarget", "traffic-mirror-target"], ["ec2:CreateTrafficMirrorFilter", "traffic-mirror-filter"], ["ec2:CreateVpcEndpointServiceConfiguration", "vpc-endpoint-service"]]) allowed(a, ec2(`${t}/*`), NEW);
+  allowed("iam:PassRole", `arn:aws:iam::${A}:role/cloudlabs-lab/lab-ans-28-flow-logs-fix-flowlogs`, { "iam:PassedToService": "vpc-flow-logs.amazonaws.com" });
+  // Ruling P17: the filter rule carries no tags (the provider has none), so it is create-tag exempt; its filter is the lab's.
+  assert.ok(CREATE_TAG_EXEMPT.includes("ec2:CreateTrafficMirrorFilterRule"));
+  allowed("ec2:CreateTrafficMirrorFilterRule", ec2("traffic-mirror-filter-rule/*"), { "aws:RequestedRegion": "eu-west-2" });
+  allowed("ec2:CreateTrafficMirrorFilterRule", ec2("traffic-mirror-filter/tmf-0abc"), LAB);
+  // Ruling P8: vended logs (labs 23, 27, 28) to the lab's bucket: the delivery and the bucket's own policy; lab 22's EIP.
+  for (const a of ["logs:CreateLogDelivery", "logs:GetLogDelivery", "logs:UpdateLogDelivery", "logs:DeleteLogDelivery", "logs:ListLogDeliveries"]) allowed(a, "*", { "aws:RequestedRegion": "eu-west-2" });
+  for (const a of ["s3:GetBucketPolicy", "s3:PutBucketPolicy"]) allowed(a, "arn:aws:s3:::cloudlabs-a23k3x9q-dnslogs", { "aws:RequestedRegion": "eu-west-2" });
+  assert.notEqual(decide(POLICIES.role, { action: "s3:PutBucketPolicy", resource: "arn:aws:s3:::someone-elses-bucket", ctx: { "aws:RequestedRegion": "eu-west-2" } }), "allowed");
+  allowed("ec2:AssociateAddress", ec2("elastic-ip/eipalloc-0abc"), LAB);
+  // Lab 26: the global services in their regions.
+  allowed("globalaccelerator:CreateAccelerator", "*", { "aws:RequestedRegion": "us-west-2" });
+  allowed("cloudfront:CreateFunction", "*", { "aws:RequestedRegion": "us-east-1" });
+  allowed("wafv2:CreateWebACL", `arn:aws:wafv2:us-east-1:${A}:global/webacl/lab-ans-26-edge-waf/*`, { ...NEW, "aws:RequestedRegion": "us-east-1" });
+  assert.notEqual(decide(POLICIES.role, { action: "globalaccelerator:CreateAccelerator", resource: "*", ctx: { "aws:RequestedRegion": "eu-west-2" } }), "allowed", "Global Accelerator answers only in us-west-2 (V)");
 });
