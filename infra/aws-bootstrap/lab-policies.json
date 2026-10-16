@@ -1570,7 +1570,9 @@
             "ec2:DeleteLocalGatewayRouteTable*",
             "ec2:DeleteLocalGatewayVirtual*",
             "ec2:DeleteNatGateway",
-            "ec2:DeleteNetwork*",
+            "ec2:DeleteNetworkAcl*",
+            "ec2:DeleteNetworkInsights*",
+            "ec2:DeleteNetworkInterfacePermission",
             "ec2:DeleteOdbNetworkPeering",
             "ec2:DeletePlacementGroup",
             "ec2:DeletePublicIpv4Pool",
@@ -1588,11 +1590,7 @@
             "ec2:DeleteTransitGatewayMulticastDomain",
             "ec2:DeleteTransitGatewayPeeringAttachment",
             "ec2:DeleteTransitGatewayPolicy*",
-            "ec2:DeleteTransitGatewayRoute*",
-            "ec2:DeleteTransitGatewayVpcAttachment",
-            "ec2:DeleteVerified*",
-            "ec2:DeleteVolume",
-            "ec2:DeleteVpc*"
+            "ec2:DeleteTransitGatewayRoute*"
           ],
           "Resource": "*",
           "Condition": {
@@ -1611,6 +1609,10 @@
           "Sid": "ChangeNeedsLabTag3",
           "Effect": "Deny",
           "Action": [
+            "ec2:DeleteTransitGatewayVpcAttachment",
+            "ec2:DeleteVerified*",
+            "ec2:DeleteVolume",
+            "ec2:DeleteVpc*",
             "ec2:DeleteVpn*",
             "ec2:DeprovisionIpam*",
             "ec2:DeprovisionPublicIpv4PoolCidr",
@@ -1789,10 +1791,7 @@
             "elasticache:InterruptClusterAzPower",
             "elasticache:ModifyCacheParameterGroup",
             "elasticache:ModifyCacheSubnetGroup",
-            "elasticache:ModifyGlobalReplicationGroup",
-            "elasticache:ModifyReplicationGroupShardConfiguration",
-            "elasticache:ModifyServerlessCache",
-            "elasticache:ModifyUser*"
+            "elasticache:ModifyGlobalReplicationGroup"
           ],
           "Resource": "*",
           "Condition": {
@@ -1811,6 +1810,9 @@
           "Sid": "ChangeNeedsLabTag4",
           "Effect": "Deny",
           "Action": [
+            "elasticache:ModifyReplicationGroupShardConfiguration",
+            "elasticache:ModifyServerlessCache",
+            "elasticache:ModifyUser*",
             "elasticache:RebalanceSlotsInGlobalReplicationGroup",
             "elasticache:RebootCacheCluster",
             "elasticache:ResetCacheParameterGroup",
@@ -1981,11 +1983,7 @@
             "lambda:CreateWebFunctionRevision",
             "lambda:DeleteAlias",
             "lambda:DeleteCapacityProvider",
-            "lambda:DeleteCodeSigningConfig",
-            "lambda:DeleteEventSourceMapping",
-            "lambda:DeleteFunction*",
-            "lambda:DeleteMicrovm*",
-            "lambda:DeleteNetworkConnector"
+            "lambda:DeleteCodeSigningConfig"
           ],
           "Resource": "*",
           "Condition": {
@@ -2003,6 +2001,10 @@
           "Sid": "ChangeNeedsLabTag5",
           "Effect": "Deny",
           "Action": [
+            "lambda:DeleteEventSourceMapping",
+            "lambda:DeleteFunction*",
+            "lambda:DeleteMicrovm*",
+            "lambda:DeleteNetworkConnector",
             "lambda:DeleteProvisionedConcurrencyConfig",
             "lambda:DeleteResourcePolicy",
             "lambda:DeleteWeb*",
@@ -2201,12 +2203,7 @@
           "Action": [
             "logs:AssociateKmsKey",
             "logs:CreateExportTask",
-            "logs:CreateLogStream",
-            "logs:DeleteDataProtectionPolicy",
-            "logs:DeleteDelivery*",
-            "logs:DeleteDestination",
-            "logs:DeleteLogAnomalyDetector",
-            "logs:DeleteLogGroup"
+            "logs:CreateLogStream"
           ],
           "NotResource": [
             "arn:aws:logs:*:*:log-group:/cloudlabs/*"
@@ -2226,6 +2223,11 @@
           "Sid": "ChangeNeedsLabTag8",
           "Effect": "Deny",
           "Action": [
+            "logs:DeleteDataProtectionPolicy",
+            "logs:DeleteDelivery*",
+            "logs:DeleteDestination",
+            "logs:DeleteLogAnomalyDetector",
+            "logs:DeleteLogGroup",
             "logs:DeleteLogStream",
             "logs:DeleteLookupTable",
             "logs:DeleteMetricFilter",

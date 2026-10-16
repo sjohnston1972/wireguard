@@ -4,9 +4,9 @@ From the SAA-C03 outline: choose high-performing storage for block, file and obj
 ## What it deploys
 
 - The VPC `vpc-lab` (the slot's first /20), two private subnets, an S3 gateway endpoint and an Instance Connect Endpoint (the template)
-- The instance `vm-storage` (t4g.micro, Amazon Linux 2023) with two extra volumes: a 4 GiB **gp3** at `/dev/sdf` (3,000 IOPS whatever its size) and a 4 GiB **io2** with 100 provisioned IOPS at `/dev/sdg`, both unformatted; on Nitro instances they appear as `/dev/nvme1n1` and `/dev/nvme2n1` (`lsblk` shows which)
+- The instance `vm-storage` (t4g.micro, Amazon Linux 2023) with two extra volumes: a 4 GiB **gp3** at `/dev/sdf` (3,000 IOPS whatever its size) and a 4 GiB **io2** with 100 provisioned IOPS at `/dev/sdg`, both unformatted; on Nitro instances they appear as NVMe devices in no fixed order, so the Connect lines name each by its volume id (`/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_vol…`) and `lsblk -o NAME,SIZE,SERIAL` shows each device's volume id without the dash
 - The file system `efs-shared` (EFS Standard, encrypted, bursting throughput) with a mount target in each private subnet, mounted on the instance at `/mnt/efs`
-- The bucket `cloudlabs-<name prefix>-tiers`: `reports/` to S3 Intelligent-Tiering at once (archive tiers after 90 and 180 days unread); `logs/` to Standard-IA after 30 days, Glacier Instant Retrieval after 90, deleted after a year; two sample objects
+- The bucket `cloudlabs-<name prefix>-tiers`: `reports/` to S3 Intelligent-Tiering by the daily lifecycle run (objects of 128 KB and up; archive tiers after 90 and 180 days unread); `logs/` to Standard-IA after 30 days, Glacier Instant Retrieval after 90, deleted after a year; two sample objects
 
 ```text
 lab-saa-14-storage (London)
@@ -17,10 +17,10 @@ lab-saa-14-storage (London)
 
 ## Things to try
 
-- Connect (the first Connect line), run `lsblk` to find the two data volumes, then the second line against each (change the device): the gp3 reads at about 3,000 IOPS, the io2 at about its 100. Then think about what each costs per month: the io2's IOPS are billed whether you use them or not.
-- Write a file to `/mnt/efs`, then open a second Instance Connect session and read it: EFS is shared, an EBS volume can only be attached to one instance (in its own zone).
-- List the bucket with the fourth line: the report is already `INTELLIGENT_TIERING`; the log starts as `STANDARD` and the lifecycle rule moves it later. Upload a file to `reports/` and one to the top of the bucket with `aws s3 cp` and see where each lands.
-- Format and mount the gp3 volume (`sudo mkfs -t xfs /dev/nvme1n1 && sudo mkdir /data && sudo mount /dev/nvme1n1 /data`), then grow it to 8 GiB in the EC2 console while mounted and extend the file system with `sudo xfs_growfs /data`: no downtime.
+- Connect (the first Connect line), run `lsblk -o NAME,SIZE,SERIAL` to see the two data volumes' ids, then the second Connect line (the gp3) and the sixth (the io2): the gp3 reads at about 3,000 IOPS, the io2 at about its 100. Then think about what each costs per month: the io2's IOPS are billed whether you use them or not.
+- Write a file to `/mnt/efs`: any instance in either subnet could mount the same file system through its zone's mount target (`df -h /mnt/efs`). An EBS volume serves instances in its own zone only, and only io1/io2 can Multi-Attach, to up to 16 Nitro instances.
+- In CloudShell, run the fourth Connect line (the instance has no AWS credentials): the report is `INTELLIGENT_TIERING` because it was uploaded with that class. Lifecycle runs about once a day and skips objects under 128 KB, so within a session nothing moves. Upload one file with `--storage-class INTELLIGENT_TIERING` and one without, and compare.
+- Format and mount the gp3 volume, using the device path from the second Connect line (`sudo mkfs -t xfs <path> && sudo mkdir /data && sudo mount <path> /data`), then grow it to 8 GiB in the EC2 console while mounted and extend the file system with `sudo xfs_growfs /data`: no downtime. The destroy stops the instance first, so a mounted volume cannot hold it up.
 - In the EFS console, set the file system's lifecycle to move files to Infrequent Access after 7 days unread, and compare the two storage classes' prices.
 - Compare prices for 100 GiB a month in London from the AWS pricing pages: S3 Standard, S3 Standard-IA, Glacier Instant Retrieval, EFS Standard, EFS Infrequent Access, gp3 and io2.
 

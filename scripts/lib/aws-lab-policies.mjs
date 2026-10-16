@@ -90,7 +90,11 @@ export const CREATE_TAG_EXEMPT = ["ec2:CreateNetworkInterface", "ssm:CreateAssoc
  * ACL in a lab VPC instead.
  */
 // Ruling P8 (A90): a load balancer Kubernetes made carries its cluster's tag, not the lab's; ElbDeleteLabOrEks judges it.
-export const CHANGE_TAG_EXEMPT = ["ec2:ReplaceNetworkAclAssociation", "elasticloadbalancing:DeleteLoadBalancer"];
+// Ruling P22: EFS's DeleteMountTarget also asks IAM, as the caller, about ec2:DeleteNetworkInterface on the mount target's
+// requester-managed ENI, which carries no tags (EFS API reference); elasticfilesystem.amazonaws.com is not among the
+// services documented to set aws:CalledVia, so there is no narrower carve-out. DenyVpnServer, DenyDefaultVpcChildren and
+// AWS itself (an in-use ENI cannot be deleted) still apply.
+export const CHANGE_TAG_EXEMPT = ["ec2:ReplaceNetworkAclAssociation", "elasticloadbalancing:DeleteLoadBalancer", "ec2:DeleteNetworkInterface"];
 /** Ruling P8: the tag Kubernetes gives what lab 19's cluster makes (its cluster is lab-<id>, ruling P7). */
 export const EKS_LB_TAG = "kubernetes.io/cluster/lab-saa-19-eks";
 /**

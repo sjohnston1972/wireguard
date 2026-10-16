@@ -28,7 +28,7 @@ export default () => {
   });
   const attachment = (key, device) => ({
     address: `aws_volume_attachment.${key}`,
-    values: { device_name: device },
+    values: { device_name: device, stop_instance_before_detaching: true },
     unknown: ["volume_id", "instance_id"],
     refs: { volume_id: ref(`aws_ebs_volume.${key}`, "id"), instance_id: ref("aws_instance.storage", "id") },
   });
@@ -84,7 +84,7 @@ export default () => {
         ],
       }),
       onBucket("aws_s3_object", tagged(c, { key: "reports/hello.txt", content: "an object stored straight into Intelligent-Tiering\n", content_type: "text/plain", storage_class: "INTELLIGENT_TIERING" }), { key: "report" }),
-      onBucket("aws_s3_object", tagged(c, { key: "logs/first.log", content: "a log line that the logs/ rule will move to Standard-IA after 30 days\n", content_type: "text/plain" }), { key: "log" }),
+      onBucket("aws_s3_object", tagged(c, { key: "logs/first.log", content: "a log line; the logs/ rule moves objects of 128 KB and up to Standard-IA after 30 days\n", content_type: "text/plain" }), { key: "log" }),
     ],
   };
 };

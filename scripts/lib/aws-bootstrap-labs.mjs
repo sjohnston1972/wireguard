@@ -104,6 +104,9 @@ function fabricCases(account, prefix = "") {
     { name: `${prefix}move a lab subnet's ACL association`, action: "ec2:ReplaceNetworkAclAssociation", resource: subnet, context: [region, ctx(`aws:ResourceTag/${LAB_TAG}`, ["soa-01-x"])], want: "allowed" },
     { name: `${prefix}move an untagged subnet's ACL association`, action: "ec2:ReplaceNetworkAclAssociation", resource: subnet, context: [region], want: "denied" },
     { name: `${prefix}move the VPN server's subnet's ACL association`, action: "ec2:ReplaceNetworkAclAssociation", resource: subnet, context: [region, ctx("aws:ResourceTag/wg-admin", ["vpn"])], want: "denied" },
+    // Ruling P22: EFS's DeleteMountTarget asks about its untagged ENI as the caller; the VPN server's ENI stays refused.
+    { name: `${prefix}delete an untagged network interface (an EFS mount target's)`, action: "ec2:DeleteNetworkInterface", resource: `arn:aws:ec2:eu-west-2:${account}:network-interface/eni-0123456789abcdef0`, context: [region], want: "allowed" },
+    { name: `${prefix}delete the VPN server's network interface`, action: "ec2:DeleteNetworkInterface", resource: `arn:aws:ec2:eu-west-2:${account}:network-interface/eni-0123456789abcdef0`, context: [region, ctx("aws:ResourceTag/wg-admin", ["vpn"])], want: "denied" },
   ];
 }
 /** An account-wide EC2 setting (fix round 2): VPC Block Public Access would cut the VPN server off the internet. */

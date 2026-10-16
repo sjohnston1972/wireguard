@@ -2,11 +2,12 @@
 #
 # Plain English: lab 14's bucket, cloudlabs-<name_prefix>-tiers, private and
 # removable with its objects. Objects under reports/ go to S3
-# Intelligent-Tiering at once (it moves an object to cheaper tiers when nobody
-# reads it, and to the archive tiers after 90 and 180 days); objects under
-# logs/ go
-# Standard-IA after 30 days, Glacier Instant Retrieval after 90, and are
-# deleted after a year. Two sample objects show the classes.
+# Intelligent-Tiering by the daily lifecycle run (it moves an object to cheaper
+# tiers when nobody reads it, and to the archive tiers after 90 and 180 days);
+# objects under logs/ go to Standard-IA after 30 days, Glacier Instant
+# Retrieval after 90, and are deleted after a year. The run skips objects under
+# 128 KB, so the two sample objects (one uploaded with its class, one without)
+# show the classes without waiting.
 
 resource "aws_s3_bucket" "tiers" {
   bucket        = "cloudlabs-${var.name_prefix}-tiers"
@@ -80,6 +81,6 @@ resource "aws_s3_object" "report" {
 resource "aws_s3_object" "log" {
   bucket       = aws_s3_bucket.tiers.id
   key          = "logs/first.log"
-  content      = "a log line that the logs/ rule will move to Standard-IA after 30 days\n"
+  content      = "a log line; the logs/ rule moves objects of 128 KB and up to Standard-IA after 30 days\n"
   content_type = "text/plain"
 }

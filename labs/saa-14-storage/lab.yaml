@@ -35,7 +35,7 @@ cost:
     - { name: "EFS Standard and S3 Intelligent-Tiering, a few kB, and their requests", gbp_h: 0.0002 }
     - { name: "EC2 Instance Connect Endpoint", gbp_h: 0 }
   pricey: null
-timing: { deploy_min: 5, destroy_min: 4, session_h: 2, max_h: 6 }
+timing: { deploy_min: 5, destroy_min: 5, session_h: 2, max_h: 6 }
 capacity: { instance_types: [t4g.micro] }
 regions: { secondary: null }
 connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
