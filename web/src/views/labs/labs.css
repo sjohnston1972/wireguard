@@ -157,6 +157,10 @@
 .labs-connect { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .labs-connect li { display: flex; align-items: center; gap: 6px; }
 .labs-connect code { font-family: var(--font-mono); font-size: 12px; padding: 3px 8px; border-radius: 6px; background: var(--bg-tile); border: 1px solid var(--border); overflow-wrap: anywhere; }
+/* Lab files under Show (ruling P25): a name and a Download button per row. */
+.labs-files { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.labs-files__row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.labs-files__name { min-width: 0; font-family: var(--font-mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .labs-note {
   width: 100%; resize: vertical; min-height: 64px; padding: 8px 10px; border-radius: var(--radius-control);
   background: var(--bg-tile); border: 1px solid var(--border-strong); color: var(--text-primary); font: inherit; font-size: 13px; line-height: 1.45;

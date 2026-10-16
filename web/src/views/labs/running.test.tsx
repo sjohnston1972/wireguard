@@ -38,8 +38,8 @@ const liveLog = (updatedAt: string): RunLogResponse => ({
   updatedAt,
 });
 
-const open = (detail: LabDetail, more: Record<string, unknown> = {}) =>
-  renderApp(`/labs/${ID}`, { routes: { "GET /api/v1/labs": labs({ running: detail.session ? [detail.session] : [] }), [`GET ${PATH}`]: detail, ...more } });
+const open = (detail: LabDetail, more: Record<string, unknown> = {}, id = ID) =>
+  renderApp(`/labs/${id}`, { routes: { "GET /api/v1/labs": labs({ running: detail.session ? [detail.session] : [] }), [`GET /api/v1/labs/${id}`]: detail, ...more } });
 const dialog = async () => within(await screen.findByRole("dialog", { name: /Blob security/ }));
 
 describe("the lab modal, running", () => {
@@ -92,7 +92,7 @@ describe("the lab modal, running", () => {
 
   it("Show reveals the password and user names and hides them on close", async () => {
     const user = userEvent.setup();
-    const secret = { adminPassword: "Fake-Pa55word-x", users: { ann: "lab-az104-06-blob-security-ann@contoso.onmicrosoft.com" } };
+    const secret = { adminPassword: "Fake-Pa55word-x", users: { ann: "lab-az104-06-blob-security-ann@contoso.onmicrosoft.com" }, files: {} };
     const { fetchMock } = open(detailRunning(), { [`GET ${PATH}/secret`]: secret });
     let d = await dialog();
     expect(d.queryByText("Fake-Pa55word-x")).toBeNull();
@@ -117,9 +117,44 @@ describe("the lab modal, running", () => {
     expect(fetchMock!.callsTo("GET", `${PATH}/secret`)).toHaveLength(3);
   });
 
+  it("Review Focus 5 / P25: Show lists each file with a Download button; Hide forgets them", async () => {
+    const AWS_ID = "ans-31-client-vpn";
+    const secret = { adminPassword: "Fake-Pa55word-x", users: {}, files: { "ans-31.ovpn": "client\n", "client.key": "-----BEGIN PRIVATE KEY-----\n" } };
+    const created: string[] = [];
+    const revoked: string[] = [];
+    vi.spyOn(URL, "createObjectURL").mockImplementation(() => {
+      created.push("blob:1");
+      return "blob:1";
+    });
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation((u) => {
+      revoked.push(u);
+    });
+    const s = session({ labId: AWS_ID });
+    const user = userEvent.setup();
+    open(detailRunning({ cloud: "aws", card: card({ id: AWS_ID, running: s }), session: s }), { [`GET /api/v1/labs/${AWS_ID}/secret`]: secret }, AWS_ID);
+    await user.click(await screen.findByRole("button", { name: "Show" }));
+    const list = await screen.findByRole("list", { name: "Lab files" });
+    expect(within(list).getAllByRole("listitem").map((li) => li.querySelector(".labs-files__name")!.textContent)).toEqual(["ans-31.ovpn", "client.key"]);
+    await user.click(within(list).getByRole("button", { name: "Download client.key" }));
+    expect(created).toEqual(["blob:1"]);
+    expect(revoked).toEqual(["blob:1"]);
+    await user.click(screen.getByRole("button", { name: "Hide" }));
+    expect(screen.queryByRole("list", { name: "Lab files" })).toBeNull();
+    expect(document.body.textContent).not.toContain("BEGIN PRIVATE KEY");
+    expect(screen.getByText("The admin password, the lab's user names and its files, shown only when you ask.")).toBeInTheDocument();
+  });
+
+  it("a lab without files shows no file list", async () => {
+    const user = userEvent.setup();
+    open(detailRunning(), { [`GET ${PATH}/secret`]: { adminPassword: "Fake-Pa55word-x", users: {}, files: {} } });
+    await user.click(await screen.findByRole("button", { name: "Show" }));
+    await screen.findByText("Fake-Pa55word-x");
+    expect(screen.queryByRole("list", { name: "Lab files" })).toBeNull();
+  });
+
   it("the password is not kept in the query client's cache after Hide or after the modal closes", async () => {
     const user = userEvent.setup();
-    const secret = { adminPassword: "Fake-Pa55word-x", users: { ann: "lab-az104-06-blob-security-ann@contoso.onmicrosoft.com" } };
+    const secret = { adminPassword: "Fake-Pa55word-x", users: { ann: "lab-az104-06-blob-security-ann@contoso.onmicrosoft.com" }, files: {} };
     const { client } = open(detailRunning(), { [`GET ${PATH}/secret`]: secret });
     const cached = () => client.getMutationCache().getAll().some((m) => JSON.stringify(m.state.data ?? null).includes("Fake-Pa55word-x"));
     let d = await dialog();
