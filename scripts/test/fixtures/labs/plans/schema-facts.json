@@ -327,6 +327,10 @@
   "rg": false,
   "tags": true
  },
+ "aws_lightsail_instance": {
+  "rg": false,
+  "tags": true
+ },
  "aws_nat_gateway": {
   "rg": false,
   "tags": true

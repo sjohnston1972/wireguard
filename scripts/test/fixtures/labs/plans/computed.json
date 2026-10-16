@@ -1360,6 +1360,23 @@
    ],
    "blocks": {}
   },
+  "aws_lightsail_instance": {
+   "attrs": [
+    "arn",
+    "cpu_count",
+    "created_at",
+    "id",
+    "ipv6_addresses",
+    "is_static_ip",
+    "private_ip_address",
+    "public_ip_address",
+    "ram_size",
+    "region",
+    "tags_all",
+    "username"
+   ],
+   "blocks": {}
+  },
   "aws_default_security_group": {
    "attrs": [
     "arn",

@@ -122,6 +122,8 @@ export const TYPES = [
   "aws_vpc_peering_connection", "aws_eip", "aws_nat_gateway", "aws_iam_user",
   // AWS labs batch 1: what the AWS scope tests plan in order to refuse
   "aws_lambda_function", "aws_dx_gateway", "aws_iam_access_key", "aws_vpc_peering_connection_accepter",
+  // AWS labs batch 3 fix round 1 (review M-6): a type no lab will ever be allowed (Lightsail lives outside the lab's VPC)
+  "aws_lightsail_instance",
   // AWS labs batch 1, ruling A48: the untagged VPC defaults and aws_ec2_tag the scope check refuses
   "aws_default_security_group", "aws_default_network_acl", "aws_default_route_table", "aws_ec2_tag",
   // AWS labs batch 2
