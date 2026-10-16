@@ -500,3 +500,16 @@ test("re-review N-2: an alarm notifying the lab's own topic passes; its dimensio
   const vm = al2023Instance(c, { key: "web", name: "vm-web" });
   assert.deepEqual(rules(plan([topic, vm, { ...ALARM, values: { ...ALARM.values, dimensions: {} }, unknown: ["alarm_actions", "ok_actions", "dimensions.InstanceId"], refs: { alarm_actions: ref("aws_sns_topic.t", "arn"), ok_actions: ref("aws_sns_topic.t", "arn"), dimensions: ref("aws_instance.web", "id") } }])), []);
 });
+
+test("a Lambda permission's function_url_auth_type: NONE is refused; unset (null, not configured) passes; configured null is refused (lab 07 fix round 1)", () => {
+  const perm = (v, refs = {}) => ({ address: "aws_lambda_permission.p", values: { action: "lambda:InvokeFunction", principal: "secretsmanager.amazonaws.com", statement_id: "x", ...v }, unknown: ["function_name"], refs });
+  const pub = (p) => rules(p, "soa-07-iam-kms").filter((r) => r.startsWith("public"));
+  assert.equal(pub(plan7([perm({ function_url_auth_type: "NONE" })])).length, 1, "NONE");
+  // realisticPlan treats every key in values as configured, so the unset case is made by printing the null into the finished plan, as Terraform does.
+  const unset = plan7([perm({})]);
+  const printNull = (o) => { if (o && typeof o === "object") { if (o.address === "aws_lambda_permission.p") { if (o.values) o.values.function_url_auth_type = null; if (o.change?.after) o.change.after.function_url_auth_type = null; } Object.values(o).forEach(printNull); } };
+  printNull(unset);
+  assert.deepEqual(pub(unset), [], "unset: a plan prints null, nothing configured");
+  // An attribute the configuration sets to null is still refused: it is configured and not AWS_IAM (conservative).
+  assert.equal(pub(plan7([perm({ function_url_auth_type: null }, { function_url_auth_type: ["var.x"] })])).length, 1, "configured null");
+});

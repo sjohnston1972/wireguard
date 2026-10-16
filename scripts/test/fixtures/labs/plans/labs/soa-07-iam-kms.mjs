@@ -118,10 +118,10 @@ export default () => {
           policy: policyDoc([
             { Sid: "LabSecrets", Effect: "Allow", Action: ["secretsmanager:DescribeSecret", "secretsmanager:GetSecretValue", "secretsmanager:PutSecretValue", "secretsmanager:UpdateSecretVersionStage"], Resource: secretsArn },
             { Sid: "NewPasswords", Effect: "Allow", Action: "secretsmanager:GetRandomPassword", Resource: "*" },
-            { Sid: "LabKey", Effect: "Allow", Action: ["kms:Decrypt", "kms:GenerateDataKey"], Resource: "*", Condition: keyCondition },
+            { Sid: "LabKey", Effect: "Allow", Action: ["kms:Decrypt", "kms:GenerateDataKey"], Resource: "*", Condition: { StringEquals: { "kms:ViaService": `secretsmanager.${region}.amazonaws.com` }, StringLike: { "kms:EncryptionContext:SecretARN": secretsArn } } },
           ]),
         }),
-        refs: { name: ["var.lab_id"], policy: ["var.region", ...account, "var.lab_id", ...keyAliasRefs] },
+        refs: { name: ["var.lab_id"], policy: ["var.region", ...account, "var.lab_id", "var.region", "var.region", ...account, "var.lab_id"] },
       },
       {
         address: "aws_iam_role_policy_attachment.rotate",

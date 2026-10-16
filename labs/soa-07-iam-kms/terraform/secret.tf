@@ -9,7 +9,7 @@
 # press Rotate. The function has no VPC (it calls Secrets Manager's public
 # endpoint), writes its log to /cloudlabs/<id>/rotate (one day; ruling A56)
 # and runs as lab-<id>-rotate, under the lab boundary, allowed only this lab's
-# secrets and key. A 20-second wait lets the new secret's and function's tags
+# secrets and, through Secrets Manager, their key. A 20-second wait lets the new secret's and function's tags
 # reach IAM before the first change it judges by them (ruling P15).
 
 resource "random_password" "app" {
@@ -49,11 +49,16 @@ resource "aws_iam_policy" "rotate" {
       { Sid = "LabSecrets", Effect = "Allow", Action = ["secretsmanager:DescribeSecret", "secretsmanager:GetSecretValue", "secretsmanager:PutSecretValue", "secretsmanager:UpdateSecretVersionStage"], Resource = "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:lab-${var.lab_id}-*" },
       { Sid = "NewPasswords", Effect = "Allow", Action = "secretsmanager:GetRandomPassword", Resource = "*" },
       {
-        Sid       = "LabKey"
-        Effect    = "Allow"
-        Action    = ["kms:Decrypt", "kms:GenerateDataKey"]
-        Resource  = "*"
-        Condition = { "ForAnyValue:StringEquals" = { "kms:ResourceAliases" = local.key_alias } }
+        Sid      = "LabKey"
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
+        Resource = "*"
+        # Not by the alias: an alias takes up to five minutes to count in a policy, and the first rotation runs seconds after the deploy.
+        # Secrets Manager's own use of a key for one of this lab's secrets is known at plan and has no such lag.
+        Condition = {
+          StringEquals = { "kms:ViaService" = "secretsmanager.${var.region}.amazonaws.com" }
+          StringLike   = { "kms:EncryptionContext:SecretARN" = "arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:lab-${var.lab_id}-*" }
+        }
       },
     ]
   })

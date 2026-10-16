@@ -19,10 +19,10 @@ lab-soa-07-iam-kms (London)
 
 ## Things to try
 
-- Sign in as `lab-soa-07-iam-kms-ann` in a private window (the first Connect line). EC2 opens; CloudFormation says she is not authorised, although her own policy allows `cloudformation:ListStacks`: the boundary does not, and what she may do is where the two overlap. In IAM, open her user and read **Permissions boundary**; then use the IAM policy simulator (as yourself) on her user for both actions.
+- Sign in as `lab-soa-07-iam-kms-ann` in a private window (the first Connect line). switch the console to Europe (London) first, as the boundary allows no other region. EC2 opens; CloudFormation says she is not authorised, although her own policy allows `cloudformation:ListStacks`: the boundary does not, and what she may do is where the two overlap. In IAM, open her user and read **Permissions boundary**; then use the IAM policy simulator (as yourself) on her user for both actions.
 - As ann, open the secret in Secrets Manager and **Retrieve secret value**: it decrypts because her policy allows the key through its alias (`kms:ResourceAliases`). Then rotate it (the third Connect line, as yourself), watch `/cloudlabs/soa-07-iam-kms/rotate` for the four steps, and see a new value and a new AWSCURRENT version.
 - Turn on **Automatic key rotation** on the key (KMS, Customer managed keys, Key rotation), and read the key policy: it names only the account, which is why IAM policies can grant the key at all.
-- Add a statement to the key policy that allows another account (any 12-digit id you invent) `kms:Decrypt`, then open IAM Access Analyzer: a new active finding names the key as shared outside the account. **Archive** it, or remove the statement and **Rescan**; both clear it.
+- Add a statement to the key policy that allows another AWS account that exists (a second account of your own, for example; KMS refuses a principal it cannot find) `kms:Decrypt`, then open IAM Access Analyzer: a new active finding (it can take a few minutes; use **Rescan**) names the key as shared outside the account. **Archive** it, or remove the statement and **Rescan**; both clear it.
 - Make an access key for ann (IAM, her user, Security credentials) and see its last-used date stay empty. Tear-down removes it with her (`force_destroy`); the lab's own pipeline may never make one.
 
 ## Not built here
