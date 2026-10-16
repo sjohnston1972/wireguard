@@ -25,7 +25,7 @@ lab-saa-11-three-tier (London)
 
 - Load the page a few times with `curl` (the first Connect line) and watch the instance and zone change: the load balancer spreads requests across both zones.
 - Connect to an app instance (the third Connect line), run the `mysql` line with the session password, create a table and add a row. Then reboot the database with failover (RDS, the database, Actions, Reboot, "Reboot with failover") and time how long the client cannot write.
-- On the same instance run the `valkey-cli` line (or `redis6-cli` if that is the client that installed), then `SET greeting hello EX 60` and `GET greeting`: a cache answers in well under a millisecond, which is why the app tier asks it before the database.
+- On the same instance run the `valkey-cli` line (or `redis6-cli` if that is the client that installed), then `SET greeting hello EX 60` and `GET greeting`. To see the speed difference, run `valkey-cli -h <cache address> --latency` (Ctrl+C after a few seconds) and compare it with `time mysql --ssl -h <database address> -u labadmin -p appdb -e 'SELECT 1'`: a cache answers in well under a millisecond, which is why an app would ask it before the database.
 - Terminate one app instance and watch the group replace it in the same zone while the page keeps answering from the other.
 - Try to reach the database from your PC without peering: there is no route and no public address. The data tier's route table `rt-data` has no way to the internet at all.
 

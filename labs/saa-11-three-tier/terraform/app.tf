@@ -34,7 +34,7 @@ locals {
       { path = "/usr/local/bin/lab-page", permissions = "0755", content = local.app_page },
       { path = "/etc/systemd/system/lab-app.service", permissions = "0644", content = local.app_unit },
     ]
-    runcmd = ["systemctl daemon-reload", "systemctl enable --now lab-app.service", "dnf install -y mariadb105 valkey || dnf install -y mariadb105 redis6 || true"]
+    runcmd = ["systemctl daemon-reload", "systemctl enable --now lab-app.service", "for i in 1 2 3 4 5; do dnf install -y mariadb105 valkey && break; dnf install -y mariadb105 redis6 && break; sleep 20; done"]
   }))}"
 }
 

@@ -2,8 +2,8 @@
 #
 # Plain English: lab 11's way out for the private subnets: a NAT gateway in
 # snet-public-1 with an Elastic IP (public by nature, spec §7.4), and a
-# default route to it in rt-private. The Fargate tasks pull their image from
-# Amazon ECR Public and send their logs through it. While the lab is peered,
+# default route to it in rt-private. The app tier installs its database and
+# cache clients through it. While the lab is peered,
 # the route the pipeline adds for the VPN server's range is more specific, so
 # that traffic still goes through the peering.
 

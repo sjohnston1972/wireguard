@@ -14,7 +14,7 @@ output "connect" {
     "curl http://${aws_lb.web.dns_name}",
     "aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names ${aws_autoscaling_group.web.name} --query 'AutoScalingGroups[0].Instances[].InstanceId'",
     "aws ec2-instance-connect ssh --instance-id <an app instance id> --os-user labadmin --connection-type eice",
-    "mysql -h ${aws_db_instance.app.address} -u labadmin -p appdb",
+    "mysql --ssl -h ${aws_db_instance.app.address} -u labadmin -p appdb",
     "valkey-cli -h ${aws_elasticache_replication_group.app.primary_endpoint_address} ping",
   ]
 }
