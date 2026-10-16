@@ -11,7 +11,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stringify } from "yaml";
-import { AWS_GLOBAL_LABS, AWS_LAB_ID_MAX, buildCatalogue, cloudOfId, EXAM_CLOUD, examOfId, LAB_EXAMS, LAB_ID_RE, LAB_TF_VARS_AWS, readmeFooter, validateLab, variablesProblems } from "../lib/labs.mjs";
+import { AWS_DNS_LABS, AWS_GLOBAL_LABS, AWS_LAB_ID_MAX, buildCatalogue, cloudOfId, EXAM_CLOUD, examOfId, LAB_EXAMS, LAB_ID_RE, LAB_TF_VARS_AWS, readmeFooter, readsUsEast1, validateLab, variablesProblems } from "../lib/labs.mjs";
 
 const AREAS = [
   { key: "soa.reliability", exam: "SOA-C03", name: "Reliability and Business Continuity" },
@@ -148,4 +148,16 @@ test("lab-parse.sh's AWS_GLOBAL_LABS equals the contract's", () => {
   const m = /^AWS_GLOBAL_LABS = \(([^)]*)\)$/m.exec(sh);
   assert.ok(m, "lab-parse.sh has an AWS_GLOBAL_LABS tuple");
   assert.deepEqual([...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]), AWS_GLOBAL_LABS);
+});
+
+test("lab-parse.sh's AWS_DNS_LABS equals the contract's (ruling P5)", () => {
+  const sh = readFileSync(new URL("../../infra/ci/lab-parse.sh", import.meta.url), "utf8");
+  const m = /^AWS_DNS_LABS = \(([^)]*)\)\r?$/m.exec(sh);
+  assert.ok(m, "lab-parse.sh has an AWS_DNS_LABS tuple");
+  assert.deepEqual([...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]), AWS_DNS_LABS);
+});
+
+test("ruling P5: a global or DNS lab reads us-east-1; no other lab does", () => {
+  assert.deepEqual(["soa-09-route53-cloudfront", "saa-16-dr-pilot-light", "soa-05-rds", "saa-19-eks"].map(readsUsEast1), [true, true, false, false]);
+  assert.ok(!AWS_DNS_LABS.some((id) => AWS_GLOBAL_LABS.includes(id)), "a DNS lab is never also a global lab");
 });

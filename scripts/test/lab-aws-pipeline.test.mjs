@@ -71,6 +71,14 @@ test("Parse payload: a global lab also sweeps us-east-1 and us-west-2, and keeps
   assert.equal(r.env.TF_VAR_secondary_region, "eu-west-1");
 });
 
+test("ruling P5: a DNS lab's regions add us-east-1 only (Route 53 is listed there); its secondary is Ireland", { skip: skipParse }, () => {
+  const d = { ...LAB, id: "saa-16-dr-pilot-light", version: 1 };
+  const r = parseRun("aws", { ...PAYLOAD, lab_id: d.id, version: 1, name_prefix: "a16k3x9q", secondary_region: "eu-west-1" }, d);
+  assert.equal(r.status, 0, r.out);
+  assert.equal(r.env.LAB_REGIONS, "eu-west-2 eu-west-1 us-east-1");
+  assert.equal(r.env.TF_VAR_secondary_region, "eu-west-1");
+});
+
 test("Parse payload: an Azure run gains only LAB_CLOUD=azure", { skip: skipParse }, () => {
   const az = { id: "az104-08-vms", version: 1, connectivity: { peering: "optional", dns_link: false }, timing: { deploy_min: 5, destroy_min: 5 }, identity: { creates: [] } };
   const r = parseRun("azure", { ...PAYLOAD, lab_id: az.id, version: 1, region: "uksouth", name_prefix: "l08k3x9q", gateway_cidr: undefined }, az);
