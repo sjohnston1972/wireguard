@@ -14,8 +14,9 @@ import { join } from "node:path";
 import { AWS_CONFIG_LABS, AWS_DNS_LABS, AWS_GLOBAL_LABS, AWS_IAM_USER_LABS, AWS_INSTANCE_TYPES, AWS_MEDIUM_LABS, AWS_PEER_REGION_LABS, LAB_ID_RE } from "../lib/labs.mjs";
 import * as scope from "../../infra/ci/lab-scope-aws.mjs";
 import { planResources } from "../../infra/ci/lab-scope.mjs";
+import { LAB_PLANS } from "./fixtures/labs/plans/labs.mjs";
 import { realisticPlan } from "./fixtures/labs/plans/realistic.mjs";
-import { ACCOUNT, al2023Instance, AMI, AWS_PROVIDER_CONFIG, awsData, BOUNDARY, ctxAws, ref, tagged, templateMainResources, templateResources } from "./fixtures/labs/plans/common-aws.mjs";
+import { ACCOUNT, al2023Instance, AMI, AWS_PROVIDER_CONFIG, awsData, BOUNDARY, cidrsubnet, ctxAws, ref, tagged, templateMainResources, templateResources } from "./fixtures/labs/plans/common-aws.mjs";
 
 const ID = "soa-01-cloudwatch";
 const c = ctxAws(ID, "01");
@@ -137,7 +138,8 @@ const EVIL = [
   ["gateway", "a network ACL in an existing VPC by id", () => plan([{ address: "aws_network_acl.other", values: tagged(c, { vpc_id: "vpc-0a1b2c3d4e5f60718" }), refs: {} }])],
   ["gateway", "a network ACL association on an existing subnet by id", () => plan([{ address: "aws_network_acl_association.other", values: { subnet_id: "subnet-0a1b2c3d4e5f60718" }, unknown: ["network_acl_id"], refs: { network_acl_id: ref("aws_network_acl.mine", "id") } }])],
   ["gateway", "a network ACL association onto an existing ACL by id", () => plan([{ address: "aws_network_acl_association.other", values: { network_acl_id: "acl-0a1b2c3d4e5f60718" }, unknown: ["subnet_id"], refs: { subnet_id: ref("aws_subnet.lab", "id") } }])],
-  ["gateway", "a peering accepter", () => plan([{ address: "aws_vpc_peering_connection_accepter.x", values: tagged(c, { auto_accept: true }), unknown: ["vpc_peering_connection_id"], refs: {} }])],
+  // Ruling P3 (batch 4): an accepter outside AWS_PEER_REGION_LABS is refused by rule provider first (rule gateway too).
+  ["provider", "a peering accepter outside AWS_PEER_REGION_LABS", () => plan([{ address: "aws_vpc_peering_connection_accepter.x", values: tagged(c, { auto_accept: true }), unknown: ["vpc_peering_connection_id"], refs: {} }])],
   ["gateway", "a tag key wg-admin", () => plan([{ address: "aws_sns_topic.x", values: { name: "x", tags: { "wg-admin": "vpn" }, tags_all: { ...c.tags, "wg-admin": "vpn" } }, refs: {} }])],
   ["gateway", "an alarm on an existing instance (dimensions InstanceId, review round 1)", () => plan([{ address: "aws_cloudwatch_metric_alarm.cpu", values: tagged(c, { alarm_name: "cpu", comparison_operator: "GreaterThanThreshold", evaluation_periods: 1, metric_name: "CPUUtilization", namespace: "AWS/EC2", period: 300, statistic: "Average", threshold: 80, dimensions: { InstanceId: "i-0123456789abcdef0" } }), refs: {} }])],
   ["gateway", "an SSM association targeting existing instances by id", () => plan([{ address: "aws_ssm_association.patch", values: tagged(c, { name: "AWS-RunPatchBaseline", targets: [{ key: "InstanceIds", values: ["i-0123456789abcdef0"] }] }), refs: {} }])],
@@ -558,6 +560,8 @@ const c19 = ctxAws("saa-19-eks", "19");
 const T = (cx, address, values, more = {}) => ({ address, values: tagged(cx, values), refs: {}, ...more });
 const U = (address, values, more = {}) => ({ address, values, refs: {}, ...more });
 const rulesFor = (cx, extra, base) => rules(realisticPlan({ resources: [...(base ?? templateMainResources(cx)), ...extra], data: awsData(), providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: cx.variables }), cx.id);
+/** A lab's plan fixture (fixtures/labs/plans/labs/<id>.mjs) through the scope check, as lab-plans.test.mjs runs it. */
+const labFixtureRules = (id) => scope.checkPlanAws(LAB_PLANS[id].plan, id).map((x) => `${x.rule}: ${x.address}`);
 const DB = { identifier: "db-a11k3x9q", engine: "mysql", instance_class: "db.t4g.micro", allocated_storage: 20, skip_final_snapshot: true, deletion_protection: false, delete_automated_backups: true, copy_tags_to_snapshot: true, db_subnet_group_name: "lab-saa-11-three-tier-db" };
 
 test("rulings P16 and P13: refuses a public database and a Lambda permission with no own source; an own rule passes", () => {
@@ -674,10 +678,12 @@ const cacheGroup = (cx) => T(cx, "aws_elasticache_subnet_group.data", { name: `l
 const dbGroup = (cx) => T(cx, "aws_db_subnet_group.db", { name: `lab-${cx.id}-db` }, { unknown: ["subnet_ids"], refs: { subnet_ids: ["aws_subnet.private"] } });
 
 test("fix round 1, I-1: a queue's own policy is read like any resource policy (ruling P10)", () => {
-  const q = (Principal) => T(c13, "aws_sqs_queue.open", { name: "lab-saa-13-decoupling-open", policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal, Action: "sqs:SendMessage", Resource: "*" }] }) });
+  const q = (Principal, Condition) => T(c13, "aws_sqs_queue.open", { name: "lab-saa-13-decoupling-open", policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal, Action: "sqs:SendMessage", Resource: "*", ...(Condition ? { Condition } : {}) }] }) });
   assert.deepEqual(rulesFor(c13, [q("*")]), ["public: aws_sqs_queue.open"]);
   assert.deepEqual(rulesFor(c13, [q({ AWS: "arn:aws:iam::999999999999:root" })]), ["public: aws_sqs_queue.open"]);
-  assert.deepEqual(rulesFor(c13, [q({ Service: "sns.amazonaws.com" })]), []);
+  // Ruling P7 (batch 4): a service principal's Allow names its source in the lab's account.
+  assert.deepEqual(rulesFor(c13, [q({ Service: "sns.amazonaws.com" }, { ArnEquals: { "aws:SourceArn": `arn:aws:sns:eu-west-2:${ACCOUNT}:lab-saa-13-decoupling-orders` } })]), []);
+  assert.deepEqual(rulesFor(c13, [q({ Service: "sns.amazonaws.com" })]), ["public: aws_sqs_queue.open"], "ruling P7: no aws:SourceArn or aws:SourceAccount");
   assert.deepEqual(rulesFor(c13, [T(c13, "aws_sqs_queue.plain", { name: "lab-saa-13-decoupling-plain" })]), [], "no policy written: the computed one is AWS's default");
 });
 
@@ -912,4 +918,51 @@ test("Task 15: a cluster's subnet_ids planned as a list of unknown ids (aws_subn
   assert.deepEqual(scope.scopeProblemsAws({ ...planResources(mock), configKeys: {}, providerConfigs: {} }, c19.id, { mode: "mock" }).filter((x) => x.address === "aws_eks_cluster.lab"), []);
   // A literal subnet id is never the lab's own.
   assert.deepEqual(rulesFor(c19, [clusterRole, T(c19, "aws_eks_cluster.lab", { name: "lab-saa-19-eks", access_config: [{ authentication_mode: "API", bootstrap_cluster_creator_admin_permissions: false }], upgrade_policy: [{ support_type: "STANDARD" }], vpc_config: [{ endpoint_private_access: true, endpoint_public_access: true, subnet_ids: ["subnet-0123456789abcdef0", "subnet-0123456789abcdef1"] }] }, { unknown: ["role_arn"], refs: { role_arn: ref("aws_iam_role.cluster", "arn") } })], templateResources(c19)), ["gateway: aws_eks_cluster.lab"]);
+});
+
+// ── Batch 4 (labs 20–31): types, peer regions, IPv6 internet, service principals ──
+
+const c20 = ctxAws("ans-20-vpc-design", "20");
+const c22 = ctxAws("ans-22-s2s-vpn", "22");
+const c29b = ctxAws("ans-29-multi-region", "29");
+const c29 = { ...c29b, variables: { ...c29b.variables, secondary_region: "eu-west-1" } };
+const c24 = ctxAws("ans-24-privatelink", "24");
+
+test("every batch 4 type is allowed with a reason; Direct Connect, Cloud WAN, RAM, Firewall Manager, Shield, Verified Access and TGW Connect stay never", () => {
+  for (const t of ["aws_ec2_transit_gateway", "aws_vpn_connection", "aws_route53_resolver_rule", "aws_vpc_endpoint_service", "aws_globalaccelerator_accelerator", "aws_networkfirewall_firewall", "aws_vpclattice_service", "aws_ec2_client_vpn_endpoint", "aws_vpc_ipam", "tls_locally_signed_cert", "aws_glue_catalog_table"]) assert.ok(scope.AWS_TYPES.get(t), t);
+  const never = (t) => scope.NEVER_TYPES.some((re) => re.test(t));
+  for (const t of ["aws_dx_connection", "aws_networkmanager_core_network", "aws_ram_resource_share", "aws_fms_policy", "aws_shield_protection", "aws_verifiedaccess_instance", "aws_ec2_transit_gateway_connect", "aws_ec2_transit_gateway_multicast_domain", "aws_globalaccelerator_custom_routing_accelerator", "aws_networkfirewall_tls_inspection_configuration", "aws_vpclattice_resource_policy", "aws_ec2_client_vpn_route", "aws_vpc_ipam_scope"]) assert.ok(never(t), t);
+  assert.ok(!never("aws_ec2_transit_gateway_route_table"));
+});
+
+test("Review Focus 1 / P3: an accepter of someone else's peering, outside lab 29 or through the default provider is refused; peer_region only to the secondary", () => {
+  const pcx = (over = {}) => T(c29, "aws_vpc_peering_connection.li", { peer_region: "eu-west-1", auto_accept: false, ...over }, { unknown: ["vpc_id", "peer_vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id"), peer_vpc_id: ref("aws_vpc.ireland", "id") } });
+  const acc = (key = "aws.secondary", cx = c29) => T(cx, "aws_vpc_peering_connection_accepter.li", { auto_accept: true }, { providerKey: key, unknown: ["vpc_peering_connection_id"], refs: { vpc_peering_connection_id: ref("aws_vpc_peering_connection.li", "id") } });
+  // The two VPCs the peering names by reference (rule gateway reads them in the plan).
+  const vpcs = [T(c29, "aws_vpc.lab", { cidr_block: c29.vpcCidr }), T(c29, "aws_vpc.ireland", { cidr_block: cidrsubnet(c29.address, 2, 1) }, { providerKey: "aws.secondary" })];
+  assert.deepEqual(rulesFor(c29, [...vpcs, pcx(), acc()]), []);
+  assert.deepEqual(rulesFor(c29, [...vpcs, pcx({ peer_region: "us-east-2" })]), ["provider: aws_vpc_peering_connection.li"]);
+  assert.deepEqual(rulesFor(c29, [...vpcs, pcx(), acc("aws")]), ["provider: aws_vpc_peering_connection_accepter.li"]);
+  assert.deepEqual(rulesFor(c29, [...vpcs, pcx({ peer_owner_id: "999999999999" })]), ["gateway: aws_vpc_peering_connection.li"], "rule 9: another account never, in lab 29 too");
+  const c21 = ctxAws("ans-21-transit-gateway", "21");
+  // One rule is reported per resource (the first in AWS_RULES): rule provider, ahead of rule 9's own refusal.
+  assert.deepEqual(rulesFor(c21, [T(c21, "aws_vpc_peering_connection.x", { peer_region: "eu-west-1" }, { unknown: ["vpc_id", "peer_vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id"), peer_vpc_id: ref("aws_vpc.lab", "id") } })], templateResources(c21)), ["provider: aws_vpc_peering_connection.x"], "peer_region outside lab 29");
+  const pcx21 = T(c21, "aws_vpc_peering_connection.li", { auto_accept: false }, { unknown: ["vpc_id", "peer_vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id"), peer_vpc_id: ref("aws_vpc.lab", "id") } });
+  assert.deepEqual(rulesFor(c21, [pcx21, acc("aws.secondary", c21)], templateResources(c21)), ["provider: aws_vpc_peering_connection_accepter.li"], "an accepter outside lab 29");
+});
+
+test("rulings P6 and P7: a global IPv6 range is the internet; a service-principal Allow without its source is refused", () => {
+  assert.deepEqual(["::/0", "2000::/3", "2a05:d018::/36", "fd00::/8", "fe80::/10", "10.64.0.0/18", "0.0.0.0/0"].map(scope.fromInternet), [true, true, true, false, false, false, true]);
+  const ssh = (cidr_ipv6) => T(c20, "aws_vpc_security_group_ingress_rule.ssh6", { ip_protocol: "tcp", from_port: 22, to_port: 22, cidr_ipv6 }, { unknown: ["security_group_id"], refs: { security_group_id: ref("aws_security_group.vms", "id") } });
+  assert.deepEqual(rulesFor(c20, [ssh("2000::/3")]), ["public: aws_vpc_security_group_ingress_rule.ssh6"]);
+  assert.deepEqual(rulesFor(c20, [ssh("fd00::/8")]), []);
+  const bucketPolicy = (Condition) => U("aws_s3_bucket_policy.logs", { bucket: "cloudlabs-a20k3x9q-logs", policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: "delivery.logs.amazonaws.com" }, Action: "s3:PutObject", Resource: "arn:aws:s3:::cloudlabs-a20k3x9q-logs/*", ...(Condition ? { Condition } : {}) }] }) });
+  assert.deepEqual(rulesFor(c20, [bucketPolicy(null)]), ["public: aws_s3_bucket_policy.logs"]);
+  assert.deepEqual(rulesFor(c20, [bucketPolicy({ StringEquals: { "aws:SourceAccount": "999999999999" } })]), ["public: aws_s3_bucket_policy.logs"]);
+  assert.deepEqual(rulesFor(c20, [bucketPolicy({ StringEquals: { "aws:SourceAccount": ACCOUNT } })]), []);
+  assert.deepEqual(rulesFor(c20, [bucketPolicy({ ArnLike: { "AWS:SourceArn": `arn:aws:logs:eu-west-2:${ACCOUNT}:*` } })]), []);
+});
+
+test("every existing AWS lab's fixture still passes rule public under ruling P7", () => {
+  for (const id of ["soa-01-cloudwatch", "soa-08-vpc-fix", "soa-09-route53-cloudfront", "saa-13-decoupling", "saa-15-data-security"]) assert.deepEqual(labFixtureRules(id).filter((x) => x.startsWith("public")), [], id);
 });

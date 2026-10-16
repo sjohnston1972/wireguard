@@ -43,7 +43,7 @@ test("the resource group queries the lab tag on the lab's own id; outputs are th
 
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { commonAwsProblems } from "./fixtures/labs/aws-content.mjs";
+import { amiProblems, commonAwsProblems } from "./fixtures/labs/aws-content.mjs";
 
 test("ruling P2: every allowed provider is pinned, and the VPC is the hub", () => {
   const v = readFileSync(join(DIR, "versions.tf"), "utf8");
@@ -71,4 +71,16 @@ test("ruling P3: a lab that cannot peer may leave network.tf out; one that can m
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
+});
+
+test("batch 4 (rulings P9, P11): amiProblems takes al2023_arm64 anywhere, al2023_ireland only under the secondary provider, ubuntu_arm64 only in lab 22", () => {
+  const vm = (name, ami, secondary = false) => ({ kind: "resource", labels: ["aws_instance", name], body: `${secondary ? "  provider = aws.secondary\n" : ""}  ami      = data.aws_ssm_parameter.${ami}.insecure_value\n` });
+  const param = (name, path, secondary = false) => ({ kind: "data", labels: ["aws_ssm_parameter", name], body: `${secondary ? "  provider = aws.secondary\n" : ""}  name     = "${path}"\n` });
+  const AL = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64";
+  const UB = "/aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id";
+  assert.deepEqual(amiProblems("ans-26-edge", [vm("london", "al2023_arm64"), vm("ireland", "al2023_ireland", true), param("al2023_ireland", AL, true)]), []);
+  assert.deepEqual(amiProblems("ans-26-edge", [vm("london", "al2023_ireland")]), ["aws_instance.london: ami is not data.aws_ssm_parameter.al2023_arm64.insecure_value"]);
+  assert.deepEqual(amiProblems("ans-29-multi-region", [param("al2023_ireland", AL)]), ['data "aws_ssm_parameter" "al2023_ireland" must be the AL2023 arm64 parameter under provider = aws.secondary']);
+  assert.deepEqual(amiProblems("ans-22-s2s-vpn", [vm("router", "ubuntu_arm64"), param("ubuntu_arm64", UB)]), []);
+  assert.equal(amiProblems("ans-21-transit-gateway", [vm("router", "ubuntu_arm64"), param("ubuntu_arm64", UB)]).length, 2, "Ubuntu only in PUBLIC_INSTANCE_LABS");
 });

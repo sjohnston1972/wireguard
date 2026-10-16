@@ -3,9 +3,12 @@
 // Plain English: the content checks every AWS lab shares (AWS labs spec §4),
 // in one place. awsLab(id) reads a lab's folder (lab.yaml, the .tf files, the
 // readme and its learning file); commonAwsProblems(id) lists every §4 rule it
-// checks that the lab breaks (an empty list when it keeps them all). Text
-// only: no AWS, no terraform init (npm run labs-tf does that). Terraform's
-// formatter aligns `=`, so patterns here allow any run of spaces around it.
+// checks that the lab breaks (an empty list when it keeps them all), among
+// them: an instance's AMI is the AL2023 parameter, its Ireland twin under the
+// secondary provider, or (lab 22 only) Canonical's Ubuntu parameter
+// (amiProblems; batch 4 rulings P9, P11, P18). Text only: no AWS, no
+// terraform init (npm run labs-tf does that). Terraform's formatter aligns
+// `=`, so patterns here allow any run of spaces around it.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -13,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import { LAB_TF_VARS_AWS, readmeFooter, variablesProblems } from "../../../lib/labs.mjs";
 import { lintDir } from "../../../../infra/ci/lab-lint.mjs";
+import { PUBLIC_INSTANCE_LABS } from "../../../../infra/ci/lab-scope-aws.mjs";
 import { lab, resources } from "./content.mjs";
 
 const LABS = fileURLToPath(new URL("../../../../labs/", import.meta.url));
@@ -38,6 +42,29 @@ function variableBlocks(tf) {
 /** Whether a block body has `name = value` (value is a regex source). */
 const hasAttr = (body, name, value) => new RegExp(`^\\s*${name}\\s+=\\s+${value}`, "m").test(body);
 
+/** The template's AL2023 arm64 parameter and lab 22's Ubuntu 24.04 arm64 one (ruling P11), as regex sources. */
+const AL2023_PARAM = String.raw`"/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"`;
+const UBUNTU_PARAM = String.raw`"/aws/service/canonical/ubuntu/server/24\.04/stable/current/arm64/hvm/ebs-gp3/ami-id"`;
+/**
+ * Batch 4 (rulings P9, P11, P18): what an instance's ami may read in lab `id`: the template's al2023_arm64; in Ireland
+ * its twin al2023_ireland, the instance and the parameter both under provider = aws.secondary (labs 26, 29); and in
+ * PUBLIC_INSTANCE_LABS (lab 22's router) ubuntu_arm64, Canonical's public parameter. [] when every instance keeps it.
+ */
+export function amiProblems(id, blocks) {
+  const out = [];
+  const secondary = (body) => hasAttr(body, "provider", String.raw`aws\.secondary`);
+  const from = (body, name) => hasAttr(body, "ami", String.raw`data\.aws_ssm_parameter\.${name}\.insecure_value`);
+  for (const r of blocks.filter((b) => b.kind === "resource" && b.labels[0] === "aws_instance")) {
+    const ok = from(r.body, "al2023_arm64") || (from(r.body, "al2023_ireland") && secondary(r.body)) || (from(r.body, "ubuntu_arm64") && PUBLIC_INSTANCE_LABS.includes(id));
+    if (!ok) out.push(`aws_instance.${r.labels[1]}: ami is not data.aws_ssm_parameter.al2023_arm64.insecure_value`);
+  }
+  for (const d of blocks.filter((b) => b.kind === "data" && b.labels[0] === "aws_ssm_parameter")) {
+    if (d.labels[1] === "al2023_ireland" && !(secondary(d.body) && hasAttr(d.body, "name", AL2023_PARAM))) out.push('data "aws_ssm_parameter" "al2023_ireland" must be the AL2023 arm64 parameter under provider = aws.secondary');
+    if (d.labels[1] === "ubuntu_arm64" && !(PUBLIC_INSTANCE_LABS.includes(id) && hasAttr(d.body, "name", UBUNTU_PARAM))) out.push(`data "aws_ssm_parameter" "ubuntu_arm64": Canonical's 24.04 arm64 parameter, only in ${PUBLIC_INSTANCE_LABS.join(", ")} (ruling P11)`);
+  }
+  return out;
+}
+
 export function commonAwsProblems(id, labsDir = LABS) {
   const out = [];
   const l = awsLab(id, labsDir);
@@ -58,9 +85,9 @@ export function commonAwsProblems(id, labsDir = LABS) {
   }
 
   const res = (type) => l.lab.blocks.filter((b) => b.kind === "resource" && b.labels[0] === type);
+  out.push(...amiProblems(id, l.lab.blocks));
   for (const r of res("aws_instance")) {
     const at = `aws_instance.${r.labels[1]}`;
-    if (!hasAttr(r.body, "ami", String.raw`data\.aws_ssm_parameter\.al2023_arm64\.insecure_value`)) out.push(`${at}: ami is not data.aws_ssm_parameter.al2023_arm64.insecure_value`);
     if (!hasAttr(r.body, "http_tokens", '"required"')) out.push(`${at}: http_tokens is not "required"`);
     // volume_tags, so RunInstances carries the volume's lab tag (wg-admin-labs refuses the launch otherwise): root_block_device
     // tags are applied after launch and do not count. var.tags alone where a separately attached disk must not cycle.

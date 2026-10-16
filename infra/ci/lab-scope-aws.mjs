@@ -29,7 +29,11 @@
 //                replica or a multi-Region KMS key (copies outside the lab's regions);
 //                (plan, batch 3) a DynamoDB replica anywhere but the session's secondary
 //                region (P3), and an AMI copy's source region, a health check's alarm
-//                region or a private zone's vpc_region that is not a lab region (P4, P6)
+//                region or a private zone's vpc_region that is not a lab region (P4, P6);
+//                batch 4 (P3, P15): a VPC peering's or transit gateway peering's
+//                peer_region outside AWS_PEER_REGION_LABS, or (plan) other than the
+//                session's secondary region; a peering accepter outside
+//                AWS_PEER_REGION_LABS, or (plan) not through the secondary provider
 //   provisioner  any provisioner (it would run commands with the pipeline's keys)
 //   import       adopting an object that already exists: a lab only ever creates
 //   type         a resource type not on AWS_TYPES, a data source not on AWS_DATA or
@@ -38,9 +42,16 @@
 //                outside AWS_CONFIG_LABS (one per region per account), a VPC's untagged
 //                defaults or aws_ec2_tag (UNTAGGED_DEFAULT_TYPES, ruling A48); an Access
 //                Analyzer analyzer outside ACCESS_ANALYZER_LABS or of a type other than
-//                ACCOUNT (ruling P14)
+//                ACCOUNT (ruling P14); batch 4 adds labs 20–31's types (transit gateways,
+//                site-to-site and Client VPN, Resolver, endpoint services, Global
+//                Accelerator, Network Firewall, traffic mirroring, VPC Lattice, IPAM,
+//                hashicorp/tls certificates), each with its reason
 //   never        what a lab only explains in its readme (NEVER_TYPES; dedicated or host
-//                tenancy; StackSets and registered CloudFormation types)
+//                tenancy; StackSets and registered CloudFormation types; batch 4: Transit
+//                Gateway Connect, multicast and policy tables, custom-routing accelerators,
+//                TLS inspection, Lattice resource policies and gateways, Client VPN routes,
+//                IPAM scopes, VPN static routes, CloudFront real-time logs and key stores,
+//                WAF logging)
 //   template     a CloudFormation stack (ruling P4) from a template_url, not named
 //                lab-<id>-*, with capabilities (or capabilities or parameters not known at
 //                plan), without the lab's own service role by reference, with a
@@ -76,7 +87,8 @@
 //                authentication_mode API without the creator's admin (P7); an API Gateway
 //                integration's or authoriser's credentials role not the lab's own (review M-4)
 //   gateway      the VPN server's names (vpc-wg, vm-wg, ...: GATEWAY_NAME_LIST), the wg-admin
-//                key or value, a peering accepter, a peering not between the lab's own VPCs,
+//                key or value, a peering accepter and a peer_region outside
+//                AWS_PEER_REGION_LABS (P3), a peer_owner_id, a peering not between the lab's own VPCs,
 //                and (plan) an id of an existing AWS resource under an id-holding key, or an
 //                instance target selecting every instance (a wildcard id, tag-key, a wildcard
 //                tag value; ruling A50); an instance target off the allow-list (ruling P9:
@@ -131,7 +143,11 @@
 //                or secret by reference (P13), an endpoint policy not known at plan or
 //                allowing more than the lab's buckets and Amazon Linux's repositories
 //                (endpointPolicyProblem, P18), SSH to EKS nodes (remote_access, P7); a
-//                queue's own policy, read like any resource policy (fix round 1, I-1)
+//                queue's own policy, read like any resource policy (fix round 1, I-1);
+//                batch 4: any global IPv6 range (outside fc00::/7 and fe80::/10) is the
+//                internet (fromInternet, P6); a resource policy's Allow to a service
+//                principal without aws:SourceAccount (the lab's account) or an
+//                aws:SourceArn in it (P7); a Lattice auth policy, read like any resource policy
 //   lingering    a resource that would outlive tear-down: deletion protection, final
 //                snapshots, retained buckets, keys, vaults, log groups and locks; an IAM
 //                user without force_destroy (ruling P6); batch 3: an Athena workgroup
@@ -249,6 +265,27 @@ export const AWS_TYPES = new Map([
   ...["aws_glue_catalog_database", "aws_glue_crawler"].map((t) => [t, "lab 17's catalogue, lab_<id>, crawled by hand from the lab's own bucket (ruling P15)"]),
   ["aws_athena_workgroup", "lab 17's workgroup: results in the lab's own bucket, a scan cut-off (ruling P15)"],
   ...["aws_eks_cluster", "aws_eks_node_group"].map((t) => [t, "lab 19's cluster and its one-node group (ruling P7)"]),
+  // Batch 4 (labs 20–31).
+  ...["aws_vpc_ipam", "aws_vpc_ipam_pool", "aws_vpc_ipv6_cidr_block_association"].map((t) => [t, "lab 20's Free Tier IPAM: an Amazon-provided IPv6 pool in the session's region, its /56 on the lab's own VPC (ruling P5)"]),
+  ["aws_vpc_ipam_pool_cidr", "lab 20's /52 of Amazon-provided IPv6, by netmask length only; NEVER_TYPES still holds it for every other lab (IPAM_LAB, ruling P5)"],
+  ["aws_vpc_ipv4_cidr_block_association", "a secondary CIDR from the lab's slot (rule address)"],
+  ["aws_egress_only_internet_gateway", "IPv6 egress for the lab's own VPC"],
+  ["aws_ec2_managed_prefix_list", "a lab prefix list of the slot's and the headend's ranges (ruling P6)"],
+  ...["aws_ec2_transit_gateway", "aws_ec2_transit_gateway_vpc_attachment", "aws_ec2_transit_gateway_route_table", "aws_ec2_transit_gateway_route_table_association", "aws_ec2_transit_gateway_route_table_propagation", "aws_ec2_transit_gateway_route", "aws_ec2_transit_gateway_peering_attachment", "aws_ec2_transit_gateway_peering_attachment_accepter"].map((t) => [t, "labs 21, 27 and 29's transit gateways, attaching only the lab's own VPCs (rulings P3, P15)"]),
+  ...["aws_vpn_gateway", "aws_vpn_gateway_route_propagation", "aws_customer_gateway", "aws_vpn_connection", "aws_eip_association"].map((t) => [t, "lab 22's site-to-site VPN to its own router (ruling P11)"]),
+  ...["aws_route53_resolver_endpoint", "aws_route53_resolver_rule", "aws_route53_resolver_rule_association", "aws_route53_resolver_firewall_domain_list", "aws_route53_resolver_firewall_rule_group", "aws_route53_resolver_firewall_rule", "aws_route53_resolver_firewall_rule_group_association", "aws_route53_resolver_query_log_config", "aws_route53_resolver_query_log_config_association"].map((t) => [t, "lab 23's Resolver, DNS Firewall and query logs, on the lab's own VPC (ruling P12)"]),
+  ...["aws_vpc_endpoint_service", "aws_lb_target_group_attachment", "aws_lb_listener_rule"].map((t) => [t, "labs 24, 25's endpoint services (the lab's account only) and load balancer pieces (rulings P13, P14)"]),
+  ...["aws_acm_certificate"].map((t) => [t, "a certificate imported from the lab's own tls resources (labs 25, 31; rulings P14, P20)"]),
+  ...["tls_private_key", "tls_self_signed_cert", "tls_cert_request", "tls_locally_signed_cert"].map((t) => [t, "certificates made in the lab's state (hashicorp/tls); the keys live only in the R2 state and lab 31's sensitive files output"]),
+  ...["aws_globalaccelerator_accelerator", "aws_globalaccelerator_listener", "aws_globalaccelerator_endpoint_group"].map((t) => [t, "lab 26's accelerator to its own load balancers (ruling P9)"]),
+  ["aws_cloudfront_function", "lab 26's viewer-request function, named lab-<id>-* (A4)"],
+  ["aws_wafv2_web_acl", "lab 26's web ACL for CloudFront in us-east-1 (rules provider, size; ruling P9)"],
+  ...["aws_networkfirewall_firewall", "aws_networkfirewall_firewall_policy", "aws_networkfirewall_rule_group", "aws_networkfirewall_logging_configuration"].map((t) => [t, "lab 27's firewall in its own inspection VPC (ruling P16)"]),
+  ...["aws_ec2_traffic_mirror_target", "aws_ec2_traffic_mirror_filter", "aws_ec2_traffic_mirror_filter_rule"].map((t) => [t, "lab 28's mirror target on its own instance (ruling P17)"]),
+  ["aws_glue_catalog_table", "lab 28's flow-log table in lab_<id>, over the lab's own bucket (rulings P15 batch 3, P17)"],
+  ["aws_vpc_peering_connection_accepter", "lab 29's accepter of its own inter-region peering (ruling P3)"],
+  ...["aws_vpclattice_service_network", "aws_vpclattice_service", "aws_vpclattice_target_group", "aws_vpclattice_target_group_attachment", "aws_vpclattice_listener", "aws_vpclattice_service_network_service_association", "aws_vpclattice_service_network_vpc_association", "aws_vpclattice_auth_policy"].map((t) => [t, "lab 30's service network of its own services and VPCs (ruling P19)"]),
+  ...["aws_ec2_client_vpn_endpoint", "aws_ec2_client_vpn_network_association", "aws_ec2_client_vpn_authorization_rule"].map((t) => [t, "lab 31's Client VPN into its own VPC (ruling P20)"]),
 ]);
 
 /** The data sources an AWS lab may read, each with why (and the condition dataProblem checks). None looks up a lab-made-elsewhere VPC, subnet, route table, security group or instance. */
@@ -272,10 +309,15 @@ export const NEVER_TYPES = [
   /^aws_ec2_byoip_/, /^aws_vpc_ipam_pool_cidr$/,
   // StackSets are readme-only (spec §12.2); registering a CloudFormation type changes the whole account.
   /^aws_cloudformation_stack_set/, /^aws_cloudformation_stack_instances$/, /^aws_cloudformation_type$/,
+  // Batch 4: Cloud WAN and RAM (lab 21), Direct Connect (lab 22), Firewall Manager (27), Shield Advanced (26) and
+  // Verified Access (31) are already above; and what a lab could reach past itself with.
+  /^aws_ec2_transit_gateway_(connect|multicast|policy_table|prefix_list_reference|route_table_announcement)/, /^aws_globalaccelerator_custom_routing_/,
+  /^aws_networkfirewall_(tls_inspection_configuration|resource_policy)$/, /^aws_vpclattice_(resource_policy|access_log_subscription|resource_gateway|resource_configuration)/,
+  /^aws_ec2_client_vpn_route$/, /^aws_route53_resolver_(config|dnssec_config|firewall_config)$/, /^aws_vpc_ipam_(scope|resource_discovery|organization_admin_account|preview_next_cidr)/,
+  /^aws_vpn_connection_route$/, /^aws_cloudfront_(realtime_log_config|monitoring_subscription|key_value_store)$/, /^aws_wafv2_web_acl_logging_configuration$/,
 ];
 /** The one lab that may make an IPAM pool CIDR and an IPv6 pool of its own. */
 const IPAM_LAB = "ans-20-vpc-design";
-/** Types the type rule leaves to a later rule, which says more (preflight ruling C1). */
 /**
  * Ruling A48: what AWS makes untagged with every VPC (its default security group, network ACL and main route table), and
  * tags put on an item that is already there. wg-admin-labs may not change them, so a lab is told so at plan time.
@@ -286,7 +328,11 @@ export const UNTAGGED_DEFAULT_TYPES = new Map([
   ["aws_default_route_table", "a VPC's main route table"],
   ["aws_ec2_tag", "a tag on an item that is already there"],
 ]);
-const DEFERRED = { aws_vpc_peering_connection_accepter: "gateway" };
+/**
+ * Types the type rule leaves to a later rule, which says more (preflight ruling C1). None since batch 4: the peering
+ * accepter is on AWS_TYPES, judged by rules provider and gateway (ruling P3).
+ */
+const DEFERRED = {};
 const CONFIG_TYPES = new Set(["aws_config_configuration_recorder", "aws_config_delivery_channel", "aws_config_configuration_recorder_status"]);
 /** Ruling P14: the one lab that may make an Access Analyzer analyzer (one account analyzer per region per account). */
 export const ACCESS_ANALYZER_LABS = ["soa-07-iam-kms"];
@@ -303,7 +349,7 @@ export const CFN_TYPES = new Map([
   ["AWS::SSM::Parameter", "named /cloudlabs/<id>/..."],
 ]);
 /** Ruling P10: resource policy documents a lab may write (type -> attribute), read for who they let in. */
-export const RESOURCE_POLICIES = new Map([["aws_s3_bucket_policy", "policy"], ["aws_sns_topic_policy", "policy"], ["aws_sqs_queue_policy", "policy"], ["aws_ecr_repository_policy", "policy"], ["aws_secretsmanager_secret_policy", "policy"], ["aws_kms_key", "policy"], ["aws_dynamodb_resource_policy", "policy"]]);
+export const RESOURCE_POLICIES = new Map([["aws_s3_bucket_policy", "policy"], ["aws_sns_topic_policy", "policy"], ["aws_sqs_queue_policy", "policy"], ["aws_ecr_repository_policy", "policy"], ["aws_secretsmanager_secret_policy", "policy"], ["aws_kms_key", "policy"], ["aws_dynamodb_resource_policy", "policy"], ["aws_vpclattice_auth_policy", "policy"]]);
 /**
  * Preflight C12 and Task 3 fix round 1 (I-1): a resource's own inline policy (type -> attribute), read as a resource
  * policy when the lab writes one (left unset it is computed: AWS's default). aws_dynamodb_table has no inline policy
@@ -419,8 +465,14 @@ const overlaps = (a, b) => {
   const y = cidr4(b);
   return Boolean(x && y && x[0] <= y[1] && y[0] <= x[1]);
 };
-/** A CIDR that reaches beyond the private ranges (IPv4), or all of IPv6. */
-const fromInternet = (c) => (typeof c !== "string" ? false : c.includes(":") ? /\/0$/.test(c) : Boolean(cidr4(c)) && !PRIVATE.some((p) => inside(c, p)));
+/** Ruling P6: a CIDR from the internet: IPv4 beyond the private ranges, or any global IPv6 range (outside fc00::/7 and fe80::/10). */
+export const fromInternet = (c) => {
+  if (typeof c !== "string") return false;
+  if (!c.includes(":")) return Boolean(cidr4(c)) && !PRIVATE.some((p) => inside(c, p));
+  const head = c.split("/")[0].toLowerCase().split(":")[0].padStart(4, "0");
+  const n = parseInt(head, 16);
+  return !((n & 0xfe00) === 0xfc00 || (n & 0xffc0) === 0xfe80);
+};
 
 /** A JSON document from a value: { doc }, { unknown: true } or { bad: true }. */
 function jsonDoc(v) {
@@ -585,6 +637,13 @@ function resourcePolicyProblem(doc, account) {
       if (k === "AWS" && account && list(v).every((x) => typeof x === "string" && (x === account || x.startsWith(`arn:aws:iam::${account}:`)))) continue;
       return `it allows ${k} ${JSON.stringify(v).replace(/\d{12}/g, "<account>")}: only AWS services and the lab's own account`;
     }
+    // Ruling P7: a service principal acts for whoever calls it, so its Allow names the lab's account or resource.
+    const services = list(s.Principal?.Service);
+    if (services.length) {
+      const cond = Object.values(s.Condition ?? {}).flatMap((o) => Object.entries(o ?? {}));
+      const named = cond.some(([k, v]) => (/^aws:sourceaccount$/i.test(k) && list(v).length > 0 && list(v).every((x) => x === account)) || (/^aws:sourcearn$/i.test(k) && list(v).length > 0 && list(v).every((x) => typeof x === "string" && x.split(":")[4] === account)));
+      if (!named) return `an Allow to ${services.join(", ")} names neither aws:SourceAccount (${account ? "this account" : "the plan's account"}) nor an aws:SourceArn in it (ruling P7)`;
+    }
   }
   return null;
 }
@@ -742,6 +801,8 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
   // Regions (rule provider), as the plan's variables give them.
   const secondaryOk = mode === "hcl" || (nonEmpty(variables.secondary_region) && variables.secondary_region !== variables.region);
   const globalLab = AWS_GLOBAL_LABS.includes(labId);
+  /** Ruling P1 / P3: the labs whose peerings cross to the session's secondary region and accept their own. */
+  const peerLab = AWS_PEER_REGION_LABS.includes(labId);
   const regionWhy = (region, alias) => {
     if (region === "var.region") return null;
     if (region === "var.secondary_region") {
@@ -824,6 +885,19 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
     if (plan && isManaged && type === "aws_route53_zone") list(v.vpc).forEach((z, i) => {
       if (isObj(z) && !labRegion(z.vpc_region)) refuse("provider", `vpc.${i}.vpc_region: only the session's region or its secondary, written in the configuration (ruling P6)`);
     });
+    // Ruling P3 / P15: a peering crosses to the secondary region only in AWS_PEER_REGION_LABS, and an accepter is
+    // the secondary provider's, of the lab's own peering by reference.
+    for (const [t, attr] of [["aws_vpc_peering_connection", "peer_region"], ["aws_ec2_transit_gateway_peering_attachment", "peer_region"]]) {
+      if (isManaged && type === t && (r.configured?.has(attr) || nonEmpty(v[attr]))) {
+        if (!peerLab) refuse("provider", `${attr}: a peering crosses regions only in ${AWS_PEER_REGION_LABS.join(", ")}`);
+        else if (plan && !(secondaryOk && v[attr] === variables.secondary_region)) refuse("provider", `${attr} must be the session's secondary region`);
+      }
+    }
+    if (isManaged && ["aws_vpc_peering_connection_accepter", "aws_ec2_transit_gateway_peering_attachment_accepter"].includes(type)) {
+      const key = configKeys?.[stripIndex(r.address)] ?? ""; // as rule provider finds a resource's provider block
+      if (!peerLab) refuse("provider", `${type}: only ${AWS_PEER_REGION_LABS.join(", ")} accept their own peering (ruling P3)`);
+      else if (mode === "plan" && key !== "aws.secondary") refuse("provider", `${type}: through the secondary provider only (ruling P3)`);
+    }
 
     // 2. provisioner, 3. import
     if (r.provisioners > 0) refuse("provisioner", "a provisioner would run commands with the pipeline's keys");
@@ -877,12 +951,14 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         else if (kind === "key" ? s.toLowerCase().includes("wg-admin") : s.toLowerCase().includes("wg-admin") && !BOUNDARY_RE.test(s)) hit = `${path.join(".")} holds wg-admin, the VPN server's own name`;
       });
       if (hit) refuse("gateway", hit);
-      if (type === "aws_vpc_peering_connection_accepter") refuse("gateway", "a lab never accepts a peering: the pipeline peers the lab to the VPN server");
+      // Ruling P3: only AWS_PEER_REGION_LABS accept a peering, their own (rule 1: through aws.secondary).
+      if (type === "aws_vpc_peering_connection_accepter" && !peerLab) refuse("gateway", "a lab never accepts a peering: the pipeline peers the lab to the VPN server (ruling P3: only AWS_PEER_REGION_LABS accept their own)");
       if (type === "aws_vpc_peering_connection") {
         for (const attr of ["vpc_id", "peer_vpc_id"]) {
           if (!(v[attr] instanceof Unknown && (ownRefs(refsOf(v[attr], r, attr), ["aws_vpc"]) || (mode === "mock" && !refsOf(v[attr], r, attr).length)))) refuse("gateway", `${attr} must be one of the lab's own VPCs, by reference (aws_vpc.<name>.id)`);
         }
-        for (const attr of ["peer_owner_id", "peer_region"]) if (r.configured?.has(attr)) refuse("gateway", `a lab's peering stays in this account and region: no ${attr}`);
+        // Ruling P3 / P15: peer_region is rule 1's in AWS_PEER_REGION_LABS; another account never.
+        for (const attr of ["peer_owner_id", "peer_region"]) if (r.configured?.has(attr) && !(attr === "peer_region" && peerLab)) refuse("gateway", `a lab's peering stays in this account and region: no ${attr}`);
       }
       // Review I-1: an alarm's EC2 action acts on instances; a lab's alarms notify (its topics) and never act on one.
       if (type === "aws_cloudwatch_metric_alarm" || type === "aws_cloudwatch_composite_alarm") {

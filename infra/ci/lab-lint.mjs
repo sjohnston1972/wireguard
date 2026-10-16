@@ -34,8 +34,11 @@
 // anything called wg-admin-* except the lab permission boundary; aws-provider
 // (a provider "aws" block holds only region, alias and default_tags with
 // var.tags: no credentials, profile, assume_role, endpoints or account
-// settings); and data (no data "tls_certificate"; an archive_file reads only
-// inside path.module). Bicep files are not read for AWS. `--cloud aws` also
+// settings); data (no data "tls_certificate"; an archive_file reads only
+// inside path.module); and outputs (ruling P2: an output "files" only in
+// AWS_FILES_LABS and with sensitive = true; lintDir takes the lab's id from
+// its labs/<id>/terraform folder, and with no id a files output is
+// refused). Bicep files are not read for AWS. `--cloud aws` also
 // reads the CloudFormation templates in `terraform/cfn/` (lab 06; rule cfn,
 // ruling P4): short-form tags (`!Ref`: Terraform's yamldecode reads none),
 // `Transform`, nested stacks, custom resources, macros, StackSets, SAM, IAM
@@ -62,7 +65,7 @@
 // runner); scripts/lib/labs.mjs re-exports lintTfText for npm run labs-check.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** The providers a lab may use, as full source addresses. lab-scope.mjs checks the plan against the same list. */
@@ -295,18 +298,34 @@ function awsDataProblems(file, code) {
   return out;
 }
 
+/** Ruling P2: the files output (A13) only in AWS_FILES_LABS, and sensitive, so Terraform never prints it. */
+function awsFilesOutputProblems(file, code, labId) {
+  const out = [];
+  for (const m of code.matchAll(/\boutput\s+"files"\s*\{/g)) {
+    const open = m.index + m[0].length - 1;
+    const close = closeOf(code, open);
+    const body = close < 0 ? "" : code.slice(open + 1, close);
+    const line = lineOf(code, m.index);
+    if (!AWS_FILES_LABS.includes(labId)) out.push({ file, line, rule: "outputs", message: `output "files": only ${AWS_FILES_LABS.join(", ")} hand files to the dashboard (ruling P2)` });
+    else if (!/^\s*sensitive\s*=\s*true\s*$/m.test(body)) out.push({ file, line, rule: "outputs", message: 'output "files" must say sensitive = true (ruling P2)' });
+  }
+  return out;
+}
+
 /**
  * Lint a lab's Terraform files ({ "main.tf": text, ... }), all of them
  * together (providers are declared in one file and used in another).
- * `cloud` "aws" applies the AWS rules. Returns [{ file, line, rule, message }].
+ * `cloud` "aws" applies the AWS rules; `labId` is the lab's id (the AWS
+ * outputs rule reads it; with none, a files output is refused). Returns
+ * [{ file, line, rule, message }].
  */
-export function lintTfText(files, { cloud = "azure" } = {}) {
+export function lintTfText(files, { cloud = "azure", labId = null } = {}) {
   const aws = cloud === "aws";
   const allowedSources = aws ? ALLOWED_PROVIDER_SOURCES_AWS : ALLOWED_PROVIDER_SOURCES;
   const out = [];
   const codes = Object.entries(files).map(([file, src]) => [file, stripComments(src)]);
   for (const [file, code] of codes) {
-    if (aws) out.push(...awsProviderProblems(file, code), ...awsDataProblems(file, code));
+    if (aws) out.push(...awsProviderProblems(file, code), ...awsDataProblems(file, code), ...awsFilesOutputProblems(file, code, labId));
     for (const r of aws ? AWS_TEXT_RULES : TEXT_RULES) {
       for (const m of code.matchAll(r.re)) {
         if (r.ok?.(m[0])) continue;
@@ -454,13 +473,16 @@ export function lintCfnText(files) {
   return out;
 }
 
-/** Everything about one lab's terraform/ folder: file names, the text of its .tf files and of its .bicep files (AWS: its cfn/ templates). */
-export function lintDir(dir, { cloud = "azure" } = {}) {
+/**
+ * Everything about one lab's terraform/ folder: file names, the text of its .tf files and of its .bicep files (AWS: its
+ * cfn/ templates). A lab's folder is labs/<id>/terraform, so its id is the parent folder's name unless given.
+ */
+export function lintDir(dir, { cloud = "azure", labId = basename(dirname(resolve(dir))) } = {}) {
   const names = readdirSync(dir).filter((f) => statSync(join(dir, f)).isFile());
   const read = (re) => Object.fromEntries(names.filter((f) => re.test(f)).map((f) => [f, readFileSync(join(dir, f), "utf8")]));
   const cfnDir = join(dir, "cfn");
   const cfn = cloud === "aws" && existsSync(cfnDir) ? Object.fromEntries(readdirSync(cfnDir).filter((f) => /\.(ya?ml|json)$/i.test(f)).map((f) => [`cfn/${f}`, readFileSync(join(cfnDir, f), "utf8")])) : {};
-  return [...fileProblems(names), ...lintTfText(read(/\.tf$/), { cloud }), ...(cloud === "aws" ? lintCfnText(cfn) : lintBicepText(read(/\.bicep$/i)))];
+  return [...fileProblems(names), ...lintTfText(read(/\.tf$/), { cloud, labId }), ...(cloud === "aws" ? lintCfnText(cfn) : lintBicepText(read(/\.bicep$/i)))];
 }
 
 function main(argv) {

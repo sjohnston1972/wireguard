@@ -296,3 +296,12 @@ test("Task 3 fix round 2, R2-2 (--cloud aws): an apply-time function is refused 
   const tf = ['locals {', '  a = timestamp(/* x */) != ""', '  b = uuid(', '  )', '  c = timestamp ()', '  d = bcrypt ("x")', '  e = plantimestamp( )', '}', ''].join("\n");
   assert.deepEqual(lintTfText({ "x.tf": tf }, { cloud: "aws" }).filter((p) => p.rule === "apply-time").map((p) => p.line), [2, 3, 5, 6, 7]);
 });
+
+test("ruling P2 (--cloud aws): a files output only in lab 31, and only sensitive", () => {
+  const out = (sensitive) => ['output "files" {', `  value     = { "a.txt" = "x" }`, ...(sensitive ? ["  sensitive = true"] : []), "}", ""].join("\n");
+  const lint = (labId, s) => lintTfText({ "outputs.tf": out(s) }, { cloud: "aws", labId }).filter((p) => p.rule === "outputs").map((p) => p.line);
+  assert.deepEqual(lint("ans-31-client-vpn", true), []);
+  assert.deepEqual(lint("ans-31-client-vpn", false), [1]);
+  assert.deepEqual(lint("ans-30-vpc-lattice", true), [1]);
+  assert.deepEqual(lintTfText({ "outputs.tf": out(true) }, { cloud: "aws" }).filter((p) => p.rule === "outputs").map((p) => p.line), [1], "no lab id: refused");
+});
