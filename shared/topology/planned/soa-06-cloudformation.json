@@ -1,0 +1,59 @@
+{
+ "schema": 1,
+ "labId": "soa-06-cloudformation",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:aws_cloudformation_stack.lab",
+   "key": "cloudformation:stack/stack-lab",
+   "kind": "generic",
+   "label": "stack-lab",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "cloudformation:stack",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_iam_role.cfn",
+   "key": "iam:role/lab-soa-06-cloudformation-cfn",
+   "kind": "managedIdentity",
+   "label": "lab-soa-06-cloudformation-cfn",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "iam:role",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_iam_policy.cfn",
+     "label": "lab-soa-06-cloudformation-cfn",
+     "armType": "iam:policy"
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.cfn",
+     "label": "cfn",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_resourcegroups_group.lab",
+   "key": "resource-groups:group/lab-soa-06-cloudformation",
+   "kind": "resourceGroup",
+   "label": "lab-soa-06-cloudformation · London",
+   "props": {
+    "region": "eu-west-2"
+   },
+   "armType": "resource-groups:group",
+   "scope": "lab",
+   "cloud": "aws"
+  }
+ ],
+ "edges": [],
+ "notes": [
+  "1 resource of a type the diagram draws plainly"
+ ]
+}

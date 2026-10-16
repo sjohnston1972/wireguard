@@ -1,0 +1,96 @@
+# cfn/stack.yaml
+#
+# Plain English: lab 06's CloudFormation template (AWS labs spec §12.2 row
+# 06). Terraform reads it with yamldecode and hands it to CloudFormation as
+# JSON, so every function is in its long form (Ref:, Fn::GetAtt:): yamldecode
+# knows no YAML tags, so the short forms would fail. Only the types on
+# lab-scope-aws.mjs CFN_TYPES: a work queue and its dead-letter queue, a
+# topic, an alarm on the age of the oldest message, a log group under
+# /cloudlabs/<lab id>/ and a parameter. CloudFormation names the queues, topic
+# and alarm from the stack's name (lab-<id>-stack-...), so nothing here can
+# clash with another lab.
+AWSTemplateFormatVersion: "2010-09-09"
+Description: cloudlabs lab soa-06, a work queue with a dead-letter queue, an alarm and a topic
+Parameters:
+  LabId:
+    Type: String
+    Description: The lab's id (Terraform passes var.lab_id)
+  VisibilityTimeout:
+    Type: Number
+    Default: 30
+    MinValue: 0
+    MaxValue: 900
+    Description: Seconds a received message stays hidden from other consumers
+  MaxReceiveCount:
+    Type: Number
+    Default: 3
+    MinValue: 1
+    MaxValue: 10
+    Description: Receives before a message moves to the dead-letter queue
+  LogGroupName:
+    Type: String
+    AllowedPattern: "^/cloudlabs/.+"
+  ParameterName:
+    Type: String
+    AllowedPattern: "^/cloudlabs/.+"
+Resources:
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 3600
+  WorkQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout:
+        Ref: VisibilityTimeout
+      RedrivePolicy:
+        deadLetterTargetArn:
+          Fn::GetAtt: [DeadLetterQueue, Arn]
+        maxReceiveCount:
+          Ref: MaxReceiveCount
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: lab soa-06 alerts
+  OldestMessageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: A message has waited more than five minutes in the work queue
+      Namespace: AWS/SQS
+      MetricName: ApproximateAgeOfOldestMessage
+      Dimensions:
+        - Name: QueueName
+          Value:
+            Fn::GetAtt: [WorkQueue, QueueName]
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 5
+      Threshold: 300
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - Ref: AlertTopic
+  StackLog:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName:
+        Ref: LogGroupName
+      RetentionInDays: 1
+  Greeting:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name:
+        Ref: ParameterName
+      Type: String
+      Value: hello from CloudFormation
+      Description: Change me by hand, then detect drift
+Outputs:
+  WorkQueueUrl:
+    Value:
+      Ref: WorkQueue
+  DeadLetterQueueUrl:
+    Value:
+      Ref: DeadLetterQueue
+  AlertTopicArn:
+    Value:
+      Ref: AlertTopic

@@ -738,5 +738,14 @@
    "width": 1387,
    "height": 786
   }
+ ],
+ "soa-06-cloudformation": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. An IAM role and a resource.",
+   "width": 632,
+   "height": 220
+  }
  ]
 }

@@ -811,6 +811,14 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: ["db-primary ..> db-replica : replicates"],
   },
+  "soa-06-cloudformation": {
+    nodes: [
+      "generic stack-lab < lab-soa-06-cloudformation · London",
+      "managedIdentity lab-soa-06-cloudformation-cfn < lab-soa-06-cloudformation · London",
+      "resourceGroup lab-soa-06-cloudformation · London",
+    ],
+    edges: [],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);

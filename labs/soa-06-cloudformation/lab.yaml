@@ -1,0 +1,33 @@
+# Lab soa-06 (AWS labs batch 2). SOA-C03 ((V) the wording against the current
+# exam guide): Deployment, Provisioning, and Automation: provision resources
+# with CloudFormation; change sets; drift detection; stack policies; service
+# roles. Costs, authored (nothing here has an hourly or GB-month list price):
+# one CloudWatch alarm ($0.10/month), two idle SQS queues, an SNS topic, a
+# parameter and a log group: well under a penny an hour. StackSets are
+# described under Not built here; lab-scope-aws.mjs refuses them (never).
+id: soa-06-cloudformation
+version: 1
+cloud: aws
+title: "CloudFormation inside Terraform"
+summary: >-
+  A CloudFormation stack written in YAML in the lab's folder and run by its own service role: a work queue with a
+  dead-letter queue, a topic, an alarm, a log group and a parameter. Change it with change sets, find drift, and see a
+  stack policy refuse an update.
+exam: SOA-C03
+skill_areas: [soa.deployment]
+level: associate
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "CloudWatch alarm (1)", gbp_h: 0.0001 }
+    - { name: "SQS queues, SNS topic, SSM parameter and log group, idle", gbp_h: 0.0001 }
+  pricey: null
+timing: { deploy_min: 4, destroy_min: 4, session_h: 2, max_h: 6 }
+capacity: { instance_types: [] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
+identity:
+  creates: [role]
+  roles: []
+  governance: false
