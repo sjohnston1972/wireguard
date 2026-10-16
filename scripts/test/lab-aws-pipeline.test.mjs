@@ -386,6 +386,26 @@ test("unpeer removes only this lab's route from rt-wg, the lab's routes, its con
   w.cleanup();
 });
 
+test("unpeer removes only the headend peering and its routes, never a peering between the lab's own VPCs", { skip }, () => {
+  const rt = { RouteTables: [{ RouteTableId: "rtb-0wg", Routes: [{ DestinationCidrBlock: "10.64.64.0/18", VpcPeeringConnectionId: "pcx-0head", State: "active" }] }] };
+  const both = '{"VpcPeeringConnections":[{"VpcPeeringConnectionId":"pcx-0head","Status":{"Code":"active"}},{"VpcPeeringConnectionId":"pcx-0own","Status":{"Code":"active"}}]}';
+  const w = world([
+    { cmd: "aws", match: "^ec2 describe-route-tables.*tag:Name,Values=rt-wg", out: JSON.stringify(rt) },
+    { cmd: "aws", match: `^ec2 describe-vpc-peering-connections.*Name=tag:Name,Values=lab-${ID}-headend`, out: '{"VpcPeeringConnections":[{"VpcPeeringConnectionId":"pcx-0head","Status":{"Code":"active"}}]}' },
+    { cmd: "aws", match: "^ec2 describe-vpc-peering-connections", out: both },
+    { cmd: "aws", match: "^ec2 describe-route-tables.*tag:cloudlabs-lab", out: '{"RouteTables":[{"RouteTableId":"rtb-0lab","Routes":[{"DestinationCidrBlock":"10.50.0.0/16","VpcPeeringConnectionId":"pcx-0head"},{"DestinationCidrBlock":"10.64.32.0/20","VpcPeeringConnectionId":"pcx-0own"}]}]}' },
+  ]);
+  const r = w.run("infra/ci/lab-peer-aws.sh", ["unpeer", ID], { LAB_REGION: "eu-west-2" });
+  assert.equal(r.status, 0, r.out);
+  const writes = w.calls().filter((c) => /^aws ec2 (delete|create|replace)/.test(c));
+  assert.deepEqual(writes, [
+    "aws ec2 delete-route --route-table-id rtb-0wg --destination-cidr-block 10.64.64.0/18 --region eu-west-2",
+    "aws ec2 delete-route --route-table-id rtb-0lab --destination-cidr-block 10.50.0.0/16 --region eu-west-2",
+    "aws ec2 delete-vpc-peering-connection --vpc-peering-connection-id pcx-0head --region eu-west-2",
+  ]);
+  w.cleanup();
+});
+
 test("unpeer never fails the run, even when AWS refuses every call", { skip }, () => {
   const w = world([{ cmd: "aws", match: ".*", code: 254, err: "An error occurred (UnauthorizedOperation) when calling the operation: You are not authorized. User: arn:aws:sts::123456789012:assumed-role/x" }]);
   const r = w.run("infra/ci/lab-peer-aws.sh", ["unpeer", ID], { LAB_REGION: "eu-west-2" });

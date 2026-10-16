@@ -90,7 +90,7 @@ resource "aws_network_acl_rule" "in_mysql" {
   to_port        = 3306
 }
 
-# Replies to vm-db's own downloads (packages through the S3 endpoint).
+# Replies to vm-db's own downloads (packages through the S3 endpoint). Any port from 1024 up, so it also admits 3306 from anywhere: rule 100 above is the intended one.
 resource "aws_network_acl_rule" "in_replies" {
   network_acl_id = aws_network_acl.db.id
   rule_number    = 110
@@ -191,5 +191,5 @@ resource "aws_instance" "db" {
   }
   volume_tags = merge(var.tags, { Name = "vm-db" })
   tags        = { Name = "vm-db" }
-  depends_on  = [aws_vpc_endpoint.data_s3, aws_network_acl_rule.in_replies, aws_network_acl_rule.out_https, aws_network_acl_association.db]
+  depends_on  = [aws_vpc_endpoint.data_s3, aws_route_table_association.db, aws_network_acl_rule.in_replies, aws_network_acl_rule.out_https, aws_network_acl_association.db]
 }
