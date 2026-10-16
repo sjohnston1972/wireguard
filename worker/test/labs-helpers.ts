@@ -114,6 +114,7 @@ export const AWS_TEST_LABS: LabDef[] = [
     connectivity: { peering: "optional", dns_link: false, subnets_used: 1 },
   }),
   base("saa-16-dr-pilot-light", 16, { title: "Pilot-light disaster recovery", regions: { secondary: "eu-west-1" }, connectivity: { peering: "optional", dns_link: false, subnets_used: 1 } }),
+  base("ans-26-edge", 26, { title: "Global edge: CloudFront, WAF and Global Accelerator", exam: "ANS-C01", exams: ["ANS-C01"], regions: { secondary: "eu-west-1" }, connectivity: { peering: "optional", dns_link: false, subnets_used: 1 } }),
 ];
 
 /** The test catalogue with the AWS labs added (and the SOA and SAA skill areas they name). */

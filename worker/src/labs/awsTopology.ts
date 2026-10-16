@@ -1,7 +1,7 @@
 // labs/awsTopology.ts
 //
 // Plain English: the reads behind an AWS lab's live diagram (AWS labs spec §6,
-// §10). At most AWS_TOPOLOGY_CALLS_MAX (15) calls, all counted on the Net and
+// §10). At most AWS_TOPOLOGY_CALLS_MAX (16) calls, all counted on the Net and
 // all filtered by the lab's tag (cloudlabs-lab = <id>): in the session's own
 // region (London) the tagged resources, VPCs, subnets, instances, route
 // tables, VPC peering connections, Transit Gateway attachments, NAT gateways,
@@ -14,13 +14,13 @@
 
 import type { Env } from "../env";
 import { awsQuery, ec2, filters, xmlAll, xmlFirst, xmlItems, xmlOwn, xmlOwnItems } from "../cloud/awsApi";
-import { LAB_TAG, readsUsEast1 } from "../../../shared/labs";
+import { LAB_TAG, readsUsEast1, readsUsWest2 } from "../../../shared/labs";
 import type { AwsRow } from "../../../shared/topology/awsLive";
 import { arnParts, labTagged, type TaggedArn } from "./awsReads";
 import type { Net } from "./net";
 
-/** Calls one live refresh may make: 10 in the lab's region, 4 in its secondary one, 1 in us-east-1 for a global or DNS lab (ruling P5: lab 16 has all three). */
-export const AWS_TOPOLOGY_CALLS_MAX = 15;
+/** Calls one live refresh may make: 10 in the lab's region, 4 in its secondary, 1 in us-east-1 and 1 in us-west-2: lab 26 has all four, ruling P24. */
+export const AWS_TOPOLOGY_CALLS_MAX = 16;
 
 const ELB_VERSION = "2015-12-01";
 
@@ -232,6 +232,12 @@ export async function readAwsTopology(env: Env, net: Net, labId: string, region:
     const tg = await labTagged(env, net, "us-east-1", labId);
     rows.push(...joinRows(tg, [], region));
     truncated = truncated || tg.truncated;
+  }
+  // Ruling P24: Global Accelerator's items are tagged in us-west-2; they sit in the lab's own container.
+  if (readsUsWest2(labId)) {
+    const tw = await labTagged(env, net, "us-west-2", labId);
+    rows.push(...joinRows(tw, [], region));
+    truncated = truncated || tw.truncated;
   }
   const own = new Set(vpcs.map((v) => v.id));
   const gatewayVpcIds = [...new Set(peerings.map((p) => p.refs.peerVpc).filter((x): x is string => !!x && !own.has(x)))];

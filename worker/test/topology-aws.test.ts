@@ -338,10 +338,24 @@ describe("GET /labs/:id/topology for an AWS lab", () => {
     const seen = fakeAws();
     const r = await api(env, "GET", "/labs/saa-16-dr-pilot-light/topology");
     expect(r.json.status).toBe("ok");
-    expect(AWS_TOPOLOGY_CALLS_MAX).toBe(15);
     expect(seen.length).toBeLessThanOrEqual(AWS_TOPOLOGY_CALLS_MAX);
     expect(seen.filter((s) => s.host.endsWith(".us-east-1.amazonaws.com")).map((s) => s.action)).toEqual(["ResourceGroupsTaggingAPI_20170126.GetResources"]);
     expect(seen.some((s) => s.host === "tagging.eu-west-1.amazonaws.com")).toBe(true);
+    expect(seen.some((s) => s.host.endsWith(".us-west-2.amazonaws.com"))).toBe(false);
+  });
+
+  it("ruling P24: a four-region lab's live graph reads us-west-2 once, within the call cap", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    resetTopologyCache();
+    await runningLab(env, world, "ans-26-edge");
+    const seen = fakeAws();
+    const r = await api(env, "GET", "/labs/ans-26-edge/topology");
+    expect(r.json.status).toBe("ok");
+    expect(AWS_TOPOLOGY_CALLS_MAX).toBe(16);
+    expect(seen.length).toBeLessThanOrEqual(AWS_TOPOLOGY_CALLS_MAX);
+    expect(seen.filter((s) => s.host.endsWith(".us-west-2.amazonaws.com")).map((s) => s.action)).toEqual(["ResourceGroupsTaggingAPI_20170126.GetResources"]);
   });
 
   it("an AWS refusal is failed in plain words; throttling is throttled", async () => {
