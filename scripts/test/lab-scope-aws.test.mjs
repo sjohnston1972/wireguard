@@ -734,7 +734,10 @@ test("fix round 1, I-3: a block wholly unknown at plan (dynamic, for_each unknow
   const cluster = (blocks) => T(c19, "aws_eks_cluster.lab", { name: "lab-saa-19-eks", access_config: [{ authentication_mode: "API", bootstrap_cluster_creator_admin_permissions: false }], upgrade_policy: [{ support_type: "STANDARD" }], vpc_config: [{ endpoint_private_access: true, endpoint_public_access: true }] }, { unknown: ["role_arn", "vpc_config.0.subnet_ids", ...blocks], dynamic: blocks, refs: { role_arn: ref("aws_iam_role.cluster", "arn"), "vpc_config.0.subnet_ids": ["aws_subnet.private"] } });
   assert.deepEqual(rulesFor(c19, [clusterRole, cluster([])], templateResources(c19)), []);
   assert.deepEqual(rulesFor(c19, [clusterRole, cluster(["remote_network_config"])], templateResources(c19)), ["gateway: aws_eks_cluster.lab"]);
-  assert.deepEqual(rulesFor(c19, [clusterRole, cluster(["compute_config"])], templateResources(c19)), ["size: aws_eks_cluster.lab"]);
+  // Fix round 2, R2-1: compute_config is Optional and Computed, so a plan prints it wholly unknown when the lab leaves
+  // it unset, exactly as a dynamic block: it cannot be refused unread (Auto Mode is a cost, not a reach outside the lab).
+  assert.deepEqual(rulesFor(c19, [clusterRole, cluster(["compute_config"])], templateResources(c19)), []);
+  assert.deepEqual(rulesFor(c19, [clusterRole, T(c19, "aws_eks_cluster.lab", { name: "lab-saa-19-eks", access_config: [{ authentication_mode: "API", bootstrap_cluster_creator_admin_permissions: false }], upgrade_policy: [{ support_type: "STANDARD" }], vpc_config: [{ endpoint_private_access: true, endpoint_public_access: true }], compute_config: [{ enabled: true }] }, { unknown: ["role_arn", "vpc_config.0.subnet_ids"], refs: { role_arn: ref("aws_iam_role.cluster", "arn"), "vpc_config.0.subnet_ids": ["aws_subnet.private"] } })], templateResources(c19)), ["size: aws_eks_cluster.lab"], "a written Auto Mode is still refused");
 });
 
 test("fix round 1, I-4: a Firehose stream sends records only to the lab's own bucket: no backup, processor, conversion or other destination (ruling P14)", () => {
@@ -831,4 +834,55 @@ test("fix round 1, M-6: P9's run-command target check still reports first on an 
   assert.match(msg([{ key: "InstanceIds", values: ["*"] }]), /every instance/);
   assert.match(msg([{ key: "InstanceIds", values: ["i-0123456789abcdef0"] }]), /names an existing AWS resource/);
   assert.match(msg([{ key: "tag:Name", values: ["vm-wg"] }]), /VPN server/);
+});
+
+// ── Task 3 fix round 2 (task-3-review.md, Round 2) ──
+
+test("fix round 2, R2-1: an unset Optional+Computed block planned wholly unknown passes (lab 16's table, lab 19's cluster); a written witness is refused", () => {
+  const table = (extra = {}) => T(c16, "aws_dynamodb_table.orders", { name: "lab-saa-16-dr-pilot-light-orders", billing_mode: "PAY_PER_REQUEST", hash_key: "id", deletion_protection_enabled: false, replica: [{ region_name: "eu-west-1", propagate_tags: true }], ...extra });
+  const planned = realisticPlan({ resources: [...templateMainResources(c16), table()], data: awsData(), providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: c16.variables });
+  assert.equal(planned.resource_changes.find((x) => x.address === "aws_dynamodb_table.orders").change.after_unknown.global_table_witness, true, "an unset witness is planned wholly unknown (UNSET_BLOCKS_UNKNOWN)");
+  assert.deepEqual(rules(planned, c16.id), []);
+  assert.deepEqual(rulesFor(c16, [table({ global_table_witness: [{ region_name: "eu-west-3" }] })]), ["provider: aws_dynamodb_table.orders"]);
+  assert.deepEqual(rulesFor(c16, [table({ replica: [{ region_name: "eu-west-1", propagate_tags: true, consistency_mode: "STRONG" }] })]), ["provider: aws_dynamodb_table.orders"], "strong consistency needs a third region");
+  const clusterRole = svcRoleFor(c19, "cluster", "eks");
+  const cluster = T(c19, "aws_eks_cluster.lab", { name: "lab-saa-19-eks", access_config: [{ authentication_mode: "API", bootstrap_cluster_creator_admin_permissions: false }], upgrade_policy: [{ support_type: "STANDARD" }], vpc_config: [{ endpoint_private_access: true, endpoint_public_access: true }] }, { unknown: ["role_arn", "vpc_config.0.subnet_ids"], refs: { role_arn: ref("aws_iam_role.cluster", "arn"), "vpc_config.0.subnet_ids": ["aws_subnet.private"] } });
+  const p19 = realisticPlan({ resources: [...templateResources(c19), clusterRole, cluster], data: awsData(), providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: c19.variables });
+  assert.equal(p19.resource_changes.find((x) => x.address === "aws_eks_cluster.lab").change.after_unknown.compute_config, true, "an unset compute_config is planned wholly unknown");
+  assert.deepEqual(rules(p19, c19.id), []);
+});
+
+test("fix round 2, R2-2: a value the lab writes that is not known at plan, with no references (an apply-time function), is refused", () => {
+  const noRef = (attr) => ({ unknown: [attr], refs: {} });
+  const base11 = templateResources(c11);
+  const cases = [
+    [c11, T(c11, "aws_db_instance.app", DB, noRef("publicly_accessible")), "public", [dbGroup(c11)], base11],
+    [c11, T(c11, "aws_elasticache_replication_group.app", { replication_group_id: "ca11k3x9q", description: "x", engine: "valkey", node_type: "cache.t4g.micro", num_cache_clusters: 1, subnet_group_name: "lab-saa-11-three-tier-data" }, noRef("final_snapshot_identifier")), "lingering", [cacheGroup(c11)], base11],
+    [c12, T(c12, "aws_cognito_user_pool.users", { name: "lab-saa-12-serverless-api-users", user_pool_tier: "LITE" }, noRef("deletion_protection")), "lingering"],
+    [c11, T(c11, "aws_efs_file_system.shared", { encrypted: true }, noRef("throughput_mode")), "size", [], base11],
+  ];
+  for (const [cx, r, rule, extra = [], base] of cases) assert.deepEqual(rulesFor(cx, [...extra, r], base), [`${rule}: ${r.address}`], `${r.address} ${JSON.stringify(r.unknown)}`);
+});
+
+test("fix round 2, R2-3: a subnet group named outside lab-<id>- (\"default\") is refused even when the lab makes it", () => {
+  const base = templateResources(c11);
+  const group = (name) => T(c11, "aws_elasticache_subnet_group.data", { name, description: "x" }, { unknown: ["subnet_ids"], refs: { subnet_ids: ["aws_subnet.private"] } });
+  const rg = (more = {}) => T(c11, "aws_elasticache_replication_group.app", { replication_group_id: "ca11k3x9q", description: "x", engine: "valkey", node_type: "cache.t4g.micro", num_cache_clusters: 1, subnet_group_name: "default" }, more);
+  assert.deepEqual(rulesFor(c11, [group("default"), rg()], base), ["gateway: aws_elasticache_replication_group.app"]);
+  assert.deepEqual(rulesFor(c11, [group("default"), rg({ unknown: ["subnet_group_name"], refs: { subnet_group_name: ref("aws_elasticache_subnet_group.data", "name") } })], base), ["gateway: aws_elasticache_replication_group.app"], "by reference to a group named default");
+  const dbg = (name) => T(c11, "aws_db_subnet_group.db", { name }, { unknown: ["subnet_ids"], refs: { subnet_ids: ["aws_subnet.private"] } });
+  assert.deepEqual(rulesFor(c11, [dbg("default"), T(c11, "aws_db_instance.app", { ...DB, db_subnet_group_name: "default" })], base), ["gateway: aws_db_instance.app"]);
+  assert.deepEqual(rulesFor(c11, [dbg("lab-saa-11-three-tier-db"), T(c11, "aws_db_instance.app", (({ db_subnet_group_name: _g, ...rest }) => rest)(DB), { unknown: ["db_subnet_group_name"], refs: { db_subnet_group_name: ref("aws_db_subnet_group.db", "name") } })], base), [], "the lab's own group by reference");
+});
+
+test("fix round 2, R2-4: a workflow target key in another case is refused", () => {
+  const id = "saa-13-decoupling";
+  const opts = { account: ACCOUNT, regions: ["eu-west-2"] };
+  const task = (Parameters) => ({ StartAt: "A", States: { A: { Type: "Task", Resource: "arn:aws:states:::sns:publish", Parameters, End: true } } });
+  for (const p of [{ topicArn: "arn:aws:sns:eu-west-2:999999999999:theirs" }, { TOPICARN: "arn:aws:sns:eu-west-2:999999999999:theirs" }, { targetarn: "arn:aws:sns:eu-west-2:999999999999:endpoint/x" }, { "phoneNumber.$": "$.who" }, { "topicarn.$": "$.t" }]) {
+    assert.notEqual(scope.workflowProblem(task({ ...p, Message: "hi" }), id, opts), null, JSON.stringify(p));
+  }
+  assert.notEqual(scope.workflowProblem({ StartAt: "A", States: { A: { Type: "Task", resource: "arn:aws:states:::aws-sdk:iam:createUser", End: true } } }, id, opts), null, "resource in lower case");
+  assert.notEqual(scope.workflowProblem({ queryLanguage: "JSONata", StartAt: "A", States: {} }, id, opts), null);
+  assert.equal(scope.workflowProblem(task({ TopicArn: `arn:aws:sns:eu-west-2:${ACCOUNT}:lab-${id}-orders`, "Message.$": "$" }), id, opts), null);
 });

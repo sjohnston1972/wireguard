@@ -177,7 +177,8 @@ const AWS_TEXT_RULES = [
   { rule: "known-id", re: /automate:|AWS_EC2\.InstanceId\./gi, message: (m) => `${m}: an EC2 alarm action acts on an instance; a lab's alarm notifies its own topic` },
   // Ruling P14: a workflow's SDK integrations can call any API with the state machine's role.
   { rule: "gateway", re: /arn:aws:states:::aws-sdk:[\w:.-]*/g, message: (m) => `${m}: a lab's workflow uses only lambda:invoke, sns:publish and sqs:sendMessage` },
-  { rule: "apply-time", re: /\b(?:plan)?timestamp\s*\(\s*\)|\buuid\s*\(\s*\)|\bbcrypt\s*\(/g, message: (m) => `${m}: a value not known until apply hides what an expression chooses from the plan check` },
+  // Task 3 fix round 2 (R2-2): any call, whatever is inside the parentheses (comments are stripped first as well).
+  { rule: "apply-time", re: /\b(?:plan)?timestamp\s*\(|\buuid\s*\(|\bbcrypt\s*\(/g, message: (m) => `${m}: a value not known until apply hides what an expression chooses from the plan check` },
 ];
 /** Ruling P4: a lab's CloudFormation templates (terraform/cfn/*.yaml), read as text before init. */
 const CFN_RULES = [

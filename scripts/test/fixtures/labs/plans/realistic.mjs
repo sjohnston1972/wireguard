@@ -108,6 +108,10 @@ export const UNSET_BLOCKS_UNKNOWN = {
   aws_lb: ["subnet_mapping"],
   aws_lb_listener: ["mutual_authentication"],
   aws_lb_target_group: ["stickiness", "target_failover", "target_group_health", "target_health_state"],
+  // AWS labs batch 3 (Task 3 fix round 2, R2-1): Optional and Computed blocks in aws 6.69's source (dynamodb/table.go,
+  // eks/cluster.go), so planned wholly unknown when unset, as batch 1 and 2's real plans show for such blocks.
+  aws_dynamodb_table: ["global_table_witness"],
+  aws_eks_cluster: ["access_config", "compute_config", "kubernetes_network_config", "storage_config", "upgrade_policy"],
   aws_s3_bucket: ["cors_rule", "grant", "lifecycle_rule", "logging", "object_lock_configuration", "replication_configuration", "server_side_encryption_configuration", "versioning", "website"],
   aws_vpc_endpoint: ["dns_options", "subnet_configuration"],
 };
