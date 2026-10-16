@@ -703,6 +703,15 @@
    "height": 1046
   }
  ],
+ "saa-12-serverless-api": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A resource sending traffic to a Lambda function.",
+   "width": 952,
+   "height": 438
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",

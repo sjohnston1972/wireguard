@@ -1,0 +1,35 @@
+# Lab saa-12 (AWS labs batch 3). SAA-C03 ((V) the wording against the current
+# exam guide): Design Secure Architectures (a JWT authoriser on a Cognito user
+# pool), Design Resilient Architectures and Design High-Performing
+# Architectures (managed, scale-to-zero services; DynamoDB on demand).
+# Everything here bills per request: an idle hour is free, and a session of
+# Things to try stays inside the free tiers (authored figures, V: Lambda
+# arm64, HTTP API, DynamoDB on demand and Cognito Lite, London).
+id: saa-12-serverless-api
+version: 1
+cloud: aws
+title: "Serverless API with Cognito sign-in"
+summary: >-
+  An API Gateway HTTP API in front of a Lambda function and a DynamoDB table, with a JWT authoriser that lets in only
+  users of the lab's own Cognito user pool: sign in from CloudShell, call the API, see your name on what you stored.
+exam: SAA-C03
+skill_areas: [saa.secure, saa.resilient, saa.performance]
+level: associate
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "API Gateway HTTP API requests (a few hundred)", gbp_h: 0.0001 }
+    - { name: "Lambda arm64, 128 MB, a few hundred calls", gbp_h: 0.0001 }
+    - { name: "DynamoDB on demand: reads, writes and a few kB stored", gbp_h: 0.0001 }
+    - { name: "Cognito user pool, Lite tier (one user, inside the free allowance)", gbp_h: 0 }
+    - { name: "CloudWatch Logs (one day)", gbp_h: 0.0001 }
+  pricey: null
+timing: { deploy_min: 4, destroy_min: 3, session_h: 2, max_h: 6 }
+capacity: { instance_types: [] }
+regions: { secondary: null }
+connectivity: { peering: "off", dns_link: false, subnets_used: 0 }
+identity:
+  creates: [role]
+  roles: []
+  governance: false

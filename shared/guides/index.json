@@ -527,6 +527,13 @@
    "kind": "architecture"
   }
  ],
+ "saa-12-serverless-api": [
+  {
+   "file": "architecture.svg",
+   "title": "Serverless API with Cognito sign-in: architecture",
+   "kind": "architecture"
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",

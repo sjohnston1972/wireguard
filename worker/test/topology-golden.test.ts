@@ -926,6 +926,18 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: ["alb-web -> asg-a11… : HTTP 80", "rt-private ..> nat-lab : 0.0.0.0/0", "rt-public ..> igw-lab : 0.0.0.0/0"],
   },
+  "saa-12-serverless-api": {
+    nodes: [
+      "dynamodb table-items < lab-saa-12-serverless-api · London",
+      "generic api-lab < lab-saa-12-serverless-api · London",
+      "generic pool-users < lab-saa-12-serverless-api · London",
+      "lambda fn-api < lab-saa-12-serverless-api · London",
+      "logAnalytics /cloudlabs/saa-12-serverless-api/api < lab-saa-12-serverless-api · London",
+      "managedIdentity lab-saa-12-serverless-api-api < lab-saa-12-serverless-api · London",
+      "resourceGroup lab-saa-12-serverless-api · London",
+    ],
+    edges: ["api-lab -> fn-api : HTTPS"],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);
