@@ -1079,3 +1079,23 @@ test("NAT fix: a NAT gateway still deleting at the wait's end is a warning, neve
   assert.match(s.out, /::warning::unblock: could not read the NAT gateways in eu-west-2 \(RequestLimitExceeded\)/);
   f.cleanup();
 });
+
+test("saa-15 review I2: Unblock deletes the bucket policy of the lab's own bucket, never another bucket's, and warns if it cannot", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:s3:::cloudlabs-a15k3x9q-data", "arn:aws:s3:::someone-elses-bucket") },
+    { cmd: "aws", match: "^s3api get-object-lock-configuration", out: "", code: 254, err: "ObjectLockConfigurationNotFoundError" },
+  ]);
+  const r = w.run("infra/ci/lab-unblock-aws.sh", [ID], ENV);
+  assert.equal(r.status, 0, r.out);
+  const del = calls3(w, /^aws s3api delete-bucket-policy/).map((c) => c.split(" --region")[0]);
+  assert.deepEqual(del, ["aws s3api delete-bucket-policy --bucket cloudlabs-a15k3x9q-data"]);
+  w.cleanup();
+  const f = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:s3:::cloudlabs-a15k3x9q-data") },
+    { cmd: "aws", match: "^s3api delete-bucket-policy", out: "", code: 254, err: "An error occurred (AccessDenied) when calling the DeleteBucketPolicy operation" },
+  ]);
+  const r2 = f.run("infra/ci/lab-unblock-aws.sh", [ID], ENV);
+  assert.equal(r2.status, 0, r2.out);
+  assert.match(r2.out, /::warning::.*bucket policy of cloudlabs-a15k3x9q-data/);
+  f.cleanup();
+});

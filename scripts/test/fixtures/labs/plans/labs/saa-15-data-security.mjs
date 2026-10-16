@@ -61,7 +61,7 @@ export default () => {
       onBucket("aws_s3_bucket_policy", "data", {
         policy: doc([
           { Sid: "TlsOnly", Effect: "Deny", Principal: "*", Action: "s3:*", Resource: [bucketArn, `${bucketArn}/*`], Condition: { Bool: { "aws:SecureTransport": "false" } } },
-          { Sid: "KmsUploadsOnly", Effect: "Deny", Principal: "*", Action: "s3:PutObject", Resource: `${bucketArn}/*`, Condition: { StringNotEqualsIfExists: { "s3:x-amz-server-side-encryption": "aws:kms" } } },
+          { Sid: "KmsUploadsOnly", Effect: "Deny", Principal: "*", Action: "s3:PutObject", Resource: `${bucketArn}/*`, Condition: { Null: { "s3:x-amz-server-side-encryption": "false" }, StringNotEquals: { "s3:x-amz-server-side-encryption": "aws:kms" } } },
         ]),
       }, { refs: { policy: ["local.bucket_arn", "local.bucket_arn", "local.bucket_arn"] } }),
       onBucket("aws_s3_object", "secret", tagged(c, { key: "secret.txt", content: "encrypted at rest with the lab's own key\n", content_type: "text/plain" })),
@@ -89,6 +89,7 @@ export default () => {
           name: `lab-${id}-client`, path: "/cloudlabs-lab/",
           policy: doc([
             { Sid: "LabBucket", Effect: "Allow", Action: ["s3:ListBucket", "s3:GetObject", "s3:PutObject"], Resource: [bucketArn, `${bucketArn}/*`] },
+            { Sid: "ListMyBuckets", Effect: "Allow", Action: "s3:ListAllMyBuckets", Resource: "*" },
             {
               Sid: "LabKeyThroughS3", Effect: "Allow", Action: ["kms:Decrypt", "kms:GenerateDataKey"], Resource: "*",
               Condition: { StringEquals: { "kms:ViaService": `s3.${region}.amazonaws.com` }, StringLike: { "kms:EncryptionContext:aws:s3:arn": [bucketArn, `${bucketArn}/*`] } },

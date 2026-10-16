@@ -3,7 +3,8 @@
 # Plain English: lab 15's bucket, cloudlabs-<name_prefix>-data, private and
 # encrypted by default with the lab's key (SSE-KMS, with an S3 Bucket Key so
 # S3 asks KMS far less often). Its policy refuses any request not over TLS
-# and any upload that asks for encryption other than KMS. It is known at plan,
+# and any upload that asks for encryption other than KMS (an upload that asks
+# for none, so takes the bucket's default, passes: the Null condition). It is known at plan,
 # naming the bucket by its built ARN (ruling A68); restricting it to the lab's
 # endpoint is a Thing to try (ruling P18).
 
@@ -43,7 +44,7 @@ resource "aws_s3_bucket_policy" "data" {
     Version = "2012-10-17"
     Statement = [
       { Sid = "TlsOnly", Effect = "Deny", Principal = "*", Action = "s3:*", Resource = [local.bucket_arn, "${local.bucket_arn}/*"], Condition = { Bool = { "aws:SecureTransport" = "false" } } },
-      { Sid = "KmsUploadsOnly", Effect = "Deny", Principal = "*", Action = "s3:PutObject", Resource = "${local.bucket_arn}/*", Condition = { StringNotEqualsIfExists = { "s3:x-amz-server-side-encryption" = "aws:kms" } } },
+      { Sid = "KmsUploadsOnly", Effect = "Deny", Principal = "*", Action = "s3:PutObject", Resource = "${local.bucket_arn}/*", Condition = { StringNotEquals = { "s3:x-amz-server-side-encryption" = "aws:kms" }, Null = { "s3:x-amz-server-side-encryption" = "false" } } },
     ]
   })
   depends_on = [aws_s3_bucket_public_access_block.data]
@@ -54,5 +55,5 @@ resource "aws_s3_object" "secret" {
   key          = "secret.txt"
   content      = "encrypted at rest with the lab's own key\n"
   content_type = "text/plain"
-  depends_on   = [aws_s3_bucket_server_side_encryption_configuration.data]
+  depends_on   = [aws_s3_bucket_server_side_encryption_configuration.data, aws_s3_bucket_policy.data]
 }

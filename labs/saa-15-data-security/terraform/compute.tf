@@ -24,6 +24,7 @@ resource "aws_iam_policy" "client" {
     Version = "2012-10-17"
     Statement = [
       { Sid = "LabBucket", Effect = "Allow", Action = ["s3:ListBucket", "s3:GetObject", "s3:PutObject"], Resource = [local.bucket_arn, "${local.bucket_arn}/*"] },
+      { Sid = "ListMyBuckets", Effect = "Allow", Action = "s3:ListAllMyBuckets", Resource = "*" },
       {
         Sid       = "LabKeyThroughS3"
         Effect    = "Allow"

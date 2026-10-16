@@ -312,7 +312,13 @@ for r in $REGIONS; do
         # arn:aws:s3:::<bucket>: no type part.
         if lj="$(awsq "$r" s3api get-object-lock-configuration --bucket "$rest")" && jq -e '.ObjectLockConfiguration.ObjectLockEnabled == "Enabled"' <<<"$lj" >/dev/null 2>&1; then
           warn "Object Lock is on in $rest: its locked versions cannot be deleted until they expire"
-        fi ;;
+        fi
+        # The lab's own bucket (cloudlabs-*) loses its bucket policy: a learner's Deny (say on aws:SourceVpce) would
+        # otherwise refuse Terraform's refresh and the safety net from outside the lab. Best effort; Terraform's later
+        # delete of aws_s3_bucket_policy treats NoSuchBucketPolicy as already deleted (provider, deleteBucketPolicy).
+        case "$rest" in
+          cloudlabs-*) do_write "$r" "delete the bucket policy of $rest" s3api delete-bucket-policy --bucket "$rest" ;;
+        esac ;;
     esac
   done < <(jq -r '.ResourceTagMappingList[]? | [.ResourceARN // "", (if any((.Tags // [])[]; .Key == "wg-admin") then "1" else "0" end)] | join("\u001f")' <<<"$listed")
 

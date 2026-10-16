@@ -18,10 +18,10 @@ lab-saa-15-data-security (London)
 ## Things to try
 
 - Connect (the first Connect line) and run the second: the object reads back, and `head-object` shows `ServerSideEncryption: aws:kms` and the key's ARN.
-- Run the third line: the upload asks for AES256, so the bucket policy refuses it. Run it again without `--sse AES256`: the bucket's default encryption uses the lab's key.
-- From the instance, try `aws s3 ls s3://<any other bucket of yours>`: the endpoint policy refuses it before the bucket ever sees the request, even though your role would allow it.
-- Disable the key (KMS, the key, Key actions, Disable), then read `secret.txt` again: the object is still there, but nobody can decrypt it. Enable it again.
-- Add a statement to the bucket policy denying `s3:GetObject` unless `aws:SourceVpce` is the endpoint id (the fourth Connect line). Now the instance can read the object and you, in the console, cannot. Remove the statement before tear-down if you want the console to see the bucket.
+- Run the third line: the upload asks for AES256, so the bucket policy refuses it (AccessDenied, an explicit deny in a resource-based policy). Run it again without `--sse AES256`: the upload is accepted and the bucket's default encryption uses the lab's key.
+- From the instance, run `aws s3 ls --region eu-west-2` (no bucket name). Your role allows listing your buckets, but the endpoint policy names only the lab bucket, so it fails with AccessDenied saying the request was denied by a VPC endpoint policy. Then `aws s3 ls s3://<the lab bucket> --region eu-west-2` works.
+- Disable the key (KMS, the key, Key actions, Disable), then read `secret.txt` again (allow a few minutes, the Bucket Key caches): the object is still there, but nobody can decrypt it. Enable it again.
+- Add a statement to the bucket policy denying `s3:GetObject` unless `aws:SourceVpce` is the endpoint id (the fourth Connect line). Now the instance can read the object and you, in the console, cannot. Remove the statement before tear-down: Terraform reads `secret.txt` from outside the endpoint while it tears the lab down and would be refused (Unblock also deletes the bucket policy as a safety net).
 
 ## Learn more
 

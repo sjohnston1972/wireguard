@@ -29,7 +29,7 @@ cost:
     - { name: "S3 storage and requests, a few kB", gbp_h: 0.0001 }
     - { name: "EC2 Instance Connect Endpoint", gbp_h: 0 }
   pricey: null
-timing: { deploy_min: 3, destroy_min: 3, session_h: 2, max_h: 6 }
+timing: { deploy_min: 4, destroy_min: 6, session_h: 2, max_h: 6 }
 capacity: { instance_types: [t4g.nano] }
 regions: { secondary: null }
 connectivity: { peering: optional, dns_link: false, subnets_used: 1 }

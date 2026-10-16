@@ -17,14 +17,14 @@ test("saa-15 keeps the AWS lab contract", () => assert.deepEqual(commonAwsProble
 test("saa-15's lab.yaml: §12.2 row 15, after soa-07, about £0.01/h", () => {
   const { yaml } = awsLab(ID);
   assert.deepEqual([yaml.exam, yaml.level, yaml.type, yaml.skill_areas, yaml.prerequisites], ["SAA-C03", "associate", "explore", ["saa.secure", "soa.security"], ["soa-07-iam-kms"]]);
-  assert.deepEqual(yaml.timing, { deploy_min: 3, destroy_min: 3, session_h: 2, max_h: 6 });
+  assert.deepEqual(yaml.timing, { deploy_min: 4, destroy_min: 6, session_h: 2, max_h: 6 });
   const total = yaml.cost.items.reduce((n, i) => n + i.gbp_h * (i.qty ?? 1), 0);
   assert.ok(total > 0.003 && total < 0.015, `about £0.01/h, got ${total}`);
 });
 
 test("saa-15's key and bucket: 7-day deletion, the root's kms:*, no rotation at deploy; SSE-KMS with a Bucket Key; TLS-only and KMS-only policy", () => {
   const { tf } = awsLab(ID);
-  for (const re of [/deletion_window_in_days = 7/, /Action = "kms:\*"/, /sse_algorithm\s+= "aws:kms"/, /kms_master_key_id = aws_kms_key\.data\.arn/, /bucket_key_enabled = true/, /"aws:SecureTransport" = "false"/, /StringNotEqualsIfExists = \{ "s3:x-amz-server-side-encryption" = "aws:kms" \}/]) assert.match(tf, re);
+  for (const re of [/deletion_window_in_days = 7/, /Action = "kms:\*"/, /sse_algorithm\s+= "aws:kms"/, /kms_master_key_id = aws_kms_key\.data\.arn/, /bucket_key_enabled = true/, /"aws:SecureTransport" = "false"/, /StringNotEquals = \{ "s3:x-amz-server-side-encryption" = "aws:kms" \}, Null = \{ "s3:x-amz-server-side-encryption" = "false" \}/, /s3:ListAllMyBuckets/]) assert.match(tf, re);
   assert.doesNotMatch(tf, /enable_key_rotation\s+= true/);
 });
 
