@@ -541,6 +541,13 @@
    "kind": "architecture"
   }
  ],
+ "saa-14-storage": [
+  {
+   "file": "architecture.svg",
+   "title": "Storage choices: S3 classes, EFS, EBS gp3 and io2: architecture",
+   "kind": "architecture"
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",

@@ -956,6 +956,24 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: ["rule-placed ..> sfn-orders", "topic-orders ..> queue-billing : fan-out", "topic-orders ..> queue-shipping : fan-out"],
   },
+  "saa-14-storage": {
+    nodes: [
+      "bastion eice-lab < snet-private-1",
+      "generic efs-shared < lab-saa-14-storage · London",
+      "nsg sg-efs < vpc-lab",
+      "nsg sg-eice < vpc-lab",
+      "nsg sg-vms < vpc-lab",
+      "privateEndpoint vpce-s3 < vpc-lab",
+      "resourceGroup lab-saa-14-storage · London",
+      "routeTable rt-private < vpc-lab",
+      "storage tiers < lab-saa-14-storage · London",
+      "subnet snet-private-1 < vpc-lab",
+      "subnet snet-private-2 < vpc-lab",
+      "vm vm-storage < snet-private-1",
+      "vnet vpc-lab < lab-saa-14-storage · London",
+    ],
+    edges: [],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);
