@@ -1042,6 +1042,21 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: ["crawler-events ..> glue-lake : catalogues", "firehose-to-s3 ..> lake : delivers", "rule-every-minute ..> fn-producer", "stream-events ..> firehose-to-s3 : reads"],
   },
+  "saa-18-cost-compute": {
+    nodes: [
+      "bastion eice-lab < snet-private-1",
+      "nsg sg-eice < vpc-lab",
+      "nsg sg-vms < vpc-lab",
+      "privateEndpoint vpce-s3 < vpc-lab",
+      "resourceGroup lab-saa-18-cost-compute · London",
+      "routeTable rt-private < vpc-lab",
+      "subnet snet-private-1 < vpc-lab",
+      "subnet snet-private-2 < vpc-lab",
+      "vmss asg-a18… < snet-private-1",
+      "vnet vpc-lab < lab-saa-18-cost-compute · London",
+    ],
+    edges: [],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);

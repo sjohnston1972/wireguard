@@ -569,6 +569,13 @@
    "kind": "architecture"
   }
  ],
+ "saa-18-cost-compute": [
+  {
+   "file": "architecture.svg",
+   "title": "Cost-optimised compute: Spot, Graviton and x86: architecture",
+   "kind": "architecture"
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",

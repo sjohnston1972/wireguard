@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Mix On-Demand and Spot, Graviton and x86 in one Auto Scaling group and compare what each costs.
+learn:
+  - Keep an On-Demand base and run the rest of a group on Spot
+  - Let one group choose among Graviton and x86 instance types
+  - Compare On-Demand, Spot and commitment prices for the same work
+learning_min: 45

@@ -757,6 +757,15 @@
    "height": 618
   }
  ],
+ "saa-18-cost-compute": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. An EC2 Instance Connect Endpoint, an Auto Scaling group, a VPC endpoint, two security groups and more, in one VPC with two subnets.",
+   "width": 1091,
+   "height": 748
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",
