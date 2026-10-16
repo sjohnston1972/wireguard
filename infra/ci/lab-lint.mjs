@@ -245,6 +245,15 @@ function topLevel(body) {
       }
     }
     const ch = body[i];
+    // A heredoc's lines are text, never entries (Task 3 fix round 1): skip to its closing marker's line.
+    const doc = !inStr && ch === "<" ? /^<<-?([A-Za-z_][\w-]*)[ \t]*\n/.exec(body.slice(i)) : null;
+    if (doc) {
+      const end = new RegExp(String.raw`\n[ \t]*${doc[1]}[ \t]*(?=\n|$)`, "g");
+      end.lastIndex = i + doc[0].length - 1;
+      const e = end.exec(body);
+      i = e ? e.index + e[0].length - 1 : body.length;
+      continue;
+    }
     if (inStr) {
       if (ch === "\\") i++;
       else if (ch === '"' || ch === "\n") inStr = false;
@@ -301,13 +310,15 @@ function awsDataProblems(file, code) {
 /** Ruling P2: the files output (A13) only in AWS_FILES_LABS, and sensitive, so Terraform never prints it. */
 function awsFilesOutputProblems(file, code, labId) {
   const out = [];
-  for (const m of code.matchAll(/\boutput\s+"files"\s*\{/g)) {
+  // Fix round 1: the label quoted or bare; sensitive read at the block's top level (not in an object or a heredoc).
+  for (const m of code.matchAll(/\boutput\s+(?:"files"|files)\s*\{/g)) {
     const open = m.index + m[0].length - 1;
     const close = closeOf(code, open);
     const body = close < 0 ? "" : code.slice(open + 1, close);
     const line = lineOf(code, m.index);
+    const sensitive = topLevel(body).some((e) => e.kind === "attr" && e.key === "sensitive" && e.value === "true");
     if (!AWS_FILES_LABS.includes(labId)) out.push({ file, line, rule: "outputs", message: `output "files": only ${AWS_FILES_LABS.join(", ")} hand files to the dashboard (ruling P2)` });
-    else if (!/^\s*sensitive\s*=\s*true\s*$/m.test(body)) out.push({ file, line, rule: "outputs", message: 'output "files" must say sensitive = true (ruling P2)' });
+    else if (!sensitive) out.push({ file, line, rule: "outputs", message: 'output "files" must say sensitive = true (ruling P2)' });
   }
   return out;
 }

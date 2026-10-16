@@ -305,3 +305,12 @@ test("ruling P2 (--cloud aws): a files output only in lab 31, and only sensitive
   assert.deepEqual(lint("ans-30-vpc-lattice", true), [1]);
   assert.deepEqual(lintTfText({ "outputs.tf": out(true) }, { cloud: "aws" }).filter((p) => p.rule === "outputs").map((p) => p.line), [1], "no lab id: refused");
 });
+
+test("Task 3 fix round 1 (--cloud aws): a bare files label is refused outside lab 31; sensitive counts only at the block's top level", () => {
+  const lint = (labId, body) => lintTfText({ "outputs.tf": body }, { cloud: "aws", labId }).filter((p) => p.rule === "outputs").map((p) => p.line);
+  assert.deepEqual(lint("ans-30-vpc-lattice", 'output files {\n  value     = {}\n  sensitive = true\n}\n'), [1]);
+  assert.deepEqual(lint("ans-31-client-vpn", 'output "files" {\n  value = {\n    sensitive = true\n  }\n}\n'), [1], "only inside the value object");
+  assert.deepEqual(lint("ans-31-client-vpn", 'output "files" {\n  value = <<-EOT\n    sensitive = true\n  EOT\n}\n'), [1], "only inside a heredoc");
+  assert.deepEqual(lint("ans-31-client-vpn", 'output "files" {\n  value = <<-EOT\n    x\n  EOT\n  sensitive = true\n}\n'), [], "after a heredoc, at the top level");
+  assert.deepEqual(lint("ans-31-client-vpn", 'output files {\n  value     = { "a.txt" = "x" }\n  sensitive = true\n}\n'), []);
+});

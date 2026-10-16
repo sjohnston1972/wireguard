@@ -966,3 +966,15 @@ test("rulings P6 and P7: a global IPv6 range is the internet; a service-principa
 test("every existing AWS lab's fixture still passes rule public under ruling P7", () => {
   for (const id of ["soa-01-cloudwatch", "soa-08-vpc-fix", "soa-09-route53-cloudfront", "saa-13-decoupling", "saa-15-data-security"]) assert.deepEqual(labFixtureRules(id).filter((x) => x.startsWith("public")), [], id);
 });
+
+test("Task 3 fix round 1 (controller override): P7 counts the source only under StringEquals, StringLike, ArnEquals or ArnLike; P6 honours an IPv6 prefix length", () => {
+  const logs = (Condition) => U("aws_s3_bucket_policy.logs", { bucket: "cloudlabs-a20k3x9q-logs", policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: "delivery.logs.amazonaws.com" }, Action: "s3:PutObject", Resource: "arn:aws:s3:::cloudlabs-a20k3x9q-logs/*", Condition }] }) });
+  for (const cond of [
+    { StringNotEquals: { "aws:SourceAccount": ACCOUNT } },
+    { ArnNotLike: { "aws:SourceArn": `arn:aws:logs:eu-west-2:${ACCOUNT}:*` } },
+    { "ForAllValues:StringEquals": { "aws:SourceAccount": ACCOUNT } },
+    { StringEqualsIfExists: { "aws:SourceAccount": ACCOUNT } },
+  ]) assert.deepEqual(rulesFor(c20, [logs(cond)]), ["public: aws_s3_bucket_policy.logs"], JSON.stringify(cond));
+  for (const cond of [{ StringLike: { "AWS:SOURCEACCOUNT": ACCOUNT } }, { ArnEquals: { "aws:SourceArn": `arn:aws:logs:eu-west-2:${ACCOUNT}:log-group:x` } }]) assert.deepEqual(rulesFor(c20, [logs(cond)]), [], JSON.stringify(cond));
+  assert.deepEqual(["fd00::/0", "fc00::/1", "fe80::/2", "fd00::", "fd00::/abc", "fd12:3456::/48", "fe80::/64", "fc00::/7"].map(scope.fromInternet), [true, true, true, true, true, false, false, false]);
+});

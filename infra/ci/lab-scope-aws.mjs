@@ -356,6 +356,8 @@ export const RESOURCE_POLICIES = new Map([["aws_s3_bucket_policy", "policy"], ["
  * in aws 6.69 (aws_dynamodb_resource_policy, above, is not on AWS_TYPES).
  */
 const INLINE_POLICIES = new Map([["aws_sns_topic", "policy"], ["aws_secretsmanager_secret", "policy"], ["aws_s3_bucket", "policy"], ["aws_sqs_queue", "policy"]]);
+/** Ruling P7: the condition operators under which aws:SourceAccount or aws:SourceArn names a service principal's source. */
+const SOURCE_CONDITION_OPS = ["StringEquals", "StringLike", "ArnEquals", "ArnLike"];
 /** An AWS service principal (events.amazonaws.com). */
 const SERVICE_PRINCIPAL = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.amazonaws\.com(\.cn)?$/;
 /** Ruling P9: the resources whose { key, values } blocks select instances. */
@@ -465,13 +467,21 @@ const overlaps = (a, b) => {
   const y = cidr4(b);
   return Boolean(x && y && x[0] <= y[1] && y[0] <= x[1]);
 };
-/** Ruling P6: a CIDR from the internet: IPv4 beyond the private ranges, or any global IPv6 range (outside fc00::/7 and fe80::/10). */
+/**
+ * Ruling P6: a CIDR from the internet: IPv4 beyond the private ranges, or any global IPv6 range (outside fc00::/7 and
+ * fe80::/10). Fix round 1 (controller override): an IPv6 range is private only when it lies wholly inside one of them,
+ * so its prefix length must be at least 7 (fc00::/7) or 10 (fe80::/10); a missing or invalid length is the internet.
+ */
 export const fromInternet = (c) => {
   if (typeof c !== "string") return false;
   if (!c.includes(":")) return Boolean(cidr4(c)) && !PRIVATE.some((p) => inside(c, p));
-  const head = c.split("/")[0].toLowerCase().split(":")[0].padStart(4, "0");
-  const n = parseInt(head, 16);
-  return !((n & 0xfe00) === 0xfc00 || (n & 0xffc0) === 0xfe80);
+  const [addr, len, ...rest] = c.split("/");
+  const bits = /^\d{1,3}$/.test(len ?? "") && !rest.length ? Number(len) : -1;
+  if (bits < 0 || bits > 128) return true;
+  const n = parseInt(addr.toLowerCase().split(":")[0].padStart(4, "0"), 16);
+  const uniqueLocal = (n & 0xfe00) === 0xfc00 && bits >= 7;
+  const linkLocal = (n & 0xffc0) === 0xfe80 && bits >= 10;
+  return !(uniqueLocal || linkLocal);
 };
 
 /** A JSON document from a value: { doc }, { unknown: true } or { bad: true }. */
@@ -640,7 +650,9 @@ function resourcePolicyProblem(doc, account) {
     // Ruling P7: a service principal acts for whoever calls it, so its Allow names the lab's account or resource.
     const services = list(s.Principal?.Service);
     if (services.length) {
-      const cond = Object.values(s.Condition ?? {}).flatMap((o) => Object.entries(o ?? {}));
+      // Fix round 1 (controller override): only a plain equality or match operator names the source (no Not, no
+      // IfExists, no ForAllValues:/ForAnyValue: set operator, which pass when the key is absent or empty).
+      const cond = Object.entries(isObj(s.Condition) ? s.Condition : {}).filter(([op]) => SOURCE_CONDITION_OPS.includes(op)).flatMap(([, o]) => Object.entries(isObj(o) ? o : {}));
       const named = cond.some(([k, v]) => (/^aws:sourceaccount$/i.test(k) && list(v).length > 0 && list(v).every((x) => x === account)) || (/^aws:sourcearn$/i.test(k) && list(v).length > 0 && list(v).every((x) => typeof x === "string" && x.split(":")[4] === account)));
       if (!named) return `an Allow to ${services.join(", ")} names neither aws:SourceAccount (${account ? "this account" : "the plan's account"}) nor an aws:SourceArn in it (ruling P7)`;
     }
@@ -951,7 +963,8 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         else if (kind === "key" ? s.toLowerCase().includes("wg-admin") : s.toLowerCase().includes("wg-admin") && !BOUNDARY_RE.test(s)) hit = `${path.join(".")} holds wg-admin, the VPN server's own name`;
       });
       if (hit) refuse("gateway", hit);
-      // Ruling P3: only AWS_PEER_REGION_LABS accept a peering, their own (rule 1: through aws.secondary).
+      // Ruling P3: only AWS_PEER_REGION_LABS accept a peering, their own (rule 1: through aws.secondary). Outside them,
+      // this clause and the peer_region one below are shadowed by rule 1 (reported first), kept as defence in depth.
       if (type === "aws_vpc_peering_connection_accepter" && !peerLab) refuse("gateway", "a lab never accepts a peering: the pipeline peers the lab to the VPN server (ruling P3: only AWS_PEER_REGION_LABS accept their own)");
       if (type === "aws_vpc_peering_connection") {
         for (const attr of ["vpc_id", "peer_vpc_id"]) {
