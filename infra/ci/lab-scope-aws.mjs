@@ -1207,7 +1207,10 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           // only from the parameter.
           const srcRefs = src instanceof Unknown ? refsOf(src, res, "source_ami_id") : [];
           const fromParam = typeof src === "string" ? amiStrings.has(src) : srcRefs.length > 0 && srcRefs.every((x) => x.startsWith("data.aws_ssm_parameter."));
-          if (!fromParam && !(!plan && src instanceof Unknown)) refuse("gateway", "source_ami_id must be AWS's own AMI from the public SSM parameter (data.aws_ssm_parameter under /aws/service/; ruling P4)");
+          // A mocked plan's stream holds no data sources, so the parameter's value cannot be read there (lab 16, Task 12):
+          // a known id is left to the plan mode (lab-aws.yml) and the HCL mode, which refuses a literal id.
+          const mockUnread = mode === "mock" && typeof src === "string" && !data.some((d) => d.type === "aws_ssm_parameter" || d.type === "aws_ami");
+          if (!fromParam && !mockUnread && !(!plan && src instanceof Unknown)) refuse("gateway", "source_ami_id must be AWS's own AMI from the public SSM parameter (data.aws_ssm_parameter under /aws/service/; ruling P4)");
           break;
         }
         case "aws_dynamodb_table":

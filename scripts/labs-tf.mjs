@@ -123,18 +123,26 @@ const AWS_MOCK = [
   "}",
 ].join("\n");
 
+/** The secondary-region aws mock (ruling P5): a lab that declares provider "aws" { alias = "secondary" } (lab 16). */
+const AWS_MOCK_SECONDARY = AWS_MOCK.replace('mock_provider "aws" {', 'mock_provider "aws" {\n  alias = "secondary"')
+  .replace('name = "eu-west-2", region = "eu-west-2"', 'name = "eu-west-1", region = "eu-west-1"')
+  .replace('names = ["eu-west-2a", "eu-west-2b", "eu-west-2c"], zone_ids = ["euw2-az2", "euw2-az3", "euw2-az1"]', 'names = ["eu-west-1a", "eu-west-1b", "eu-west-1c"], zone_ids = ["euw1-az1", "euw1-az2", "euw1-az3"]');
+/** Whether a lab copy declares the secondary aws provider. */
+export const declaresSecondary = (copy) => tfFiles(copy).some((f) => /provider\s+"aws"\s*\{[^}]*alias\s*=\s*"secondary"/.test(readFileSync(join(copy, f), "utf8")));
+
 /**
  * tests/labs-mock.tftest.hcl for lab `labId`: the given providers mocked and
  * one plan with the contract variables a session in slot 31 would get (the AWS
- * contract's for an AWS lab).
+ * contract's for an AWS lab). `secondary`: the lab declares the aws provider
+ * alias secondary, which terraform test mocks only through its own block.
  */
-export function mockPlanFile(labId, providers) {
+export function mockPlanFile(labId, providers, { secondary = false } = {}) {
   const n = /^[a-z0-9]+-(\d{2})-/.exec(labId)?.[1] ?? "00";
   if (cloudOfId(labId) === "aws") {
     return [
       "# Written by scripts/labs-tf.mjs into a throw-away copy of the lab: a plan with",
       "# mocked providers (no credentials, no AWS) and the contract variables.",
-      ...providers.map((p) => (p === "aws" ? AWS_MOCK : `mock_provider "${p}" {}`)),
+      ...providers.flatMap((p) => (p === "aws" ? [AWS_MOCK, ...(secondary ? [AWS_MOCK_SECONDARY] : [])] : [`mock_provider "${p}" {}`])),
       "",
       "variables {",
       `  lab_id           = "${labId}"`,
@@ -358,7 +366,7 @@ function checkTargets({ labsDir, run, log, only, requireHcl2json, hcl2json, requ
         if (!ran(validate)) fail(t.folder, `terraform validate: ${why(validate)}`);
         else {
           mkdirSync(join(copy, "tests"), { recursive: true });
-          writeFileSync(join(copy, "tests", "labs-mock.tftest.hcl"), mockPlanFile(t.labId, mockedProviders(copy)));
+          writeFileSync(join(copy, "tests", "labs-mock.tftest.hcl"), mockPlanFile(t.labId, mockedProviders(copy), { secondary: declaresSecondary(copy) }));
           if (cloudOfId(t.labId) === "aws") {
             const plan = run("terraform", ["test", "-no-color", "-verbose", "-json"], { cwd: copy });
             // The -json stream holds the mock password: only its diagnostics (redacted) are ever shown.

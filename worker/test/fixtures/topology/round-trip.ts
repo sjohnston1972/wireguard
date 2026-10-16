@@ -21,7 +21,7 @@ export const LAB_IDS = [
 ] as const;
 
 /** AWS labs have no Azure round trip (rows-from-planned makes ARM rows); each AWS lab task adds its id here. */
-export const AWS_LAB_IDS: readonly string[] = ["soa-01-cloudwatch", "soa-02-systems-manager", "soa-03-auto-scaling", "soa-04-backup", "soa-05-rds", "soa-06-cloudformation", "soa-07-iam-kms", "soa-08-vpc-fix", "soa-09-route53-cloudfront", "soa-10-containers", "saa-11-three-tier", "saa-12-serverless-api", "saa-13-decoupling", "saa-14-storage", "saa-15-data-security"];
+export const AWS_LAB_IDS: readonly string[] = ["soa-01-cloudwatch", "soa-02-systems-manager", "soa-03-auto-scaling", "soa-04-backup", "soa-05-rds", "soa-06-cloudformation", "soa-07-iam-kms", "soa-08-vpc-fix", "soa-09-route53-cloudfront", "soa-10-containers", "saa-11-three-tier", "saa-12-serverless-api", "saa-13-decoupling", "saa-14-storage", "saa-15-data-security", "saa-16-dr-pilot-light"];
 
 export const plannedOf = (labId: string): TopologyGraph => JSON.parse(readFileSync(new URL(`../../../../shared/topology/planned/${labId}.json`, import.meta.url), "utf8")) as TopologyGraph;
 

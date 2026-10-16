@@ -811,6 +811,11 @@ test("fix round 1, M-1, M-4, M-5: an AMI copy only of the parameter's AMI; roles
   assert.deepEqual(p16([copy(AMI)]), []);
   assert.deepEqual(p16([copy("ami-0fedcba9876543210")]), ["gateway: aws_ami_copy.dr"]);
   assert.deepEqual(p16([copy(null, { unknown: ["source_ami_id"], refs: { source_ami_id: ["data.aws_ssm_parameter.al2023_arm64.insecure_value", "data.aws_ssm_parameter.al2023_arm64", "aws_vpc.lab.id", "aws_vpc.lab"] } })]), ["gateway: aws_ami_copy.dr"], "the parameter mixed with something else");
+  // Task 12: a mocked plan's stream holds no data sources (labs-tf), so a known source cannot be read there; plan mode still refuses it.
+  const noData = realisticPlan({ resources: [...templateResources(c16), copy(AMI)], data: [], providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: c16.variables });
+  const copyRules = (mode) => scope.scopeProblemsAws({ ...planResources(noData), configKeys: {}, providerConfigs: {} }, c16.id, { mode }).filter((x) => x.address === "aws_ami_copy.dr").map((x) => x.rule);
+  assert.deepEqual(copyRules("mock"), []);
+  assert.deepEqual(copyRules("plan"), ["gateway"]);
   // M-4: an integration or authoriser passing a role that is not the lab's own.
   const api = T(c12, "aws_apigatewayv2_api.lab", { name: "lab-saa-12-serverless-api", protocol_type: "HTTP" });
   const fnRole = svcRoleFor(c12, "fn", "lambda");

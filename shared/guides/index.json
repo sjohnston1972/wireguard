@@ -555,6 +555,13 @@
    "kind": "architecture"
   }
  ],
+ "saa-16-dr-pilot-light": [
+  {
+   "file": "architecture.svg",
+   "title": "Pilot-light DR across London and Ireland: architecture",
+   "kind": "architecture"
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",

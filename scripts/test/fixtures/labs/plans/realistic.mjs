@@ -29,7 +29,7 @@
 // and PLAN_DEFAULTS reach inside nested blocks (an S3 lifecycle rule's filter).
 //
 //   realisticPlan({ resources, data, providers, variables, providerConfig })
-//     resources: [{ address, values, refs?, unknown?, sensitive?, dynamic?, importing?, actions?, count?, forEach? }]
+//     resources: [{ address, values, refs?, unknown?, sensitive?, dynamic?, importing?, actions?, count?, forEach?, providerKey? }]
 //       address    may carry an instance key, azurerm_subnet.s[0] or azurerm_subnet.s["web"]
 //                  (count or for_each): each instance is its own planned resource
 //                  and change (with "index"), and the configuration has one
@@ -47,7 +47,9 @@
 //                  works out from count or for_each, such as
 //                  azurerm_network_interface.web[count.index].id, as the
 //                  resource and the key: ["azurerm_network_interface.web", "count.index"]
-//     data: [{ address, values, refs?, args? }] data sources read at plan (prior_state); values are
+//       providerKey a provider configuration key other than the type's (aws.secondary: lab 16's Ireland
+//                  resources, planned in the secondary region, the plan's variables.secondary_region)
+//     data: [{ address, values, refs?, args?, providerKey? }] data sources read at plan (prior_state); values are
 //                  what was read, and only refs and the constant arguments named in args are in the
 //                  configuration's expressions (data "azurerm_subscription" "current" {} has none)
 //
@@ -316,21 +318,23 @@ export function realisticPlan({ resources = [], data = [], providers = ["azurerm
     blocks.add(block);
     config.push({ address: block, ...entry });
   };
+  // Lab 16's Ireland resources (ruling P5): planned in the secondary region, under the aws.secondary configuration.
+  const regionOf = (def) => (def.providerKey === "aws.secondary" && typeof variables.secondary_region === "string" && variables.secondary_region ? variables.secondary_region : awsRegion);
   for (const def of resources) {
-    const { type, values, au, expressions, sensitive } = resourceParts(def, "managed", awsRegion);
+    const { type, values, au, expressions, sensitive } = resourceParts(def, "managed", regionOf(def));
     const common = { address: def.address, mode: "managed", type, name: nameOf(def.address), ...indexOf(def.address), provider_name: providerOf(type) };
     planned.push({ ...common, schema_version: 0, values, sensitive_values: sensitive });
     const change = { actions: def.actions ?? ["create"], before: def.importing ? {} : null, after: values, after_unknown: au, before_sensitive: false, after_sensitive: sensitive };
     if (def.importing) change.importing = def.importing;
     changes.push({ ...common, change });
     const repeat = { ...(def.count !== undefined ? { count_expression: { constant_value: def.count } } : {}), ...(def.forEach ? { for_each_expression: def.forEach } : {}) };
-    configure(def, { mode: "managed", type, name: common.name, provider_config_key: type.split("_")[0], expressions, schema_version: 0, ...repeat });
+    configure(def, { mode: "managed", type, name: common.name, provider_config_key: def.providerKey ?? type.split("_")[0], expressions, schema_version: 0, ...repeat });
   }
   const read = [];
   for (const def of data) {
     const { type, values, expressions, sensitive } = resourceParts(def, "data", awsRegion);
     read.push({ address: def.address, mode: "data", type, name: nameOf(def.address), ...indexOf(def.address), provider_name: providerOf(type), schema_version: 0, values, sensitive_values: sensitive });
-    configure(def, { mode: "data", type, name: nameOf(def.address), provider_config_key: type.split("_")[0], expressions, schema_version: 0 });
+    configure(def, { mode: "data", type, name: nameOf(def.address), provider_config_key: def.providerKey ?? type.split("_")[0], expressions, schema_version: 0 });
   }
   const provider_config = Object.fromEntries(providers.map((p) => [p, { name: p, full_name: `registry.terraform.io/hashicorp/${p}`, ...(p === "azurerm" ? { expressions: { features: [{}] } } : {}) }]));
   Object.assign(provider_config, providerConfig);

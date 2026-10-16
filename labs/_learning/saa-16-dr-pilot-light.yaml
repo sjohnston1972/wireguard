@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Keep an app's data and image ready in a second Region and fail its DNS name over when London goes quiet.
+learn:
+  - Replicate S3 objects and a DynamoDB table to a second Region
+  - Fail a private DNS name over on a CloudWatch alarm health check
+  - Launch the recovery instance from a copied image and time it
+learning_min: 75

@@ -396,6 +396,12 @@ test("the realistic plans print batch 1 AWS labs' regions, unset blocks, sensiti
   assert.equal(bare.resource_changes[0].change.after.region, "eu-west-2");
 });
 
+test("ruling P5: a resource description with providerKey aws.secondary plans under that configuration, in the secondary region", () => {
+  const plan = realisticPlan({ resources: [{ address: "aws_vpc.dr", providerKey: "aws.secondary", values: { cidr_block: "10.64.16.0/20" }, refs: {} }], data: [], providers: ["aws"], providerConfig: { "aws.secondary": { name: "aws", full_name: "registry.terraform.io/hashicorp/aws", alias: "secondary", expressions: { region: { references: ["var.secondary_region"] } } } }, variables: { region: "eu-west-2", secondary_region: "eu-west-1" } });
+  assert.equal(plan.configuration.root_module.resources.find((r) => r.address === "aws_vpc.dr").provider_config_key, "aws.secondary");
+  assert.equal(plan.planned_values.root_module.resources.find((r) => r.address === "aws_vpc.dr").values.region, "eu-west-1");
+});
+
 test("ctx gives a secondary group and region", () => {
   const c = ctx("az305-23-sql-failover", "23");
   assert.equal(SECONDARY, "ukwest");

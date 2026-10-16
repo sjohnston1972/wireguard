@@ -1,0 +1,43 @@
+# Lab saa-16 (AWS labs batch 3). SAA-C03 ((V) the wording against the current
+# exam guide): Design Resilient Architectures (disaster recovery strategies:
+# pilot light); SOA-C03 Reliability and Business Continuity.
+# London list prices × 0.75 (labs-verify --aws-prices). Route 53 bills a
+# hosted zone and a health check by the month; a zone deleted within 12 hours
+# is believed not to be charged (spec §15, V; Task 17 reads Cost Explorer).
+# The AMI copy's snapshot and the Ireland replica hold kB to a few GB
+# (authored, region: secondary).
+id: saa-16-dr-pilot-light
+version: 1
+cloud: aws
+title: "Pilot-light DR across London and Ireland"
+summary: >-
+  An app in London with its data already copied to Ireland (S3 cross-region replication, a DynamoDB global table)
+  and its image copied there too, and a private DNS name that fails over to Ireland when London's health alarm fires.
+exam: SAA-C03
+skill_areas: [saa.resilient, soa.reliability]
+level: associate
+type: explore
+prerequisites: [soa-04-backup]
+cost:
+  items:
+    - name: "EC2 t4g.nano, Linux (the London app)"
+      gbp_h: 0.0035
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - { name: "Route 53 private hosted zone ($0.50 a month)", gbp_h: 0.0005 }
+    - { name: "Route 53 health check on a CloudWatch alarm ($0.50 a month)", gbp_h: 0.0005 }
+    - { name: "CloudWatch alarm", gbp_h: 0.0001 }
+    - { name: "The AMI copy's snapshot in Ireland, about 2 GB", gbp_h: 0.0001, region: secondary }
+    - { name: "DynamoDB global table on demand and S3 replication, a few kB", gbp_h: 0.0001 }
+    - { name: "EC2 Instance Connect Endpoints (London and Ireland)", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 12, destroy_min: 12, session_h: 2, max_h: 4 }
+capacity: { instance_types: [t4g.nano] }
+regions: { secondary: eu-west-1 }
+connectivity: { peering: optional, dns_link: false, subnets_used: 2 }
+identity:
+  creates: [role]
+  roles: []
+  governance: false

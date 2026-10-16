@@ -739,6 +739,15 @@
    "height": 928
   }
  ],
+ "saa-16-dr-pilot-light": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two EC2 Instance Connect Endpoints, an EC2 instance, two S3 buckets, a DynamoDB table and more, in two VPCs with three subnets.",
+   "width": 1875,
+   "height": 1326
+  }
+ ],
  "soa-01-cloudwatch": [
   {
    "file": "architecture.svg",

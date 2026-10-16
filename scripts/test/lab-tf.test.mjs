@@ -328,6 +328,12 @@ test("the AWS mock plan mocks aws with the data the labs read and fills the AWS 
   assert.ok(mockPlanFile("az104-08-vms", ["azurerm"]).includes('resource_group_name = "rg-lab-az104-08-vms"'), "the Azure mock is unchanged");
 });
 
+test("ruling P5: a lab with the secondary provider gets an Ireland mock too; others do not", () => {
+  const f = mockPlanFile("saa-16-dr-pilot-light", ["aws"], { secondary: true });
+  assert.ok(f.includes('alias = "secondary"') && f.includes('names = ["eu-west-1a", "eu-west-1b", "eu-west-1c"]'));
+  assert.ok(!mockPlanFile("soa-03-auto-scaling", ["aws"]).includes('alias = "secondary"'));
+});
+
 test("an AWS target's mock plan runs terraform test -verbose -json and fails on a scope problem in the plan it printed", () => {
   const dir = labsDir();
   const clean = fakeRun();
