@@ -743,8 +743,9 @@ test("Review Focus 4 / P21: a global table's replicas go first, then the table; 
 test("Review Focus 4: EKS node groups, then the cluster, each waited for until AWS no longer has it", { skip }, () => {
   const w = world([
     { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("eks", "cluster/lab-saa-19-eks"), ARN3("eks", "nodegroup/lab-saa-19-eks/lab-saa-19-eks-ng/0abc")) },
-    { cmd: "aws", match: "^eks describe-nodegroup", out: ['{"nodegroup":{"status":"DELETING"}}', "{}"] },
-    { cmd: "aws", match: "^eks describe-cluster", out: ['{"cluster":{"status":"DELETING"}}', "{}"] },
+    // Fix round 1 (I1): each handler reads the item first, so the first answer is the one before the delete.
+    { cmd: "aws", match: "^eks describe-nodegroup", out: ['{"nodegroup":{"status":"ACTIVE"}}', '{"nodegroup":{"status":"DELETING"}}', "{}"] },
+    { cmd: "aws", match: "^eks describe-cluster", out: ['{"cluster":{"status":"ACTIVE"}}', '{"cluster":{"status":"DELETING"}}', "{}"] },
     ...EMPTY_IAM,
   ]);
   assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["saa-19-eks"], ENV).status, 0);
@@ -761,7 +762,7 @@ test("Review Focus 4: EFS mount targets, then the file system; ElastiCache's gro
     { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("elasticfilesystem", "file-system/fs-0abc"), ARN3("elasticache", "replicationgroup:ca11k3x9q"), ARN3("elasticache", "cluster:ca11k3x9q-001"), ARN3("elasticache", "subnetgroup:lab-saa-11-three-tier-cache")) },
     { cmd: "aws", match: "^efs describe-mount-targets", out: ['{"MountTargets":[{"MountTargetId":"fsmt-1"},{"MountTargetId":"fsmt-2"}]}', '{"MountTargets":[]}'] },
     { cmd: "aws", match: "^efs describe-file-systems", out: ['{"FileSystems":[{"LifeCycleState":"deleting"}]}', '{"FileSystems":[]}'] },
-    { cmd: "aws", match: "^elasticache describe-replication-groups", out: ['{"ReplicationGroups":[{"Status":"deleting"}]}', '{"ReplicationGroups":[]}'] },
+    { cmd: "aws", match: "^elasticache describe-replication-groups", out: ['{"ReplicationGroups":[{"Status":"available"}]}', '{"ReplicationGroups":[{"Status":"deleting"}]}', '{"ReplicationGroups":[]}'] },
     { cmd: "aws", match: "^elasticache describe-cache-clusters", out: '{"CacheClusters":[{"CacheClusterId":"ca11k3x9q-001","ReplicationGroupId":"ca11k3x9q"}]}' },
     ...EMPTY_IAM,
   ]);
@@ -793,8 +794,8 @@ test("batch 3's workloads go by their own handlers: API, pool (domain first), wo
     { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged("arn:aws:apigateway:eu-west-2::/apis/a1b2c3", "arn:aws:apigateway:eu-west-2::/apis/a1b2c3/stages/$default", ARN3("cognito-idp", "userpool/eu-west-2_AbC"), ARN3("states", "stateMachine:lab-x-orders"), ARN3("events", "event-bus/lab-x-bus"), ARN3("events", "rule/lab-x-bus/lab-x-placed"), ARN3("kinesis", "stream/lab-x-events"), ARN3("firehose", "deliverystream/lab-x-to-s3"), ARN3("glue", "crawler/lab-x-events"), ARN3("athena", "workgroup/lab-x-wg")) },
     { cmd: "aws", match: "^cognito-idp describe-user-pool", out: '{"UserPool":{"Id":"eu-west-2_AbC","Domain":"lab-x-auth","DeletionProtection":"INACTIVE"}}' },
     { cmd: "aws", match: "^glue get-crawler", out: ['{"Crawler":{"State":"RUNNING"}}', '{"Crawler":{"State":"READY"}}'] },
-    { cmd: "aws", match: "^kinesis describe-stream-summary", out: ['{"StreamDescriptionSummary":{"StreamStatus":"DELETING"}}', "{}"] },
-    { cmd: "aws", match: "^firehose describe-delivery-stream", out: ['{"DeliveryStreamDescription":{"DeliveryStreamStatus":"DELETING"}}', "{}"] },
+    { cmd: "aws", match: "^kinesis describe-stream-summary", out: ['{"StreamDescriptionSummary":{"StreamStatus":"ACTIVE"}}', '{"StreamDescriptionSummary":{"StreamStatus":"DELETING"}}', "{}"] },
+    { cmd: "aws", match: "^firehose describe-delivery-stream", out: ['{"DeliveryStreamDescription":{"DeliveryStreamStatus":"ACTIVE"}}', '{"DeliveryStreamDescription":{"DeliveryStreamStatus":"DELETING"}}', "{}"] },
     { cmd: "aws", match: "^events list-targets-by-rule", out: '{"Targets":[{"Id":"sfn"}]}' },
     ...EMPTY_IAM,
   ]);
@@ -923,5 +924,86 @@ test("pre-flight C11: an access entry whose cluster is gone, and a deleted fleet
   assert.equal(r.status, 0, r.out);
   assert.doesNotMatch(r.out, /no handler for (eks:access-entry|ec2:fleet)/);
   assert.equal(calls3(w, /^aws (eks delete-access-entry|ec2 delete-fleets)/).length, 0);
+  w.cleanup();
+});
+
+// ── Task 4 fix round 1 ──
+// I1: a destroy that ran out of time leaves a node group (or stream, or cache group) DELETING; AWS refuses a second
+// delete, so it is waited for as one deleted here (as rds_wait does), and the cluster goes after it.
+test("review I1: a node group already DELETING is waited for until gone, then the cluster is deleted", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("eks", "cluster/lab-saa-19-eks"), ARN3("eks", "nodegroup/lab-saa-19-eks/lab-saa-19-eks-ng/0abc"), ARN3("kinesis", "stream/lab-saa-19-eks-s"), ARN3("firehose", "deliverystream/lab-saa-19-eks-f"), ARN3("elasticache", "replicationgroup:ca19")) },
+    { cmd: "aws", match: "^eks describe-nodegroup", out: ['{"nodegroup":{"status":"DELETING"}}', '{"nodegroup":{"status":"DELETING"}}', "{}"] },
+    { cmd: "aws", match: "^eks describe-cluster", out: ['{"cluster":{"status":"ACTIVE"}}', "{}"] },
+    { cmd: "aws", match: "^kinesis describe-stream-summary", out: ['{"StreamDescriptionSummary":{"StreamStatus":"DELETING"}}', "{}"] },
+    { cmd: "aws", match: "^firehose describe-delivery-stream", out: ['{"DeliveryStreamDescription":{"DeliveryStreamStatus":"DELETING"}}', "{}"] },
+    { cmd: "aws", match: "^elasticache describe-replication-groups", out: ['{"ReplicationGroups":[{"Status":"deleting"}]}', '{"ReplicationGroups":[]}'] },
+    { cmd: "aws", match: "^eks delete-nodegroup|^kinesis delete-stream|^firehose delete-delivery-stream|^elasticache delete-replication-group", out: "", code: 254, err: "An error occurred (ResourceInUseException) when calling the Delete operation: x" },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["saa-19-eks"], ENV);
+  assert.equal(r.status, 0, r.out);
+  const ws = calls3(w, /^aws eks /);
+  assert.equal(idx(ws, /^aws eks delete-nodegroup/), -1, "never asked again while AWS deletes it");
+  const cl = idx(ws, /^aws eks delete-cluster --name lab-saa-19-eks /);
+  assert.ok(cl >= 0, ws.join("\n"));
+  assert.equal(ws.slice(0, cl).filter((c) => c.startsWith("aws eks describe-nodegroup")).length, 3, "read, then waited for until gone");
+  assert.equal(calls3(w, /^aws (kinesis delete-stream|firehose delete-delivery-stream|elasticache delete-replication-group)/).length, 0);
+  for (const re of [/^aws kinesis describe-stream-summary/, /^aws firehose describe-delivery-stream/, /^aws elasticache describe-replication-groups/]) assert.equal(calls3(w, re).length, 2, `${re} waited for`);
+  assert.doesNotMatch(r.out, /left behind|could not delete/);
+  w.cleanup();
+});
+
+// I2: an AMI copy's snapshots carry no tags or name; deregistering an image whose snapshots could not be read orphans
+// them where Verify clean never looks. The image stays (Verify names it).
+test("review I2: an AMI whose describe fails is warned about and never deregistered", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged() },
+    { cmd: "aws", match: "^ec2 describe-images --owners self", out: JSON.stringify({ Images: [{ ImageId: "ami-0aaa1111bbbb2222c", Name: "lab-saa-16-dr-pilot-light-al2023-a16k3x9q" }] }) },
+    { cmd: "aws", match: "^ec2 describe-images --image-ids", out: "", code: 254, err: "An error occurred (RequestLimitExceeded) when calling the DescribeImages operation: x" },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["saa-16-dr-pilot-light"], ENV);
+  assert.equal(r.status, 0, r.out);
+  assert.equal(calls3(w, /^aws ec2 (deregister-image|delete-snapshot)/).length, 0);
+  assert.match(r.out, /::warning::safety net: could not read ec2:image ami-0aaa1111bbbb2222c .*\(RequestLimitExceeded\)/);
+  w.cleanup();
+});
+
+// Minor M3: an AMI found by name that carries the VPN server's wg-admin tag is never touched.
+test("review M3: an AMI found by name carrying wg-admin is never deregistered", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged() },
+    { cmd: "aws", match: "^ec2 describe-images", out: JSON.stringify({ Images: [{ ImageId: "ami-0wg", Name: "lab-saa-16-dr-pilot-light-x", Tags: [{ Key: "wg-admin", Value: "vpn" }] }] }) },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["saa-16-dr-pilot-light"], ENV);
+  assert.equal(r.status, 0, r.out);
+  assert.equal(calls3(w, /^aws ec2 (deregister-image|delete-snapshot)/).length, 0);
+  assert.match(r.out, /::warning::safety net: never touched: ec2:image ami-0wg/);
+  w.cleanup();
+});
+
+// Minors M1 and M4: a table is deleted only once AWS has finished updating it (DeleteTable refuses an UPDATING
+// table), and a table or cache cluster that cannot be read is warned about, never deleted blind.
+test("review M1 / M4: a table waits for UPDATING to end before its delete; an unreadable table or cache cluster is left with a warning", { skip }, () => {
+  const t = "lab-saa-16-dr-pilot-light-orders";
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(ARN3("dynamodb", `table/${t}`), ARN3("dynamodb", "table/lab-saa-16-dr-pilot-light-unread"), ARN3("elasticache", "cluster:ca16-001")) },
+    { cmd: "aws", match: `^dynamodb describe-table --table-name ${t} `, out: [JSON.stringify({ Table: { TableStatus: "ACTIVE", Replicas: [{ RegionName: "eu-west-1" }] } }), JSON.stringify({ Table: { TableStatus: "UPDATING", Replicas: [] } }), JSON.stringify({ Table: { TableStatus: "ACTIVE", Replicas: [] } }), JSON.stringify({ Table: { TableStatus: "DELETING" } })] },
+    { cmd: "aws", match: "^dynamodb describe-table --table-name lab-saa-16-dr-pilot-light-unread ", out: "", code: 254, err: "An error occurred (ThrottlingException) when calling the DescribeTable operation: x" },
+    { cmd: "aws", match: "^elasticache describe-cache-clusters", out: "", code: 254, err: "An error occurred (ThrottlingException) when calling the DescribeCacheClusters operation: x" },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["saa-16-dr-pilot-light"], ENV);
+  assert.equal(r.status, 0, r.out);
+  const calls = calls3(w, new RegExp(`^aws dynamodb \\S+ --table-name ${t} `));
+  const del = idx(calls, /^aws dynamodb delete-table/);
+  assert.ok(del >= 0, calls.join("\n"));
+  assert.equal(calls.slice(0, del).filter((c) => c.startsWith("aws dynamodb describe-table")).length, 3, "the delete waited for UPDATING to end");
+  assert.equal(calls3(w, /^aws dynamodb (update|delete)-table --table-name lab-saa-16-dr-pilot-light-unread/).length, 0);
+  assert.equal(calls3(w, /^aws elasticache delete-cache-cluster/).length, 0);
+  assert.match(r.out, /could not read dynamodb:table lab-saa-16-dr-pilot-light-unread \(ThrottlingException\)/);
+  assert.match(r.out, /could not read elasticache:cluster ca16-001 \(ThrottlingException\)/);
   w.cleanup();
 });

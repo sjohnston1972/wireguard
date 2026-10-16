@@ -285,7 +285,8 @@ discover() {
         list_failed "DynamoDB tables in $r"
       fi
       if json="$(awsq "$r" ec2 describe-images --owners self --filters "Name=name,Values=${PREFIX}*")"; then
-        while IFS=$'\x1f' read -r x n; do [ -n "$x" ] && add "$r" ec2:image "$x" "" "$n" 0; done < <(jq -r --arg p "$PREFIX" '.Images[]? | select((.Name // "") | startswith($p)) | [.ImageId, .Name] | join("\u001f")' <<<"$json")
+        # Review M3: describe-images gives the image's tags, so one carrying wg-admin is marked (never touched).
+        while IFS=$'\x1f' read -r x n w; do [ -n "$x" ] && add "$r" ec2:image "$x" "" "$n" "$w"; done < <(jq -r --arg p "$PREFIX" '.Images[]? | select((.Name // "") | startswith($p)) | [.ImageId, .Name, (if any((.Tags // [])[]; .Key == "wg-admin") then "1" else "0" end)] | join("\u001f")' <<<"$json")
       else
         list_failed "AMIs in $r"
       fi
@@ -634,6 +635,27 @@ run() {
   return 0
 }
 
+# readable <i>: describes the item (DJ) and is true when AWS answered. Not found is quietly false; any other failure
+# is a warning and false, so nothing is deleted blind (review I2, M4).
+readable() {
+  local rc
+  describe "$1"
+  rc=$?
+  [ "$rc" -eq 0 ] && return 0
+  [ "$rc" -ne 1 ] && warn "could not read $(label "$1") ($(code))"
+  return 1
+}
+# mid_delete <i> <status query>: MD = gone (AWS no longer has it), deleting (a destroy that ran out of time left it being
+# deleted, and AWS refuses a second delete: the handler returns 0 so the poll waits for it, as rds_wait does; review
+# I1) or empty (ask for the delete).
+mid_delete() {
+  MD=""
+  describe "$1"
+  [ $? -eq 1 ] && { MD=gone; return; }
+  [ "$(jq -r "($2 // \"\") | ascii_downcase" <<<"$DJ" 2>/dev/null)" = deleting ] && MD=deleting
+  return 0
+}
+
 # ── Handlers ──
 # Phase 1, workloads. CloudFormation stacks first (ruling P4): deleted and waited for; one that ends DELETE_FAILED
 # (a resource its role could not remove, or a hand-made change) is deleted again with FORCE_DELETE_STACK, which leaves
@@ -753,16 +775,17 @@ del_channel() { wr "$1" "delete $(label "$1")" configservice delete-delivery-cha
 del_recorder() { wr "$1" "delete $(label "$1")" configservice delete-configuration-recorder --configuration-recorder-name "${C_I[$1]}"; }
 
 # Phase 1, workloads (batch 3). EKS: node groups, then clusters (AWS refuses a cluster that still has node groups),
-# each waited for until AWS no longer has it (V: minutes each; Task 17 records them).
-del_nodegroup() { wr "$1" "delete $(label "$1")" eks delete-nodegroup --cluster-name "${C_I[$1]%%/*}" --nodegroup-name "$(cut -d/ -f2 <<<"${C_I[$1]}")"; }
-del_eks() { wr "$1" "delete $(label "$1")" eks delete-cluster --name "${C_I[$1]}"; }
+# each waited for until AWS no longer has it (V: minutes each; Task 17 records them). One a timed-out destroy left
+# DELETING is not asked again (AWS refuses that) but waited for all the same (review I1); so are streams and cache groups.
+del_nodegroup() { mid_delete "$1" .status; case "$MD" in gone) return 1 ;; deleting) return 0 ;; esac; wr "$1" "delete $(label "$1")" eks delete-nodegroup --cluster-name "${C_I[$1]%%/*}" --nodegroup-name "$(cut -d/ -f2 <<<"${C_I[$1]}")"; }
+del_eks() { mid_delete "$1" .status; case "$MD" in gone) return 1 ;; deleting) return 0 ;; esac; wr "$1" "delete $(label "$1")" eks delete-cluster --name "${C_I[$1]}"; }
 # An HTTP API takes its stages, routes, integrations and authorisers with it; a stage still listed is only judged.
 del_api() { wr "$1" "delete $(label "$1")" apigatewayv2 delete-api --api-id "${C_I[$1]}"; }
 del_sfn() { wr "$1" "delete $(label "$1")" stepfunctions delete-state-machine --state-machine-arn "${C_A[$1]}"; }
 # A bus's rules go first, by the events:rule handler (bus-qualified); then the bus.
 del_bus() { wr "$1" "delete $(label "$1")" events delete-event-bus --name "${C_I[$1]}"; }
-del_firehose() { wr "$1" "delete $(label "$1")" firehose delete-delivery-stream --delivery-stream-name "${C_I[$1]}" --allow-force-delete; }
-del_stream() { wr "$1" "delete $(label "$1")" kinesis delete-stream --stream-name "${C_I[$1]}" --enforce-consumer-deletion; }
+del_firehose() { mid_delete "$1" .DeliveryStreamStatus; case "$MD" in gone) return 1 ;; deleting) return 0 ;; esac; wr "$1" "delete $(label "$1")" firehose delete-delivery-stream --delivery-stream-name "${C_I[$1]}" --allow-force-delete; }
+del_stream() { mid_delete "$1" .StreamStatus; case "$MD" in gone) return 1 ;; deleting) return 0 ;; esac; wr "$1" "delete $(label "$1")" kinesis delete-stream --stream-name "${C_I[$1]}" --enforce-consumer-deletion; }
 # Ruling P21: a running crawler is stopped and waited for (AWS refuses to delete one that runs). One that cannot be
 # read is a warning, never a wait (pre-flight C10).
 del_crawler() {
@@ -962,12 +985,11 @@ rds_wait() {
 }
 
 # Phase 3, network services (batch 3): ElastiCache and EFS hold network interfaces in the lab's subnets.
-del_cache_group() { wr "$1" "delete $(label "$1")" elasticache delete-replication-group --replication-group-id "${C_I[$1]}" --no-retain-primary-cluster; }
+del_cache_group() { mid_delete "$1" .Status; case "$MD" in gone) return 1 ;; deleting) return 0 ;; esac; wr "$1" "delete $(label "$1")" elasticache delete-replication-group --replication-group-id "${C_I[$1]}" --no-retain-primary-cluster; }
 # A cluster in a replication group goes with it; only a cluster of its own is deleted here.
 del_cache_cluster() {
   local i="$1"
-  describe "$i"
-  [ $? -eq 1 ] && return 1
+  readable "$i" || return 1
   [ -n "$(jq -r '.ReplicationGroupId // empty' <<<"$DJ" 2>/dev/null)" ] && return 1
   wr "$i" "delete $(label "$i")" elasticache delete-cache-cluster --cache-cluster-id "${C_I[$i]}"
 }
@@ -1186,8 +1208,7 @@ del_vault() { wr "$1" "delete $(label "$1")" backup delete-backup-vault --backup
 # for, then the table.
 del_table() {
   local i="$1" t="${C_I[$1]}" r="${C_R[$1]}" rep n
-  describe "$i"
-  [ $? -eq 1 ] && return 1
+  readable "$i" || return 1
   [ "$(jq -r '.TableStatus // ""' <<<"$DJ" 2>/dev/null)" = DELETING ] && return 1
   while IFS= read -r rep; do
     [ -n "$rep" ] && wr "$i" "remove the $rep replica of $(label "$i")" dynamodb update-table --table-name "$t" --replica-updates "Delete={RegionName=$rep}"
@@ -1195,7 +1216,8 @@ del_table() {
   while :; do
     describe "$i"
     [ $? -eq 1 ] && return 1
-    n="$(jq -r --arg r "$r" '[.Replicas[]? | select(.RegionName != $r)] | length' <<<"$DJ" 2>/dev/null)"
+    # Review M1: and until the table is no longer UPDATING (or CREATING): AWS refuses to delete it until then.
+    n="$(jq -r --arg r "$r" '([.Replicas[]? | select(.RegionName != $r)] | length) + (if (.TableStatus // "") | IN("UPDATING", "CREATING") then 1 else 0 end)' <<<"$DJ" 2>/dev/null)"
     [ "${n:-0}" -eq 0 ] && break
     if past_until; then
       warn "left behind: $(label "$i") ($n replica(s) still being removed)"
@@ -1220,8 +1242,8 @@ del_userpool() {
 # Ruling P4: an AMI copy's snapshots carry no tags, so they are read from the image and deleted after it.
 del_image() {
   local i="$1" snaps s
-  describe "$i"
-  [ $? -eq 1 ] && return 1
+  # Review I2: never deregister an image whose snapshots could not be read (they would be left where nothing finds them).
+  readable "$i" || return 1
   snaps="$(jq -r '.BlockDeviceMappings[]?.Ebs.SnapshotId // empty' <<<"$DJ" 2>/dev/null)"
   wr "$i" "deregister $(label "$i")" ec2 deregister-image --image-id "${C_I[$i]}" || return 1
   for s in $snaps; do wr "$i" "delete snapshot $s of $(label "$i")" ec2 delete-snapshot --snapshot-id "$s"; done
