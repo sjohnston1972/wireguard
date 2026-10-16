@@ -1203,9 +1203,9 @@ test("ruling P23: Lattice associations, then services, target groups (targets fi
   const L = (rest) => ARN3("vpc-lattice", rest);
   const w = world([
     { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(L("servicenetwork/sn-1"), L("service/svc-1"), L("service/svc-1/listener/listener-1"), L("targetgroup/tg-1"), L("servicenetworkvpcassociation/snva-1"), L("servicenetworkserviceassociation/snsa-1")) },
-    { cmd: "aws", match: "^vpc-lattice get-service-network-vpc-association", out: ['{"status":"DELETE_IN_PROGRESS"}', "{}"] },
-    { cmd: "aws", match: "^vpc-lattice get-service-network-service-association", out: ['{"status":"DELETE_IN_PROGRESS"}', "{}"] },
     // Lattice's gets answer flat (no wrapper to come back empty): AWS no longer having it is ResourceNotFoundException.
+    { cmd: "aws", match: "^vpc-lattice get-service-network-vpc-association", out: ['{"status":"DELETE_IN_PROGRESS"}', ""], code: [0, 254], err: ["", notFound("GetServiceNetworkVpcAssociation")] },
+    { cmd: "aws", match: "^vpc-lattice get-service-network-service-association", out: ['{"status":"DELETE_IN_PROGRESS"}', ""], code: [0, 254], err: ["", notFound("GetServiceNetworkServiceAssociation")] },
     { cmd: "aws", match: "^vpc-lattice get-service --", out: ['{"status":"DELETE_IN_PROGRESS"}', ""], code: [0, 254], err: ["", notFound("GetService")] },
     { cmd: "aws", match: "^vpc-lattice get-target-group", out: ['{"status":"DELETE_IN_PROGRESS"}', ""], code: [0, 254], err: ["", notFound("GetTargetGroup")] },
     { cmd: "aws", match: "^vpc-lattice list-targets", out: '{"items":[{"id":"i-0abc","port":80}]}' },
@@ -1237,7 +1237,26 @@ test("review I1 (batch 4): a Resolver endpoint or Lattice service a timed-out de
   w.cleanup();
 });
 
-test("Verify clean judges batch 4's edge, DNS and Lattice types: gone is clean (WAF's own not-found too), an association being deleted is clean, a listener is judged", { skip }, () => {
+test("ruling P23: a Lattice association still DELETE_IN_PROGRESS is waited for until not found before the service and network go", { skip }, () => {
+  const L = (rest) => ARN3("vpc-lattice", rest);
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(L("servicenetwork/sn-1"), L("service/svc-1"), L("servicenetworkvpcassociation/snva-1")) },
+    { cmd: "aws", match: "^vpc-lattice get-service-network-vpc-association", out: ['{"status":"DELETE_IN_PROGRESS"}', '{"status":"DELETE_IN_PROGRESS"}', ""], code: [0, 0, 254], err: ["", "", notFound("GetServiceNetworkVpcAssociation")] },
+    { cmd: "aws", match: "^vpc-lattice get-service --", out: "", code: 254, err: notFound("GetService") },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["ans-30-vpc-lattice"], ENV);
+  assert.equal(r.status, 0, r.out);
+  const cs = calls3(w, /^aws vpc-lattice /);
+  const gets = cs.map((c, k) => (/^aws vpc-lattice get-service-network-vpc-association /.test(c) ? k : -1)).filter((k) => k >= 0);
+  assert.equal(gets.length, 3, cs.join("\n"));
+  assert.ok(gets[2] < idx(cs, /^aws vpc-lattice delete-service --/), cs.join("\n"));
+  assert.ok(gets[2] < idx(cs, /^aws vpc-lattice delete-service-network --/), cs.join("\n"));
+  assert.doesNotMatch(r.out, /left behind/);
+  w.cleanup();
+});
+
+test("Verify clean judges batch 4's edge, DNS and Lattice types: gone is clean (WAF's own not-found too), an association still being deleted is not, a listener is judged", { skip }, () => {
   const w = world([
     { cmd: "aws", match: "^resourcegroupstaggingapi get-resources .*--region us-west-2", out: tagged("arn:aws:globalaccelerator::123456789012:accelerator/0abc-1def") },
     { cmd: "aws", match: "^resourcegroupstaggingapi get-resources .*--region us-east-1", out: tagged(ARNR("us-east-1", "wafv2", "global/webacl/lab-ans-26-edge-waf/0a1b")) },
@@ -1256,7 +1275,7 @@ test("Verify clean judges batch 4's edge, DNS and Lattice types: gone is clean (
   writeFileSync(out, "");
   assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["--verify", "ans-26-edge"], { ...ENV, LAB_REGIONS: "eu-west-2 us-east-1 us-west-2", GITHUB_OUTPUT: fwd(out) }).status, 1);
   const left = JSON.parse(/^leftovers=(.*)$/m.exec(readFileSync(out, "utf8"))[1]);
-  assert.deepEqual(left.sort(), ["route53resolver:resolver-endpoint rslvr-in-1", "vpc-lattice:service svc-1"]);
+  assert.deepEqual(left.sort(), ["route53resolver:resolver-endpoint rslvr-in-1", "vpc-lattice:service svc-1", "vpc-lattice:servicenetworkvpcassociation snva-1"]);
   assert.equal(calls3(w, /^aws globalaccelerator describe-accelerator .*--region us-west-2 /).length, 1);
   assert.equal(calls3(w, /^aws wafv2 get-web-acl --scope CLOUDFRONT --name lab-ans-26-edge-waf --id 0a1b --region us-east-1 /).length, 1);
   assert.equal(calls3(w, /^aws cloudfront describe-function --name lab-ans-26-edge-headers --region us-east-1 /).length, 1);

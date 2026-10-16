@@ -63,8 +63,9 @@
 #                    health checks; Resolver rules and query log configs (their
 #                    VPC associations first, waited for), firewall rule group
 #                    associations, groups (their rules first), domain lists,
-#                    then endpoints; Lattice service and VPC associations,
-#                    services (their listeners go with them), target groups
+#                    then endpoints; Lattice service and VPC associations (each
+#                    waited for until not found), services (their listeners go
+#                    with them), target groups
 #                    (targets deregistered first), then service networks
 #   3 network        load balancers, then listener rules and listeners still
 #                    there (most go with their load balancer), then target
@@ -130,11 +131,11 @@
 # INACTIVE one is a leftover, ruling P12), a secret deleted, a KMS key
 # pending deletion (ruling P11; an enabled one is a leftover), a DynamoDB
 # table or a state machine DELETING (ruling P21), an EFS file system deleted,
-# an EC2 Fleet deleted, an EKS access entry whose cluster is gone, and a
-# Lattice service or VPC association DELETE_IN_PROGRESS (ruling P23), are
-# clean; every other batch 3 and 4 type, a Resolver endpoint DELETING too,
-# only once AWS no longer has it; a Lattice listener is judged by its own
-# describe, going with its service). A
+# an EC2 Fleet deleted, and an EKS access entry whose cluster is gone, are
+# clean; every other batch 3 and 4 type (ruling P23: a Resolver endpoint
+# DELETING or a Lattice association DELETE_IN_PROGRESS too) only once AWS no
+# longer has it; a Lattice listener is judged by its own describe, going with
+# its service). A
 # type with no handler is never clean ("no handler for <type>: <name>"). While a lab VPC
 # still exists, every instance (not terminated) and every network interface
 # (not requester-managed, not attached to an instance, which is judged
@@ -526,9 +527,8 @@ judge() {
     states:stateMachine) g='.status == "DELETING"' ;;
     elasticfilesystem:file-system) g='.LifeCycleState == "deleted"' ;;
     ec2:fleet) g='(.FleetState // "") | startswith("deleted")' ;;
-    # Ruling P23: a Lattice association being deleted is clean; everything else of batch 4 (a Resolver endpoint
-    # DELETING too: the sweep waits for it until AWS no longer has it) is there until AWS no longer has it.
-    vpc-lattice:servicenetworkvpcassociation | vpc-lattice:servicenetworkserviceassociation) g='.status == "DELETE_IN_PROGRESS"' ;;
+    # Ruling P23: every batch 4 edge, DNS and Lattice type (a Resolver endpoint DELETING, a Lattice association
+    # DELETE_IN_PROGRESS too) is there until AWS no longer has it, so the sweep's poll waits for it until not found.
     *) g='false' ;;
   esac
   IFS=$'\x1f' read -r s n < <(jq -r "[ (if ($g) then \"gone\" else \"there\" end), ((.Tags // .TagSet // []) | if type == \"array\" then (map(select(.Key == \"Name\"))[0].Value // \"\") else \"\" end) ] | join(\"\u001f\")" <<<"$DJ" 2>/dev/null)
@@ -1063,10 +1063,11 @@ del_fw_group() {
 }
 del_fw_list() { wr "$1" "delete $(label "$1")" route53resolver delete-firewall-domain-list --firewall-domain-list-id "${C_I[$1]}"; }
 del_resolver_endpoint() { wr "$1" "delete $(label "$1")" route53resolver delete-resolver-endpoint --resolver-endpoint-id "${C_I[$1]}" || being_deleted "$1" '.Status == "DELETING"'; }
-# Ruling P23: Lattice. Service associations, VPC associations (waited for), services (their listeners and rules go with
-# them), target groups (targets deregistered first), then service networks.
-del_sn_svc_assoc() { wr "$1" "delete $(label "$1")" vpc-lattice delete-service-network-service-association --service-network-service-association-identifier "${C_I[$1]}"; }
-del_sn_vpc_assoc() { wr "$1" "delete $(label "$1")" vpc-lattice delete-service-network-vpc-association --service-network-vpc-association-identifier "${C_I[$1]}"; }
+# Ruling P23: Lattice. Service associations, then VPC associations, each waited for until AWS answers not found (AWS
+# refuses a service or network that is still associated), services (their listeners and rules go with them), target
+# groups (targets deregistered first), then service networks.
+del_sn_svc_assoc() { wr "$1" "delete $(label "$1")" vpc-lattice delete-service-network-service-association --service-network-service-association-identifier "${C_I[$1]}" || being_deleted "$1" '.status == "DELETE_IN_PROGRESS"'; }
+del_sn_vpc_assoc() { wr "$1" "delete $(label "$1")" vpc-lattice delete-service-network-vpc-association --service-network-vpc-association-identifier "${C_I[$1]}" || being_deleted "$1" '.status == "DELETE_IN_PROGRESS"'; }
 del_lattice_service() { wr "$1" "delete $(label "$1")" vpc-lattice delete-service --service-identifier "${C_I[$1]}" || being_deleted "$1" '.status == "DELETE_IN_PROGRESS"'; }
 del_lattice_tg() {
   local i="$1" r="${C_R[$1]}" t
