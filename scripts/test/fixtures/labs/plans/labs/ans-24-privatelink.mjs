@@ -67,7 +67,7 @@ export default () => {
         address: "aws_lb.provider",
         values: tagged(c, { name: "nlb-a24k3x9q", internal: true, load_balancer_type: "network", enable_deletion_protection: false, tags: { Name: "nlb-provider" } }),
         unknown: ["subnets"],
-        refs: { name: ["var.name_prefix"], subnets: ref("aws_subnet.provider", "id") },
+        refs: { name: ["var.name_prefix"], subnets: ["aws_subnet.provider"] },
       },
       {
         address: "aws_lb_target_group.provider",
@@ -124,8 +124,8 @@ export default () => {
         refs: {
           name: ["local.svc_domain"],
           zone_id: ref("aws_route53_zone.svc", "zone_id"),
-          "alias.0.name": ref("aws_vpc_endpoint.svc", "dns_entry"),
-          "alias.0.zone_id": ref("aws_vpc_endpoint.svc", "dns_entry"),
+          "alias.0.name": ["aws_vpc_endpoint.svc.dns_entry[0].dns_name", "aws_vpc_endpoint.svc.dns_entry[0]", "aws_vpc_endpoint.svc.dns_entry", "aws_vpc_endpoint.svc"],
+          "alias.0.zone_id": ["aws_vpc_endpoint.svc.dns_entry[0].hosted_zone_id", "aws_vpc_endpoint.svc.dns_entry[0]", "aws_vpc_endpoint.svc.dns_entry", "aws_vpc_endpoint.svc"],
         },
       },
       {

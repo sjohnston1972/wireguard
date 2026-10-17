@@ -1,0 +1,1532 @@
+{
+ "resources": {
+  "aws_cloudfront_distribution.lab": {
+   "type": "aws_cloudfront_distribution",
+   "refs": {
+    "comment": [
+     "var.lab_id"
+    ],
+    "default_cache_behavior.0.cache_policy_id": [
+     "local.caching_disabled"
+    ],
+    "default_cache_behavior.0.function_association.0.function_arn": [
+     "aws_cloudfront_function.headers.arn",
+     "aws_cloudfront_function.headers"
+    ],
+    "default_cache_behavior.0.origin_request_policy_id": [
+     "local.all_viewer_except_host"
+    ],
+    "origin.0.domain_name": [
+     "aws_lb.london.dns_name",
+     "aws_lb.london"
+    ],
+    "origin.1.domain_name": [
+     "aws_lb.ireland.dns_name",
+     "aws_lb.ireland"
+    ],
+    "web_acl_id": [
+     "aws_wafv2_web_acl.lab.arn",
+     "aws_wafv2_web_acl.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "caller_reference",
+    "continuous_deployment_policy_id",
+    "default_cache_behavior.0.default_ttl",
+    "default_cache_behavior.0.function_association.0.function_arn",
+    "default_cache_behavior.0.grpc_config",
+    "default_cache_behavior.0.max_ttl",
+    "default_cache_behavior.0.trusted_key_groups",
+    "default_cache_behavior.0.trusted_signers",
+    "domain_name",
+    "etag",
+    "hosted_zone_id",
+    "id",
+    "in_progress_validation_batches",
+    "last_modified_time",
+    "logging_v1_enabled",
+    "origin.0.domain_name",
+    "origin.0.response_completion_timeout",
+    "origin.1.domain_name",
+    "origin.1.response_completion_timeout",
+    "restrictions.0.geo_restriction.0.locations",
+    "status",
+    "trusted_key_groups",
+    "trusted_signers",
+    "web_acl_id"
+   ],
+   "sensitive": []
+  },
+  "aws_cloudfront_function.headers": {
+   "type": "aws_cloudfront_function",
+   "refs": {
+    "comment": [
+     "var.lab_id"
+    ],
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "etag",
+    "id",
+    "live_stage_etag",
+    "status"
+   ],
+   "sensitive": []
+  },
+  "aws_ec2_instance_connect_endpoint.ireland": {
+   "type": "aws_ec2_instance_connect_endpoint",
+   "refs": {
+    "security_group_ids": [
+     "aws_security_group.ireland_eice.id",
+     "aws_security_group.ireland_eice"
+    ],
+    "subnet_id": [
+     "aws_subnet.ireland_private.id",
+     "aws_subnet.ireland_private"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "availability_zone",
+    "dns_name",
+    "fips_dns_name",
+    "id",
+    "ip_address_type",
+    "network_interface_ids",
+    "owner_id",
+    "security_group_ids.0",
+    "subnet_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_ec2_instance_connect_endpoint.lab": {
+   "type": "aws_ec2_instance_connect_endpoint",
+   "refs": {
+    "security_group_ids": [
+     "aws_security_group.eice.id",
+     "aws_security_group.eice"
+    ],
+    "subnet_id": [
+     "aws_subnet.private[0].id",
+     "aws_subnet.private[0]",
+     "aws_subnet.private"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "availability_zone",
+    "dns_name",
+    "fips_dns_name",
+    "id",
+    "ip_address_type",
+    "network_interface_ids",
+    "owner_id",
+    "security_group_ids.0",
+    "subnet_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_globalaccelerator_accelerator.lab": {
+   "type": "aws_globalaccelerator_accelerator",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "dns_name",
+    "dual_stack_dns_name",
+    "hosted_zone_id",
+    "id",
+    "ip_sets"
+   ],
+   "sensitive": []
+  },
+  "aws_globalaccelerator_endpoint_group.ireland": {
+   "type": "aws_globalaccelerator_endpoint_group",
+   "refs": {
+    "endpoint_configuration.0.endpoint_id": [
+     "aws_lb.ireland.arn",
+     "aws_lb.ireland"
+    ],
+    "endpoint_group_region": [
+     "var.secondary_region"
+    ],
+    "listener_arn": [
+     "aws_globalaccelerator_listener.http.arn",
+     "aws_globalaccelerator_listener.http"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "endpoint_configuration.0.endpoint_id",
+    "health_check_path",
+    "id",
+    "listener_arn"
+   ],
+   "sensitive": []
+  },
+  "aws_globalaccelerator_endpoint_group.london": {
+   "type": "aws_globalaccelerator_endpoint_group",
+   "refs": {
+    "endpoint_configuration.0.endpoint_id": [
+     "aws_lb.london.arn",
+     "aws_lb.london"
+    ],
+    "endpoint_group_region": [
+     "var.region"
+    ],
+    "listener_arn": [
+     "aws_globalaccelerator_listener.http.arn",
+     "aws_globalaccelerator_listener.http"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "endpoint_configuration.0.endpoint_id",
+    "health_check_path",
+    "id",
+    "listener_arn"
+   ],
+   "sensitive": []
+  },
+  "aws_globalaccelerator_listener.http": {
+   "type": "aws_globalaccelerator_listener",
+   "refs": {
+    "accelerator_arn": [
+     "aws_globalaccelerator_accelerator.lab.arn",
+     "aws_globalaccelerator_accelerator.lab"
+    ]
+   },
+   "unknown": [
+    "accelerator_arn",
+    "arn",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_instance.ireland": {
+   "type": "aws_instance",
+   "refs": {
+    "ami": [
+     "data.aws_ssm_parameter.al2023_ireland.insecure_value",
+     "data.aws_ssm_parameter.al2023_ireland"
+    ],
+    "subnet_id": [
+     "aws_subnet.ireland_private.id",
+     "aws_subnet.ireland_private"
+    ],
+    "user_data": [
+     "local.ireland_cloud_init"
+    ],
+    "volume_tags": [
+     "var.tags"
+    ],
+    "vpc_security_group_ids": [
+     "aws_security_group.ireland_web.id",
+     "aws_security_group.ireland_web"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "associate_public_ip_address",
+    "availability_zone",
+    "capacity_reservation_specification",
+    "cpu_options",
+    "disable_api_stop",
+    "disable_api_termination",
+    "ebs_block_device",
+    "ebs_optimized",
+    "enable_primary_ipv6",
+    "enclave_options",
+    "ephemeral_block_device",
+    "host_id",
+    "host_resource_group_arn",
+    "iam_instance_profile",
+    "id",
+    "instance_initiated_shutdown_behavior",
+    "instance_lifecycle",
+    "instance_market_options",
+    "instance_state",
+    "ipv6_address_count",
+    "ipv6_addresses",
+    "key_name",
+    "maintenance_options",
+    "metadata_options.0.http_put_response_hop_limit",
+    "metadata_options.0.instance_metadata_tags",
+    "monitoring",
+    "network_interface",
+    "outpost_arn",
+    "password_data",
+    "placement_group",
+    "placement_group_id",
+    "placement_partition_number",
+    "primary_network_interface",
+    "primary_network_interface_id",
+    "private_dns",
+    "private_dns_name_options",
+    "private_ip",
+    "public_dns",
+    "public_ip",
+    "root_block_device.0.device_name",
+    "root_block_device.0.encrypted",
+    "root_block_device.0.iops",
+    "root_block_device.0.kms_key_id",
+    "root_block_device.0.tags_all",
+    "root_block_device.0.throughput",
+    "root_block_device.0.volume_id",
+    "secondary_network_interface",
+    "secondary_private_ips",
+    "security_groups",
+    "spot_instance_request_id",
+    "subnet_id",
+    "tenancy",
+    "user_data_base64",
+    "vpc_security_group_ids"
+   ],
+   "sensitive": [
+    "user_data"
+   ]
+  },
+  "aws_instance.london": {
+   "type": "aws_instance",
+   "refs": {
+    "ami": [
+     "data.aws_ssm_parameter.al2023_arm64.insecure_value",
+     "data.aws_ssm_parameter.al2023_arm64"
+    ],
+    "subnet_id": [
+     "aws_subnet.private[0].id",
+     "aws_subnet.private[0]",
+     "aws_subnet.private"
+    ],
+    "user_data": [
+     "local.london_cloud_init"
+    ],
+    "volume_tags": [
+     "var.tags"
+    ],
+    "vpc_security_group_ids": [
+     "aws_security_group.web.id",
+     "aws_security_group.web"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "associate_public_ip_address",
+    "availability_zone",
+    "capacity_reservation_specification",
+    "cpu_options",
+    "disable_api_stop",
+    "disable_api_termination",
+    "ebs_block_device",
+    "ebs_optimized",
+    "enable_primary_ipv6",
+    "enclave_options",
+    "ephemeral_block_device",
+    "host_id",
+    "host_resource_group_arn",
+    "iam_instance_profile",
+    "id",
+    "instance_initiated_shutdown_behavior",
+    "instance_lifecycle",
+    "instance_market_options",
+    "instance_state",
+    "ipv6_address_count",
+    "ipv6_addresses",
+    "key_name",
+    "maintenance_options",
+    "metadata_options.0.http_put_response_hop_limit",
+    "metadata_options.0.instance_metadata_tags",
+    "monitoring",
+    "network_interface",
+    "outpost_arn",
+    "password_data",
+    "placement_group",
+    "placement_group_id",
+    "placement_partition_number",
+    "primary_network_interface",
+    "primary_network_interface_id",
+    "private_dns",
+    "private_dns_name_options",
+    "private_ip",
+    "public_dns",
+    "public_ip",
+    "root_block_device.0.device_name",
+    "root_block_device.0.encrypted",
+    "root_block_device.0.iops",
+    "root_block_device.0.kms_key_id",
+    "root_block_device.0.tags_all",
+    "root_block_device.0.throughput",
+    "root_block_device.0.volume_id",
+    "secondary_network_interface",
+    "secondary_private_ips",
+    "security_groups",
+    "spot_instance_request_id",
+    "subnet_id",
+    "tenancy",
+    "user_data_base64",
+    "vpc_security_group_ids"
+   ],
+   "sensitive": [
+    "user_data"
+   ]
+  },
+  "aws_internet_gateway.ireland": {
+   "type": "aws_internet_gateway",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.ireland.id",
+     "aws_vpc.ireland"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "owner_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_internet_gateway.lab": {
+   "type": "aws_internet_gateway",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "owner_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_lb.ireland": {
+   "type": "aws_lb",
+   "refs": {
+    "name": [
+     "var.name_prefix"
+    ],
+    "subnets": [
+     "aws_subnet.ireland_public.id",
+     "aws_subnet.ireland_public"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "arn_suffix",
+    "dns_name",
+    "enable_prefix_for_ipv6_source_nat",
+    "enforce_security_group_inbound_rules_on_private_link_traffic",
+    "id",
+    "ip_address_type",
+    "name_prefix",
+    "secondary_ips_auto_assigned_per_subnet",
+    "security_groups",
+    "subnet_mapping",
+    "subnets",
+    "vpc_id",
+    "zone_id"
+   ],
+   "sensitive": []
+  },
+  "aws_lb.london": {
+   "type": "aws_lb",
+   "refs": {
+    "name": [
+     "var.name_prefix"
+    ],
+    "subnets": [
+     "aws_subnet.public.id",
+     "aws_subnet.public"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "arn_suffix",
+    "dns_name",
+    "enable_prefix_for_ipv6_source_nat",
+    "enforce_security_group_inbound_rules_on_private_link_traffic",
+    "id",
+    "ip_address_type",
+    "name_prefix",
+    "secondary_ips_auto_assigned_per_subnet",
+    "security_groups",
+    "subnet_mapping",
+    "subnets",
+    "vpc_id",
+    "zone_id"
+   ],
+   "sensitive": []
+  },
+  "aws_lb_listener.ireland": {
+   "type": "aws_lb_listener",
+   "refs": {
+    "default_action.0.target_group_arn": [
+     "aws_lb_target_group.ireland.arn",
+     "aws_lb_target_group.ireland"
+    ],
+    "load_balancer_arn": [
+     "aws_lb.ireland.arn",
+     "aws_lb.ireland"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "default_action.0.order",
+    "default_action.0.target_group_arn",
+    "id",
+    "load_balancer_arn",
+    "mutual_authentication",
+    "routing_http_request_x_amzn_mtls_clientcert_header_name",
+    "routing_http_request_x_amzn_mtls_clientcert_issuer_header_name",
+    "routing_http_request_x_amzn_mtls_clientcert_leaf_header_name",
+    "routing_http_request_x_amzn_mtls_clientcert_serial_number_header_name",
+    "routing_http_request_x_amzn_mtls_clientcert_subject_header_name",
+    "routing_http_request_x_amzn_mtls_clientcert_validity_header_name",
+    "routing_http_request_x_amzn_tls_cipher_suite_header_name",
+    "routing_http_request_x_amzn_tls_version_header_name",
+    "routing_http_response_access_control_allow_credentials_header_value",
+    "routing_http_response_access_control_allow_headers_header_value",
+    "routing_http_response_access_control_allow_methods_header_value",
+    "routing_http_response_access_control_allow_origin_header_value",
+    "routing_http_response_access_control_expose_headers_header_value",
+    "routing_http_response_access_control_max_age_header_value",
+    "routing_http_response_content_security_policy_header_value",
+    "routing_http_response_server_enabled",
+    "routing_http_response_strict_transport_security_header_value",
+    "routing_http_response_x_content_type_options_header_value",
+    "routing_http_response_x_frame_options_header_value",
+    "ssl_policy",
+    "tcp_idle_timeout_seconds"
+   ],
+   "sensitive": []
+  },
+  "aws_lb_listener.london": {
+   "type": "aws_lb_listener",
+   "refs": {
+    "default_action.0.target_group_arn": [
+     "aws_lb_target_group.london.arn",
+     "aws_lb_target_group.london"
+    ],
+    "load_balancer_arn": [
+     "aws_lb.london.arn",
+     "aws_lb.london"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "default_action.0.order",
+    "default_action.0.target_group_arn",
+    "id",
+    "load_balancer_arn",
+    "mutual_authentication",
+    "routing_http_request_x_amzn_mtls_clientcert_header_name",
+    "routing_http_request_x_amzn_mtls_clientcert_issuer_header_name",
+    "routing_http_request_x_amzn_mtls_clientcert_leaf_header_name",
+    "routing_http_request_x_amzn_mtls_clientcert_serial_number_header_name",
+    "routing_http_request_x_amzn_mtls_clientcert_subject_header_name",
+    "routing_http_request_x_amzn_mtls_clientcert_validity_header_name",
+    "routing_http_request_x_amzn_tls_cipher_suite_header_name",
+    "routing_http_request_x_amzn_tls_version_header_name",
+    "routing_http_response_access_control_allow_credentials_header_value",
+    "routing_http_response_access_control_allow_headers_header_value",
+    "routing_http_response_access_control_allow_methods_header_value",
+    "routing_http_response_access_control_allow_origin_header_value",
+    "routing_http_response_access_control_expose_headers_header_value",
+    "routing_http_response_access_control_max_age_header_value",
+    "routing_http_response_content_security_policy_header_value",
+    "routing_http_response_server_enabled",
+    "routing_http_response_strict_transport_security_header_value",
+    "routing_http_response_x_content_type_options_header_value",
+    "routing_http_response_x_frame_options_header_value",
+    "ssl_policy",
+    "tcp_idle_timeout_seconds"
+   ],
+   "sensitive": []
+  },
+  "aws_lb_target_group.ireland": {
+   "type": "aws_lb_target_group",
+   "refs": {
+    "name": [
+     "var.name_prefix"
+    ],
+    "vpc_id": [
+     "aws_vpc.ireland.id",
+     "aws_vpc.ireland"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "arn_suffix",
+    "connection_termination",
+    "health_check",
+    "id",
+    "ip_address_type",
+    "load_balancer_arns",
+    "load_balancing_algorithm_type",
+    "load_balancing_anomaly_mitigation",
+    "load_balancing_cross_zone_enabled",
+    "name_prefix",
+    "preserve_client_ip",
+    "protocol_version",
+    "stickiness",
+    "target_failover",
+    "target_group_health",
+    "target_health_state",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_lb_target_group.london": {
+   "type": "aws_lb_target_group",
+   "refs": {
+    "name": [
+     "var.name_prefix"
+    ],
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "arn_suffix",
+    "connection_termination",
+    "health_check",
+    "id",
+    "ip_address_type",
+    "load_balancer_arns",
+    "load_balancing_algorithm_type",
+    "load_balancing_anomaly_mitigation",
+    "load_balancing_cross_zone_enabled",
+    "name_prefix",
+    "preserve_client_ip",
+    "protocol_version",
+    "stickiness",
+    "target_failover",
+    "target_group_health",
+    "target_health_state",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_lb_target_group_attachment.ireland": {
+   "type": "aws_lb_target_group_attachment",
+   "refs": {
+    "target_group_arn": [
+     "aws_lb_target_group.ireland.arn",
+     "aws_lb_target_group.ireland"
+    ],
+    "target_id": [
+     "aws_instance.ireland.id",
+     "aws_instance.ireland"
+    ]
+   },
+   "unknown": [
+    "id",
+    "target_group_arn",
+    "target_id"
+   ],
+   "sensitive": []
+  },
+  "aws_lb_target_group_attachment.london": {
+   "type": "aws_lb_target_group_attachment",
+   "refs": {
+    "target_group_arn": [
+     "aws_lb_target_group.london.arn",
+     "aws_lb_target_group.london"
+    ],
+    "target_id": [
+     "aws_instance.london.id",
+     "aws_instance.london"
+    ]
+   },
+   "unknown": [
+    "id",
+    "target_group_arn",
+    "target_id"
+   ],
+   "sensitive": []
+  },
+  "aws_resourcegroups_group.lab": {
+   "type": "aws_resourcegroups_group",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "resource_query.0.query": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_resourcegroups_group.secondary": {
+   "type": "aws_resourcegroups_group",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "resource_query.0.query": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_route.ireland_public_internet": {
+   "type": "aws_route",
+   "refs": {
+    "gateway_id": [
+     "aws_internet_gateway.ireland.id",
+     "aws_internet_gateway.ireland"
+    ],
+    "route_table_id": [
+     "aws_route_table.ireland_public.id",
+     "aws_route_table.ireland_public"
+    ]
+   },
+   "unknown": [
+    "gateway_id",
+    "id",
+    "instance_id",
+    "instance_owner_id",
+    "network_interface_id",
+    "origin",
+    "route_table_id",
+    "state"
+   ],
+   "sensitive": []
+  },
+  "aws_route.public_internet": {
+   "type": "aws_route",
+   "refs": {
+    "gateway_id": [
+     "aws_internet_gateway.lab.id",
+     "aws_internet_gateway.lab"
+    ],
+    "route_table_id": [
+     "aws_route_table.public.id",
+     "aws_route_table.public"
+    ]
+   },
+   "unknown": [
+    "gateway_id",
+    "id",
+    "instance_id",
+    "instance_owner_id",
+    "network_interface_id",
+    "origin",
+    "route_table_id",
+    "state"
+   ],
+   "sensitive": []
+  },
+  "aws_route_table.ireland_private": {
+   "type": "aws_route_table",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.ireland.id",
+     "aws_vpc.ireland"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "owner_id",
+    "propagating_vgws",
+    "route",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route_table.ireland_public": {
+   "type": "aws_route_table",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.ireland.id",
+     "aws_vpc.ireland"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "owner_id",
+    "propagating_vgws",
+    "route",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route_table.private": {
+   "type": "aws_route_table",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "owner_id",
+    "propagating_vgws",
+    "route",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route_table.public": {
+   "type": "aws_route_table",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "owner_id",
+    "propagating_vgws",
+    "route",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route_table_association.ireland_private": {
+   "type": "aws_route_table_association",
+   "refs": {
+    "route_table_id": [
+     "aws_route_table.ireland_private.id",
+     "aws_route_table.ireland_private"
+    ],
+    "subnet_id": [
+     "aws_subnet.ireland_private.id",
+     "aws_subnet.ireland_private"
+    ]
+   },
+   "unknown": [
+    "id",
+    "route_table_id",
+    "subnet_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route_table_association.ireland_public": {
+   "type": "aws_route_table_association",
+   "refs": {
+    "route_table_id": [
+     "aws_route_table.ireland_public.id",
+     "aws_route_table.ireland_public"
+    ],
+    "subnet_id": [
+     "aws_subnet.ireland_public.id",
+     "aws_subnet.ireland_public"
+    ]
+   },
+   "unknown": [
+    "id",
+    "route_table_id",
+    "subnet_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route_table_association.private[0]": {
+   "type": "aws_route_table_association",
+   "refs": {
+    "route_table_id": [
+     "aws_route_table.private.id",
+     "aws_route_table.private"
+    ],
+    "subnet_id": [
+     "aws_subnet.private",
+     "count.index"
+    ]
+   },
+   "unknown": [
+    "id",
+    "route_table_id",
+    "subnet_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route_table_association.private[1]": {
+   "type": "aws_route_table_association",
+   "refs": {
+    "route_table_id": [
+     "aws_route_table.private.id",
+     "aws_route_table.private"
+    ],
+    "subnet_id": [
+     "aws_subnet.private",
+     "count.index"
+    ]
+   },
+   "unknown": [
+    "id",
+    "route_table_id",
+    "subnet_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route_table_association.public": {
+   "type": "aws_route_table_association",
+   "refs": {
+    "route_table_id": [
+     "aws_route_table.public.id",
+     "aws_route_table.public"
+    ],
+    "subnet_id": [
+     "aws_subnet.public.id",
+     "aws_subnet.public"
+    ]
+   },
+   "unknown": [
+    "id",
+    "route_table_id",
+    "subnet_id"
+   ],
+   "sensitive": []
+  },
+  "aws_security_group.eice": {
+   "type": "aws_security_group",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "egress",
+    "id",
+    "ingress",
+    "name_prefix",
+    "owner_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_security_group.ireland_eice": {
+   "type": "aws_security_group",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.ireland.id",
+     "aws_vpc.ireland"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "egress",
+    "id",
+    "ingress",
+    "name_prefix",
+    "owner_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_security_group.ireland_web": {
+   "type": "aws_security_group",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.ireland.id",
+     "aws_vpc.ireland"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "egress",
+    "id",
+    "ingress",
+    "name_prefix",
+    "owner_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_security_group.vms": {
+   "type": "aws_security_group",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "egress",
+    "id",
+    "ingress",
+    "name_prefix",
+    "owner_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_security_group.web": {
+   "type": "aws_security_group",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "egress",
+    "id",
+    "ingress",
+    "name_prefix",
+    "owner_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_subnet.ireland_private": {
+   "type": "aws_subnet",
+   "refs": {
+    "availability_zone": [
+     "data.aws_availability_zones.ireland.names[0]",
+     "data.aws_availability_zones.ireland.names",
+     "data.aws_availability_zones.ireland"
+    ],
+    "cidr_block": [
+     "local.ireland_private_cidr"
+    ],
+    "vpc_id": [
+     "aws_vpc.ireland.id",
+     "aws_vpc.ireland"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "availability_zone_id",
+    "id",
+    "ipv6_cidr_block",
+    "ipv6_cidr_block_association_id",
+    "owner_id",
+    "private_dns_hostname_type_on_launch",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_subnet.ireland_public": {
+   "type": "aws_subnet",
+   "refs": {
+    "availability_zone": [
+     "data.aws_availability_zones.ireland.names[0]",
+     "data.aws_availability_zones.ireland.names",
+     "data.aws_availability_zones.ireland"
+    ],
+    "cidr_block": [
+     "local.ireland_public_cidr"
+    ],
+    "vpc_id": [
+     "aws_vpc.ireland.id",
+     "aws_vpc.ireland"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "availability_zone_id",
+    "id",
+    "ipv6_cidr_block",
+    "ipv6_cidr_block_association_id",
+    "owner_id",
+    "private_dns_hostname_type_on_launch",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_subnet.private[0]": {
+   "type": "aws_subnet",
+   "refs": {
+    "availability_zone": [
+     "local.azs",
+     "count.index"
+    ],
+    "cidr_block": [
+     "local.vpc_cidr",
+     "count.index"
+    ],
+    "tags": [
+     "count.index"
+    ],
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "availability_zone_id",
+    "id",
+    "ipv6_cidr_block",
+    "ipv6_cidr_block_association_id",
+    "owner_id",
+    "private_dns_hostname_type_on_launch",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_subnet.private[1]": {
+   "type": "aws_subnet",
+   "refs": {
+    "availability_zone": [
+     "local.azs",
+     "count.index"
+    ],
+    "cidr_block": [
+     "local.vpc_cidr",
+     "count.index"
+    ],
+    "tags": [
+     "count.index"
+    ],
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "availability_zone_id",
+    "id",
+    "ipv6_cidr_block",
+    "ipv6_cidr_block_association_id",
+    "owner_id",
+    "private_dns_hostname_type_on_launch",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_subnet.public": {
+   "type": "aws_subnet",
+   "refs": {
+    "availability_zone": [
+     "local.azs[0]",
+     "local.azs"
+    ],
+    "cidr_block": [
+     "local.vpc_cidr"
+    ],
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "availability_zone_id",
+    "id",
+    "ipv6_cidr_block",
+    "ipv6_cidr_block_association_id",
+    "owner_id",
+    "private_dns_hostname_type_on_launch",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc.ireland": {
+   "type": "aws_vpc",
+   "refs": {
+    "cidr_block": [
+     "local.ireland_vpc_cidr"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "default_network_acl_id",
+    "default_route_table_id",
+    "default_security_group_id",
+    "dhcp_options_id",
+    "enable_network_address_usage_metrics",
+    "id",
+    "ipv6_association_id",
+    "ipv6_cidr_block",
+    "ipv6_cidr_block_network_border_group",
+    "main_route_table_id",
+    "owner_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc.lab": {
+   "type": "aws_vpc",
+   "refs": {
+    "cidr_block": [
+     "local.vpc_cidr"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "default_network_acl_id",
+    "default_route_table_id",
+    "default_security_group_id",
+    "dhcp_options_id",
+    "enable_network_address_usage_metrics",
+    "id",
+    "ipv6_association_id",
+    "ipv6_cidr_block",
+    "ipv6_cidr_block_network_border_group",
+    "main_route_table_id",
+    "owner_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_endpoint.ireland_s3": {
+   "type": "aws_vpc_endpoint",
+   "refs": {
+    "route_table_ids": [
+     "aws_route_table.ireland_private.id",
+     "aws_route_table.ireland_private"
+    ],
+    "service_name": [
+     "var.secondary_region"
+    ],
+    "vpc_id": [
+     "aws_vpc.ireland.id",
+     "aws_vpc.ireland"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "cidr_blocks",
+    "dns_entry",
+    "dns_options",
+    "id",
+    "ip_address_type",
+    "network_interface_ids",
+    "owner_id",
+    "policy",
+    "prefix_list_id",
+    "private_dns_enabled",
+    "requester_managed",
+    "route_table_ids",
+    "security_group_ids",
+    "service_region",
+    "state",
+    "subnet_configuration",
+    "subnet_ids",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_endpoint.s3": {
+   "type": "aws_vpc_endpoint",
+   "refs": {
+    "route_table_ids": [
+     "aws_route_table.private.id",
+     "aws_route_table.private"
+    ],
+    "service_name": [
+     "var.region"
+    ],
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "cidr_blocks",
+    "dns_entry",
+    "dns_options",
+    "id",
+    "ip_address_type",
+    "network_interface_ids",
+    "owner_id",
+    "policy",
+    "prefix_list_id",
+    "private_dns_enabled",
+    "requester_managed",
+    "route_table_ids",
+    "security_group_ids",
+    "service_region",
+    "state",
+    "subnet_configuration",
+    "subnet_ids",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_egress_rule.eice_ssh": {
+   "type": "aws_vpc_security_group_egress_rule",
+   "refs": {
+    "cidr_ipv4": [
+     "local.vpc_cidr"
+    ],
+    "security_group_id": [
+     "aws_security_group.eice.id",
+     "aws_security_group.eice"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_egress_rule.ireland_eice_ssh": {
+   "type": "aws_vpc_security_group_egress_rule",
+   "refs": {
+    "cidr_ipv4": [
+     "local.ireland_vpc_cidr"
+    ],
+    "security_group_id": [
+     "aws_security_group.ireland_eice.id",
+     "aws_security_group.ireland_eice"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_egress_rule.ireland_web_all": {
+   "type": "aws_vpc_security_group_egress_rule",
+   "refs": {
+    "security_group_id": [
+     "aws_security_group.ireland_web.id",
+     "aws_security_group.ireland_web"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_egress_rule.vms_all": {
+   "type": "aws_vpc_security_group_egress_rule",
+   "refs": {
+    "security_group_id": [
+     "aws_security_group.vms.id",
+     "aws_security_group.vms"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_egress_rule.web_all": {
+   "type": "aws_vpc_security_group_egress_rule",
+   "refs": {
+    "security_group_id": [
+     "aws_security_group.web.id",
+     "aws_security_group.web"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.ireland_web_http": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "security_group_id": [
+     "aws_security_group.ireland_web.id",
+     "aws_security_group.ireland_web"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.ireland_web_ssh": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "referenced_security_group_id": [
+     "aws_security_group.ireland_eice.id",
+     "aws_security_group.ireland_eice"
+    ],
+    "security_group_id": [
+     "aws_security_group.ireland_web.id",
+     "aws_security_group.ireland_web"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "referenced_security_group_id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.vms_from_gateway": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "cidr_ipv4": [
+     "var.gateway_cidr"
+    ],
+    "security_group_id": [
+     "aws_security_group.vms.id",
+     "aws_security_group.vms"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.vms_ssh_eice": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "referenced_security_group_id": [
+     "aws_security_group.eice.id",
+     "aws_security_group.eice"
+    ],
+    "security_group_id": [
+     "aws_security_group.vms.id",
+     "aws_security_group.vms"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "referenced_security_group_id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.web_http": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "security_group_id": [
+     "aws_security_group.web.id",
+     "aws_security_group.web"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.web_ssh": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "referenced_security_group_id": [
+     "aws_security_group.eice.id",
+     "aws_security_group.eice"
+    ],
+    "security_group_id": [
+     "aws_security_group.web.id",
+     "aws_security_group.web"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "referenced_security_group_id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_wafv2_web_acl.lab": {
+   "type": "aws_wafv2_web_acl",
+   "refs": {
+    "description": [
+     "var.lab_id"
+    ],
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "application_integration_url",
+    "arn",
+    "capacity",
+    "id",
+    "lock_token",
+    "name_prefix"
+   ],
+   "sensitive": []
+  },
+  "data.aws_availability_zones.available": {
+   "type": "aws_availability_zones",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  },
+  "data.aws_availability_zones.ireland": {
+   "type": "aws_availability_zones",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  },
+  "data.aws_caller_identity.current": {
+   "type": "aws_caller_identity",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  },
+  "data.aws_partition.current": {
+   "type": "aws_partition",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  },
+  "data.aws_ssm_parameter.al2023_arm64": {
+   "type": "aws_ssm_parameter",
+   "refs": {},
+   "unknown": [],
+   "sensitive": [
+    "value"
+   ]
+  },
+  "data.aws_ssm_parameter.al2023_ireland": {
+   "type": "aws_ssm_parameter",
+   "refs": {},
+   "unknown": [],
+   "sensitive": [
+    "value"
+   ]
+  }
+ }
+}

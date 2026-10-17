@@ -124,8 +124,8 @@ export default () => {
         values: tagged(c, { name: `lab-${id}-invoke`, path: "/cloudlabs-lab/", policy: doc([{ Sid: "InvokeLatticeServices", Effect: "Allow", Action: "vpc-lattice-svcs:Invoke", Resource: `arn:aws:vpc-lattice:eu-west-2:${ACCOUNT}:service/*` }]) }),
         refs: { name: ["var.lab_id"], policy: ["var.region", ...ref("data.aws_caller_identity.current", "account_id")] },
       },
-      { address: "aws_iam_role_policy_attachment.client", values: {}, unknown: ["role", "policy_arn"], refs: { role: ref("aws_iam_role.client", "name"), policy_arn: ref("aws_iam_policy.invoke", "arn") } },
-      { address: "aws_iam_instance_profile.client", values: tagged(c, { name: `lab-${id}-client`, path: "/cloudlabs-lab/" }), unknown: ["role"], refs: { name: ["var.lab_id"], role: ref("aws_iam_role.client", "name") } },
+      { address: "aws_iam_role_policy_attachment.client", values: { role: `lab-${id}-client` }, unknown: ["policy_arn"], refs: { role: ref("aws_iam_role.client", "name"), policy_arn: ref("aws_iam_policy.invoke", "arn") } },
+      { address: "aws_iam_instance_profile.client", values: tagged(c, { name: `lab-${id}-client`, path: "/cloudlabs-lab/", role: `lab-${id}-client` }), refs: { name: ["var.lab_id"], role: ref("aws_iam_role.client", "name") } },
       // lattice.tf
       { address: "aws_security_group.lattice", values: tagged(c, { name: "lab-lattice", description: "Association of vpc-lab with the service network: HTTP from vpc-lab", tags: { Name: "sg-lattice" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id") } },
       rule("ingress", "lattice_http", "aws_security_group.lattice", { cidr_ipv4: c.vpcCidr, ip_protocol: "tcp", from_port: 80, to_port: 80 }, { cidr_ipv4: ["local.vpc_cidr"] }),

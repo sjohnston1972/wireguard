@@ -35,7 +35,7 @@ export default () => {
     address: `aws_ec2_transit_gateway_vpc_attachment.${key}`,
     values: tagged(c, { transit_gateway_default_route_table_association: false, transit_gateway_default_route_table_propagation: false, ...extra, tags: { Name: name } }),
     unknown: ["transit_gateway_id", "vpc_id", "subnet_ids"],
-    refs: { transit_gateway_id: tgwId, vpc_id: ref(vpc, "id"), subnet_ids: [subnetRef] },
+    refs: { transit_gateway_id: tgwId, vpc_id: ref(vpc, "id"), subnet_ids: subnetRef === "aws_subnet.insp_tgw" ? ["aws_subnet.insp_tgw.id", subnetRef] : [subnetRef] },
   });
   const tgwTable = (key, name) => ({
     address: `aws_ec2_transit_gateway_route_table.${key}`,
@@ -66,7 +66,7 @@ export default () => {
     address: `aws_subnet.${key}`,
     values: tagged(c, { cidr_block: cidrsubnet(insp, 4, n), availability_zone: "eu-west-2a", map_public_ip_on_launch: false, tags: { Name: name } }),
     unknown: ["vpc_id"],
-    refs: { vpc_id: ref("aws_vpc.inspection", "id"), cidr_block: ["local.insp_cidr"], availability_zone: ["local.azs"] },
+    refs: { vpc_id: ref("aws_vpc.inspection", "id"), cidr_block: ["local.insp_cidr"], availability_zone: ["local.azs[0]", "local.azs"] },
   });
   const inspTable = (key, name) => ({ address: `aws_route_table.${key}`, values: tagged(c, { tags: { Name: name } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.inspection", "id") } });
   const inspAssoc = (key, subnet) => ({ address: `aws_route_table_association.${key}`, values: {}, unknown: ["subnet_id", "route_table_id"], refs: { subnet_id: ref(`aws_subnet.${subnet}`, "id"), route_table_id: ref(`aws_route_table.${subnet}`, "id") } });
@@ -127,7 +127,7 @@ export default () => {
       { address: "aws_ec2_transit_gateway.lab", values: tagged(c, { description: `lab ${id}: spokes through the inspection VPC`, auto_accept_shared_attachments: "disable", default_route_table_association: "disable", default_route_table_propagation: "disable", dns_support: "enable", tags: { Name: "tgw-lab" } }), refs: { description: ["var.lab_id"] } },
       att("spoke_a", "tgwa-spoke-a", "aws_vpc.lab", "aws_subnet.private"),
       att("spoke_b", "tgwa-spoke-b", "aws_vpc.spoke_b", "aws_subnet.spoke_b"),
-      att("inspection", "tgwa-inspection", "aws_vpc.inspection", "aws_subnet.insp_tgw.id", { appliance_mode_support: "enable" }),
+      att("inspection", "tgwa-inspection", "aws_vpc.inspection", "aws_subnet.insp_tgw", { appliance_mode_support: "enable" }),
       tgwTable("spokes", "tgw-rt-spokes"),
       tgwTable("inspection", "tgw-rt-inspection"),
       link("association", "spoke_a", "spoke_a", "spokes"),
@@ -231,11 +231,11 @@ export default () => {
           ],
           Version: "2012-10-17",
         }),
-      }, { policy: ["local.nfw_arn", "data.aws_caller_identity.current.account_id", "data.aws_caller_identity.current"] }),
+      }, { policy: ["local.nfw_arn", ...ref("data.aws_caller_identity.current", "account_id"), ...ref("data.aws_caller_identity.current", "account_id"), "local.nfw_arn", ...ref("data.aws_caller_identity.current", "account_id")] }),
       {
         address: "aws_networkfirewall_logging_configuration.lab",
-        values: { logging_configuration: [{ log_destination_config: [{ log_destination_type: "S3", log_type: "ALERT", log_destination: { prefix: "alerts" } }] }] },
-        unknown: ["firewall_arn", "logging_configuration.0.log_destination_config.0.log_destination.bucketName"],
+        values: { logging_configuration: [{ log_destination_config: [{ log_destination_type: "S3", log_type: "ALERT", log_destination: { prefix: "alerts", bucketName: bucket } }] }] },
+        unknown: ["firewall_arn"],
         refs: { firewall_arn: ref("aws_networkfirewall_firewall.lab", "arn"), "logging_configuration.0.log_destination_config.0.log_destination": ref("aws_s3_bucket.nfwlogs", "bucket") },
       },
       // compute.tf

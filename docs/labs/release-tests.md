@@ -115,3 +115,22 @@ lab's hourly estimate times those minutes.
 | 2026-10-16 16:41 | saa-11-three-tier | 1 | pass | yes | none | 18m 23s | 11m 58s | £0.0677 | 38929851114 |
 | 2026-10-16 16:46 | saa-18-cost-compute | 1 | pass | yes | none | 3m 55s | 2m 56s | £0.0017 | 38933612894 |
 | 2026-10-16 17:11 | saa-19-eks | 1 | pass | yes | none | 13m 55s | 13m 59s | £0.0681 | 38933998495 |
+| 2026-10-17 10:48 | ans-22-s2s-vpn | 1 | fail | yes | none | — | 1m 5s | £0.0010 | 39026020372 |
+| 2026-10-17 10:59 | ans-23-hybrid-dns | 1 | pass | yes | none | 4m 42s | 4m 52s | £0.0613 | 39026306184 |
+| 2026-10-17 11:00 | ans-21-transit-gateway | 1 | fail | yes | none | — | 7m 32s | £0.0233 | 39026046930 |
+| 2026-10-17 11:14 | ans-25-load-balancing | 1 | pass | yes | none | 7m 0s | 6m 39s | £0.0345 | 39027015671 |
+| 2026-10-17 11:15 | ans-29-multi-region | 1 | pass | yes | none | 5m 58s | 9m 14s | £0.0451 | 39026967542 |
+| 2026-10-17 11:15 | ans-20-vpc-design | 1 | pass | yes | none | 5m 23s | 25m 32s | £0.0235 | 39025992056 |
+| 2026-10-17 11:25 | ans-24-privatelink | 1 | pass | yes | none | 4m 40s | 4m 25s | £0.0063 | 39028009441 |
+| 2026-10-17 11:28 | ans-26-edge | 1 | fail | yes | none | — | 3m 31s | £0.0048 | 39027988912 |
+| 2026-10-17 11:30 | ans-27-network-firewall | 1 | pass | yes | none | 6m 37s | 7m 38s | £0.1145 | 39027970290 |
+| 2026-10-17 11:34 | ans-28-flow-logs-fix | 1 | pass | yes | none | 4m 3s | 3m 21s | £0.0046 | 39028659891 |
+| 2026-10-17 11:36 | ans-22-s2s-vpn | 1 | pass | yes | none | 10m 29s | 4m 13s | £0.0131 | 39028349367 |
+| 2026-10-17 11:53 | ans-30-vpc-lattice | 1 | fail | yes | none | — | 4m 12s | £0.0035 | 39029207914 |
+| 2026-10-17 12:06 | ans-31-client-vpn | 1 | pass | yes | none | 6m 23s | 5m 45s | £0.0236 | 39030414504 |
+| 2026-10-17 12:13 | ans-21-transit-gateway | 1 | pass | yes | none | 4m 8s | 7m 54s | £0.0372 | 39030790866 |
+| 2026-10-17 12:14 | soa-08-vpc-fix | 2 | pass | yes | none | 3m 57s | 2m 50s | £0.0014 | 39031253167 |
+| 2026-10-17 12:27 | ans-26-edge | 1 | fail | yes | none | — | 3m 43s | £0.0050 | 39031657786 |
+| 2026-10-17 12:42 | ans-30-vpc-lattice | 1 | pass | yes | none | 4m 14s | 6m 34s | £0.0091 | 39032781215 |
+| 2026-10-17 13:16 | ans-26-edge | 1 | fail | unknown | unknown | — | — | — | 39035632924 |
+| 2026-10-17 13:30 | ans-26-edge | 2 | pass | yes | none | 5m 55s | 7m 7s | £0.0177 | 39035938358 |

@@ -52,7 +52,7 @@ export default () => {
   const dnsVm = al2023Instance(c, { key: "dns", name: "vm-dns", type: "t4g.nano", subnet: "aws_subnet.onprem", sgs: ["aws_security_group.dns"], userDataUnknown: true });
   dnsVm.values.private_ip = dnsIp;
   dnsVm.refs.private_ip = ["local.dns_ip"];
-  dnsVm.refs.user_data = ["local.dns_cloud_init", "local.dnsmasq_conf", "local.inbound_addresses", ...ref("aws_route53_resolver_endpoint.inbound", "ip_address")];
+  dnsVm.refs.user_data = ["local.dns_cloud_init"];
   const onBucket = (type, key, values, extra = {}) => ({ address: `${type}.${key}`, values, unknown: ["bucket", ...(extra.unknown ?? [])], refs: { bucket: ref("aws_s3_bucket.dnslogs", "id"), ...(extra.refs ?? {}) } });
   const delivery = (sid, action, resource, extraCond = {}) => ({
     Sid: sid, Effect: "Allow", Principal: { Service: "delivery.logs.amazonaws.com" }, Action: action, Resource: resource,
@@ -129,7 +129,7 @@ export default () => {
           delivery("AWSLogDeliveryWrite", "s3:PutObject", `${bucketArn}/AWSLogs/${ACCOUNT}/*`, { "s3:x-amz-acl": "bucket-owner-full-control" }),
           delivery("AWSLogDeliveryAclCheck", "s3:GetBucketAcl", bucketArn),
         ]),
-      }, { refs: { policy: ["local.dnslogs_arn", ...ref("data.aws_caller_identity.current", "account_id")] } }),
+      }, { refs: { policy: ["local.dnslogs_arn", ...ref("data.aws_caller_identity.current", "account_id"), ...ref("data.aws_caller_identity.current", "account_id"), "local.dnslogs_arn", ...ref("data.aws_caller_identity.current", "account_id")] } }),
       {
         address: "aws_route53_resolver_query_log_config.lab",
         values: tagged(c, { name: `lab-${id}-queries`, tags: { Name: "querylog" } }),

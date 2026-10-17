@@ -55,7 +55,7 @@ export default () => {
       { address: "aws_vpc_ipv4_cidr_block_association.secondary", values: { cidr_block: sec }, unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id"), cidr_block: ["local.secondary_cidr"] } },
       dualSubnet(0),
       dualSubnet(1),
-      { address: "aws_subnet.public", values: tagged(c, { cidr_block: cidrsubnet(sec, 4, 2), assign_ipv6_address_on_creation: true, availability_zone: "eu-west-2a", map_public_ip_on_launch: false, tags: { Name: "snet-public" } }), unknown: ["vpc_id", "ipv6_cidr_block"], refs: { vpc_id: ref("aws_vpc.lab", "id"), cidr_block: ["local.secondary_cidr"], ipv6_cidr_block: ["local.vpc_ipv6_cidr"], availability_zone: ["local.azs"] } },
+      { address: "aws_subnet.public", values: tagged(c, { cidr_block: cidrsubnet(sec, 4, 2), assign_ipv6_address_on_creation: true, availability_zone: "eu-west-2a", map_public_ip_on_launch: false, tags: { Name: "snet-public" } }), unknown: ["vpc_id", "ipv6_cidr_block"], refs: { vpc_id: ref("aws_vpc.lab", "id"), cidr_block: ["local.secondary_cidr"], ipv6_cidr_block: ["local.vpc_ipv6_cidr"], availability_zone: ["local.azs[0]", "local.azs"] } },
       { address: "aws_internet_gateway.lab", values: tagged(c, { tags: { Name: "igw-lab" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id") } },
       { address: "aws_egress_only_internet_gateway.lab", values: tagged(c, { tags: { Name: "eigw-lab" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id") } },
       { address: "aws_route_table.public", values: tagged(c, { tags: { Name: "rt-public" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id") } },
