@@ -1,0 +1,1512 @@
+{
+ "resources": {
+  "aws_ec2_instance_connect_endpoint.lab": {
+   "type": "aws_ec2_instance_connect_endpoint",
+   "refs": {
+    "security_group_ids": [
+     "aws_security_group.eice.id",
+     "aws_security_group.eice"
+    ],
+    "subnet_id": [
+     "aws_subnet.private[0].id",
+     "aws_subnet.private[0]",
+     "aws_subnet.private"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "availability_zone",
+    "dns_name",
+    "fips_dns_name",
+    "id",
+    "ip_address_type",
+    "network_interface_ids",
+    "owner_id",
+    "security_group_ids.0",
+    "subnet_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_ec2_instance_connect_endpoint.onprem": {
+   "type": "aws_ec2_instance_connect_endpoint",
+   "refs": {
+    "security_group_ids": [
+     "aws_security_group.eice_onprem.id",
+     "aws_security_group.eice_onprem"
+    ],
+    "subnet_id": [
+     "aws_subnet.onprem.id",
+     "aws_subnet.onprem"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "availability_zone",
+    "dns_name",
+    "fips_dns_name",
+    "id",
+    "ip_address_type",
+    "network_interface_ids",
+    "owner_id",
+    "security_group_ids.0",
+    "subnet_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_instance.cloud": {
+   "type": "aws_instance",
+   "refs": {
+    "ami": [
+     "data.aws_ssm_parameter.al2023_arm64.insecure_value",
+     "data.aws_ssm_parameter.al2023_arm64"
+    ],
+    "subnet_id": [
+     "aws_subnet.private[0].id",
+     "aws_subnet.private[0]",
+     "aws_subnet.private"
+    ],
+    "user_data": [
+     "local.cloud_cloud_init"
+    ],
+    "volume_tags": [
+     "var.tags"
+    ],
+    "vpc_security_group_ids": [
+     "aws_security_group.cloud.id",
+     "aws_security_group.cloud"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "associate_public_ip_address",
+    "availability_zone",
+    "capacity_reservation_specification",
+    "cpu_options",
+    "disable_api_stop",
+    "disable_api_termination",
+    "ebs_block_device",
+    "ebs_optimized",
+    "enable_primary_ipv6",
+    "enclave_options",
+    "ephemeral_block_device",
+    "host_id",
+    "host_resource_group_arn",
+    "iam_instance_profile",
+    "id",
+    "instance_initiated_shutdown_behavior",
+    "instance_lifecycle",
+    "instance_market_options",
+    "instance_state",
+    "ipv6_address_count",
+    "ipv6_addresses",
+    "key_name",
+    "maintenance_options",
+    "metadata_options.0.http_put_response_hop_limit",
+    "metadata_options.0.instance_metadata_tags",
+    "monitoring",
+    "network_interface",
+    "outpost_arn",
+    "password_data",
+    "placement_group",
+    "placement_group_id",
+    "placement_partition_number",
+    "primary_network_interface",
+    "primary_network_interface_id",
+    "private_dns",
+    "private_dns_name_options",
+    "private_ip",
+    "public_dns",
+    "public_ip",
+    "root_block_device.0.device_name",
+    "root_block_device.0.encrypted",
+    "root_block_device.0.iops",
+    "root_block_device.0.kms_key_id",
+    "root_block_device.0.tags_all",
+    "root_block_device.0.throughput",
+    "root_block_device.0.volume_id",
+    "secondary_network_interface",
+    "secondary_private_ips",
+    "security_groups",
+    "spot_instance_request_id",
+    "subnet_id",
+    "tenancy",
+    "user_data_base64",
+    "vpc_security_group_ids"
+   ],
+   "sensitive": [
+    "user_data"
+   ]
+  },
+  "aws_instance.dns": {
+   "type": "aws_instance",
+   "refs": {
+    "ami": [
+     "data.aws_ssm_parameter.al2023_arm64.insecure_value",
+     "data.aws_ssm_parameter.al2023_arm64"
+    ],
+    "private_ip": [
+     "local.dns_ip"
+    ],
+    "subnet_id": [
+     "aws_subnet.onprem.id",
+     "aws_subnet.onprem"
+    ],
+    "user_data": [
+     "local.dns_cloud_init"
+    ],
+    "volume_tags": [
+     "var.tags"
+    ],
+    "vpc_security_group_ids": [
+     "aws_security_group.dns.id",
+     "aws_security_group.dns"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "associate_public_ip_address",
+    "availability_zone",
+    "capacity_reservation_specification",
+    "cpu_options",
+    "disable_api_stop",
+    "disable_api_termination",
+    "ebs_block_device",
+    "ebs_optimized",
+    "enable_primary_ipv6",
+    "enclave_options",
+    "ephemeral_block_device",
+    "host_id",
+    "host_resource_group_arn",
+    "iam_instance_profile",
+    "id",
+    "instance_initiated_shutdown_behavior",
+    "instance_lifecycle",
+    "instance_market_options",
+    "instance_state",
+    "ipv6_address_count",
+    "ipv6_addresses",
+    "key_name",
+    "maintenance_options",
+    "metadata_options.0.http_put_response_hop_limit",
+    "metadata_options.0.instance_metadata_tags",
+    "monitoring",
+    "network_interface",
+    "outpost_arn",
+    "password_data",
+    "placement_group",
+    "placement_group_id",
+    "placement_partition_number",
+    "primary_network_interface",
+    "primary_network_interface_id",
+    "private_dns",
+    "private_dns_name_options",
+    "public_dns",
+    "public_ip",
+    "root_block_device.0.device_name",
+    "root_block_device.0.encrypted",
+    "root_block_device.0.iops",
+    "root_block_device.0.kms_key_id",
+    "root_block_device.0.tags_all",
+    "root_block_device.0.throughput",
+    "root_block_device.0.volume_id",
+    "secondary_network_interface",
+    "secondary_private_ips",
+    "security_groups",
+    "spot_instance_request_id",
+    "subnet_id",
+    "tenancy",
+    "user_data",
+    "user_data_base64",
+    "vpc_security_group_ids"
+   ],
+   "sensitive": [
+    "user_data"
+   ]
+  },
+  "aws_resourcegroups_group.lab": {
+   "type": "aws_resourcegroups_group",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "resource_query.0.query": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_route.cloud_to_onprem": {
+   "type": "aws_route",
+   "refs": {
+    "destination_cidr_block": [
+     "local.onprem_cidr"
+    ],
+    "route_table_id": [
+     "aws_route_table.private.id",
+     "aws_route_table.private"
+    ],
+    "vpc_peering_connection_id": [
+     "aws_vpc_peering_connection.cloud_onprem.id",
+     "aws_vpc_peering_connection.cloud_onprem"
+    ]
+   },
+   "unknown": [
+    "id",
+    "instance_id",
+    "instance_owner_id",
+    "network_interface_id",
+    "origin",
+    "route_table_id",
+    "state",
+    "vpc_peering_connection_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route.onprem_to_cloud": {
+   "type": "aws_route",
+   "refs": {
+    "destination_cidr_block": [
+     "local.vpc_cidr"
+    ],
+    "route_table_id": [
+     "aws_route_table.onprem.id",
+     "aws_route_table.onprem"
+    ],
+    "vpc_peering_connection_id": [
+     "aws_vpc_peering_connection.cloud_onprem.id",
+     "aws_vpc_peering_connection.cloud_onprem"
+    ]
+   },
+   "unknown": [
+    "id",
+    "instance_id",
+    "instance_owner_id",
+    "network_interface_id",
+    "origin",
+    "route_table_id",
+    "state",
+    "vpc_peering_connection_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route53_record.app": {
+   "type": "aws_route53_record",
+   "refs": {
+    "name": [
+     "local.cloud_domain"
+    ],
+    "records": [
+     "aws_instance.cloud.private_ip",
+     "aws_instance.cloud"
+    ],
+    "zone_id": [
+     "aws_route53_zone.cloud.zone_id",
+     "aws_route53_zone.cloud"
+    ]
+   },
+   "unknown": [
+    "allow_overwrite",
+    "fqdn",
+    "id",
+    "records",
+    "zone_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route53_resolver_endpoint.inbound": {
+   "type": "aws_route53_resolver_endpoint",
+   "refs": {
+    "ip_address.0.subnet_id": [
+     "aws_subnet.private[0].id",
+     "aws_subnet.private[0]",
+     "aws_subnet.private"
+    ],
+    "ip_address.1.subnet_id": [
+     "aws_subnet.private[1].id",
+     "aws_subnet.private[1]",
+     "aws_subnet.private"
+    ],
+    "name": [
+     "var.lab_id"
+    ],
+    "security_group_ids": [
+     "aws_security_group.resolver.id",
+     "aws_security_group.resolver"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "host_vpc_id",
+    "id",
+    "ip_address.0.ip",
+    "ip_address.0.ip_id",
+    "ip_address.0.ipv6",
+    "ip_address.0.subnet_id",
+    "ip_address.1.ip",
+    "ip_address.1.ip_id",
+    "ip_address.1.ipv6",
+    "ip_address.1.subnet_id",
+    "resolver_endpoint_type",
+    "rni_enhanced_metrics_enabled",
+    "security_group_ids",
+    "target_name_server_metrics_enabled"
+   ],
+   "sensitive": []
+  },
+  "aws_route53_resolver_endpoint.outbound": {
+   "type": "aws_route53_resolver_endpoint",
+   "refs": {
+    "ip_address.0.subnet_id": [
+     "aws_subnet.private[0].id",
+     "aws_subnet.private[0]",
+     "aws_subnet.private"
+    ],
+    "ip_address.1.subnet_id": [
+     "aws_subnet.private[1].id",
+     "aws_subnet.private[1]",
+     "aws_subnet.private"
+    ],
+    "name": [
+     "var.lab_id"
+    ],
+    "security_group_ids": [
+     "aws_security_group.resolver.id",
+     "aws_security_group.resolver"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "host_vpc_id",
+    "id",
+    "ip_address.0.ip",
+    "ip_address.0.ip_id",
+    "ip_address.0.ipv6",
+    "ip_address.0.subnet_id",
+    "ip_address.1.ip",
+    "ip_address.1.ip_id",
+    "ip_address.1.ipv6",
+    "ip_address.1.subnet_id",
+    "resolver_endpoint_type",
+    "rni_enhanced_metrics_enabled",
+    "security_group_ids",
+    "target_name_server_metrics_enabled"
+   ],
+   "sensitive": []
+  },
+  "aws_route53_resolver_firewall_domain_list.blocked": {
+   "type": "aws_route53_resolver_firewall_domain_list",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_route53_resolver_firewall_rule.block": {
+   "type": "aws_route53_resolver_firewall_rule",
+   "refs": {
+    "firewall_domain_list_id": [
+     "aws_route53_resolver_firewall_domain_list.blocked.id",
+     "aws_route53_resolver_firewall_domain_list.blocked"
+    ],
+    "firewall_rule_group_id": [
+     "aws_route53_resolver_firewall_rule_group.lab.id",
+     "aws_route53_resolver_firewall_rule_group.lab"
+    ]
+   },
+   "unknown": [
+    "firewall_domain_list_id",
+    "firewall_rule_group_id",
+    "firewall_threat_protection_id",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_route53_resolver_firewall_rule_group.lab": {
+   "type": "aws_route53_resolver_firewall_rule_group",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "owner_id",
+    "share_status"
+   ],
+   "sensitive": []
+  },
+  "aws_route53_resolver_firewall_rule_group_association.lab": {
+   "type": "aws_route53_resolver_firewall_rule_group_association",
+   "refs": {
+    "firewall_rule_group_id": [
+     "aws_route53_resolver_firewall_rule_group.lab.id",
+     "aws_route53_resolver_firewall_rule_group.lab"
+    ],
+    "name": [
+     "var.lab_id"
+    ],
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "firewall_rule_group_id",
+    "id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route53_resolver_query_log_config.lab": {
+   "type": "aws_route53_resolver_query_log_config",
+   "refs": {
+    "destination_arn": [
+     "aws_s3_bucket.dnslogs.arn",
+     "aws_s3_bucket.dnslogs"
+    ],
+    "name": [
+     "var.lab_id"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "destination_arn",
+    "id",
+    "owner_id",
+    "share_status"
+   ],
+   "sensitive": []
+  },
+  "aws_route53_resolver_query_log_config_association.lab": {
+   "type": "aws_route53_resolver_query_log_config_association",
+   "refs": {
+    "resolver_query_log_config_id": [
+     "aws_route53_resolver_query_log_config.lab.id",
+     "aws_route53_resolver_query_log_config.lab"
+    ],
+    "resource_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "id",
+    "resolver_query_log_config_id",
+    "resource_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route53_resolver_rule.corp": {
+   "type": "aws_route53_resolver_rule",
+   "refs": {
+    "domain_name": [
+     "local.corp_domain"
+    ],
+    "name": [
+     "var.lab_id"
+    ],
+    "resolver_endpoint_id": [
+     "aws_route53_resolver_endpoint.outbound.id",
+     "aws_route53_resolver_endpoint.outbound"
+    ],
+    "target_ip.0.ip": [
+     "local.dns_ip"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "owner_id",
+    "resolver_endpoint_id",
+    "share_status"
+   ],
+   "sensitive": []
+  },
+  "aws_route53_resolver_rule_association.corp": {
+   "type": "aws_route53_resolver_rule_association",
+   "refs": {
+    "name": [
+     "var.lab_id"
+    ],
+    "resolver_rule_id": [
+     "aws_route53_resolver_rule.corp.id",
+     "aws_route53_resolver_rule.corp"
+    ],
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "id",
+    "resolver_rule_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route53_zone.cloud": {
+   "type": "aws_route53_zone",
+   "refs": {
+    "name": [
+     "local.cloud_domain"
+    ],
+    "vpc.0.vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ],
+    "vpc.0.vpc_region": [
+     "var.region"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "enable_accelerated_recovery",
+    "id",
+    "name_servers",
+    "primary_name_server",
+    "vpc.0.vpc_id",
+    "zone_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route_table.onprem": {
+   "type": "aws_route_table",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.onprem.id",
+     "aws_vpc.onprem"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "owner_id",
+    "propagating_vgws",
+    "route",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route_table.private": {
+   "type": "aws_route_table",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "owner_id",
+    "propagating_vgws",
+    "route",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route_table_association.onprem": {
+   "type": "aws_route_table_association",
+   "refs": {
+    "route_table_id": [
+     "aws_route_table.onprem.id",
+     "aws_route_table.onprem"
+    ],
+    "subnet_id": [
+     "aws_subnet.onprem.id",
+     "aws_subnet.onprem"
+    ]
+   },
+   "unknown": [
+    "id",
+    "route_table_id",
+    "subnet_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route_table_association.private[0]": {
+   "type": "aws_route_table_association",
+   "refs": {
+    "route_table_id": [
+     "aws_route_table.private.id",
+     "aws_route_table.private"
+    ],
+    "subnet_id": [
+     "aws_subnet.private",
+     "count.index"
+    ]
+   },
+   "unknown": [
+    "id",
+    "route_table_id",
+    "subnet_id"
+   ],
+   "sensitive": []
+  },
+  "aws_route_table_association.private[1]": {
+   "type": "aws_route_table_association",
+   "refs": {
+    "route_table_id": [
+     "aws_route_table.private.id",
+     "aws_route_table.private"
+    ],
+    "subnet_id": [
+     "aws_subnet.private",
+     "count.index"
+    ]
+   },
+   "unknown": [
+    "id",
+    "route_table_id",
+    "subnet_id"
+   ],
+   "sensitive": []
+  },
+  "aws_s3_bucket.dnslogs": {
+   "type": "aws_s3_bucket",
+   "refs": {
+    "bucket": [
+     "local.dnslogs_bucket"
+    ]
+   },
+   "unknown": [
+    "acceleration_status",
+    "acl",
+    "arn",
+    "bucket_domain_name",
+    "bucket_namespace",
+    "bucket_prefix",
+    "bucket_region",
+    "bucket_regional_domain_name",
+    "cors_rule",
+    "grant",
+    "hosted_zone_id",
+    "id",
+    "lifecycle_rule",
+    "logging",
+    "object_lock_configuration",
+    "object_lock_enabled",
+    "policy",
+    "replication_configuration",
+    "request_payer",
+    "server_side_encryption_configuration",
+    "versioning",
+    "website",
+    "website_domain",
+    "website_endpoint"
+   ],
+   "sensitive": []
+  },
+  "aws_s3_bucket_policy.dnslogs": {
+   "type": "aws_s3_bucket_policy",
+   "refs": {
+    "bucket": [
+     "aws_s3_bucket.dnslogs.id",
+     "aws_s3_bucket.dnslogs"
+    ],
+    "policy": [
+     "local.dnslogs_arn",
+     "data.aws_caller_identity.current.account_id",
+     "data.aws_caller_identity.current",
+     "data.aws_caller_identity.current.account_id",
+     "data.aws_caller_identity.current",
+     "local.dnslogs_arn",
+     "data.aws_caller_identity.current.account_id",
+     "data.aws_caller_identity.current"
+    ]
+   },
+   "unknown": [
+    "bucket",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_s3_bucket_public_access_block.dnslogs": {
+   "type": "aws_s3_bucket_public_access_block",
+   "refs": {
+    "bucket": [
+     "aws_s3_bucket.dnslogs.id",
+     "aws_s3_bucket.dnslogs"
+    ]
+   },
+   "unknown": [
+    "bucket",
+    "id"
+   ],
+   "sensitive": []
+  },
+  "aws_security_group.cloud": {
+   "type": "aws_security_group",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "egress",
+    "id",
+    "ingress",
+    "name_prefix",
+    "owner_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_security_group.dns": {
+   "type": "aws_security_group",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.onprem.id",
+     "aws_vpc.onprem"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "egress",
+    "id",
+    "ingress",
+    "name_prefix",
+    "owner_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_security_group.eice": {
+   "type": "aws_security_group",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "egress",
+    "id",
+    "ingress",
+    "name_prefix",
+    "owner_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_security_group.eice_onprem": {
+   "type": "aws_security_group",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.onprem.id",
+     "aws_vpc.onprem"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "egress",
+    "id",
+    "ingress",
+    "name_prefix",
+    "owner_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_security_group.resolver": {
+   "type": "aws_security_group",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "egress",
+    "id",
+    "ingress",
+    "name_prefix",
+    "owner_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_security_group.vms": {
+   "type": "aws_security_group",
+   "refs": {
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "egress",
+    "id",
+    "ingress",
+    "name_prefix",
+    "owner_id",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_subnet.onprem": {
+   "type": "aws_subnet",
+   "refs": {
+    "availability_zone": [
+     "local.azs[0]",
+     "local.azs"
+    ],
+    "cidr_block": [
+     "local.onprem_subnet_cidr"
+    ],
+    "vpc_id": [
+     "aws_vpc.onprem.id",
+     "aws_vpc.onprem"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "availability_zone_id",
+    "id",
+    "ipv6_cidr_block",
+    "ipv6_cidr_block_association_id",
+    "owner_id",
+    "private_dns_hostname_type_on_launch",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_subnet.private[0]": {
+   "type": "aws_subnet",
+   "refs": {
+    "availability_zone": [
+     "local.azs",
+     "count.index"
+    ],
+    "cidr_block": [
+     "local.vpc_cidr",
+     "count.index"
+    ],
+    "tags": [
+     "count.index"
+    ],
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "availability_zone_id",
+    "id",
+    "ipv6_cidr_block",
+    "ipv6_cidr_block_association_id",
+    "owner_id",
+    "private_dns_hostname_type_on_launch",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_subnet.private[1]": {
+   "type": "aws_subnet",
+   "refs": {
+    "availability_zone": [
+     "local.azs",
+     "count.index"
+    ],
+    "cidr_block": [
+     "local.vpc_cidr",
+     "count.index"
+    ],
+    "tags": [
+     "count.index"
+    ],
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "availability_zone_id",
+    "id",
+    "ipv6_cidr_block",
+    "ipv6_cidr_block_association_id",
+    "owner_id",
+    "private_dns_hostname_type_on_launch",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc.lab": {
+   "type": "aws_vpc",
+   "refs": {
+    "cidr_block": [
+     "local.vpc_cidr"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "default_network_acl_id",
+    "default_route_table_id",
+    "default_security_group_id",
+    "dhcp_options_id",
+    "enable_network_address_usage_metrics",
+    "id",
+    "ipv6_association_id",
+    "ipv6_cidr_block",
+    "ipv6_cidr_block_network_border_group",
+    "main_route_table_id",
+    "owner_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc.onprem": {
+   "type": "aws_vpc",
+   "refs": {
+    "cidr_block": [
+     "local.onprem_cidr"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "default_network_acl_id",
+    "default_route_table_id",
+    "default_security_group_id",
+    "dhcp_options_id",
+    "enable_network_address_usage_metrics",
+    "id",
+    "ipv6_association_id",
+    "ipv6_cidr_block",
+    "ipv6_cidr_block_network_border_group",
+    "main_route_table_id",
+    "owner_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_endpoint.onprem_s3": {
+   "type": "aws_vpc_endpoint",
+   "refs": {
+    "route_table_ids": [
+     "aws_route_table.onprem.id",
+     "aws_route_table.onprem"
+    ],
+    "service_name": [
+     "var.region"
+    ],
+    "vpc_id": [
+     "aws_vpc.onprem.id",
+     "aws_vpc.onprem"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "cidr_blocks",
+    "dns_entry",
+    "dns_options",
+    "id",
+    "ip_address_type",
+    "network_interface_ids",
+    "owner_id",
+    "policy",
+    "prefix_list_id",
+    "private_dns_enabled",
+    "requester_managed",
+    "route_table_ids",
+    "security_group_ids",
+    "service_region",
+    "state",
+    "subnet_configuration",
+    "subnet_ids",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_endpoint.s3": {
+   "type": "aws_vpc_endpoint",
+   "refs": {
+    "route_table_ids": [
+     "aws_route_table.private.id",
+     "aws_route_table.private"
+    ],
+    "service_name": [
+     "var.region"
+    ],
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "cidr_blocks",
+    "dns_entry",
+    "dns_options",
+    "id",
+    "ip_address_type",
+    "network_interface_ids",
+    "owner_id",
+    "policy",
+    "prefix_list_id",
+    "private_dns_enabled",
+    "requester_managed",
+    "route_table_ids",
+    "security_group_ids",
+    "service_region",
+    "state",
+    "subnet_configuration",
+    "subnet_ids",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_peering_connection.cloud_onprem": {
+   "type": "aws_vpc_peering_connection",
+   "refs": {
+    "peer_vpc_id": [
+     "aws_vpc.onprem.id",
+     "aws_vpc.onprem"
+    ],
+    "vpc_id": [
+     "aws_vpc.lab.id",
+     "aws_vpc.lab"
+    ]
+   },
+   "unknown": [
+    "accept_status",
+    "accepter",
+    "id",
+    "peer_owner_id",
+    "peer_region",
+    "peer_vpc_id",
+    "requester",
+    "vpc_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_egress_rule.cloud_all": {
+   "type": "aws_vpc_security_group_egress_rule",
+   "refs": {
+    "security_group_id": [
+     "aws_security_group.cloud.id",
+     "aws_security_group.cloud"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_egress_rule.dns_all": {
+   "type": "aws_vpc_security_group_egress_rule",
+   "refs": {
+    "security_group_id": [
+     "aws_security_group.dns.id",
+     "aws_security_group.dns"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_egress_rule.eice_onprem_ssh": {
+   "type": "aws_vpc_security_group_egress_rule",
+   "refs": {
+    "cidr_ipv4": [
+     "local.onprem_cidr"
+    ],
+    "security_group_id": [
+     "aws_security_group.eice_onprem.id",
+     "aws_security_group.eice_onprem"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_egress_rule.eice_ssh": {
+   "type": "aws_vpc_security_group_egress_rule",
+   "refs": {
+    "cidr_ipv4": [
+     "local.vpc_cidr"
+    ],
+    "security_group_id": [
+     "aws_security_group.eice.id",
+     "aws_security_group.eice"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_egress_rule.resolver_out_tcp": {
+   "type": "aws_vpc_security_group_egress_rule",
+   "refs": {
+    "cidr_ipv4": [
+     "local.dns_ip"
+    ],
+    "security_group_id": [
+     "aws_security_group.resolver.id",
+     "aws_security_group.resolver"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_egress_rule.resolver_out_udp": {
+   "type": "aws_vpc_security_group_egress_rule",
+   "refs": {
+    "cidr_ipv4": [
+     "local.dns_ip"
+    ],
+    "security_group_id": [
+     "aws_security_group.resolver.id",
+     "aws_security_group.resolver"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_egress_rule.vms_all": {
+   "type": "aws_vpc_security_group_egress_rule",
+   "refs": {
+    "security_group_id": [
+     "aws_security_group.vms.id",
+     "aws_security_group.vms"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.cloud_http_gateway": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "cidr_ipv4": [
+     "var.gateway_cidr"
+    ],
+    "security_group_id": [
+     "aws_security_group.cloud.id",
+     "aws_security_group.cloud"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.cloud_http_onprem": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "cidr_ipv4": [
+     "local.onprem_cidr"
+    ],
+    "security_group_id": [
+     "aws_security_group.cloud.id",
+     "aws_security_group.cloud"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.cloud_ssh_eice": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "referenced_security_group_id": [
+     "aws_security_group.eice.id",
+     "aws_security_group.eice"
+    ],
+    "security_group_id": [
+     "aws_security_group.cloud.id",
+     "aws_security_group.cloud"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "referenced_security_group_id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.cloud_ssh_gateway": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "cidr_ipv4": [
+     "var.gateway_cidr"
+    ],
+    "security_group_id": [
+     "aws_security_group.cloud.id",
+     "aws_security_group.cloud"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.dns_http_gateway": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "cidr_ipv4": [
+     "var.gateway_cidr"
+    ],
+    "security_group_id": [
+     "aws_security_group.dns.id",
+     "aws_security_group.dns"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.dns_ssh_eice": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "referenced_security_group_id": [
+     "aws_security_group.eice_onprem.id",
+     "aws_security_group.eice_onprem"
+    ],
+    "security_group_id": [
+     "aws_security_group.dns.id",
+     "aws_security_group.dns"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "referenced_security_group_id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.dns_ssh_gateway": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "cidr_ipv4": [
+     "var.gateway_cidr"
+    ],
+    "security_group_id": [
+     "aws_security_group.dns.id",
+     "aws_security_group.dns"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.dns_tcp": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "cidr_ipv4": [
+     "var.address_space"
+    ],
+    "security_group_id": [
+     "aws_security_group.dns.id",
+     "aws_security_group.dns"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.dns_udp": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "cidr_ipv4": [
+     "var.address_space"
+    ],
+    "security_group_id": [
+     "aws_security_group.dns.id",
+     "aws_security_group.dns"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.resolver_tcp": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "cidr_ipv4": [
+     "local.onprem_cidr"
+    ],
+    "security_group_id": [
+     "aws_security_group.resolver.id",
+     "aws_security_group.resolver"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.resolver_udp": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "cidr_ipv4": [
+     "local.onprem_cidr"
+    ],
+    "security_group_id": [
+     "aws_security_group.resolver.id",
+     "aws_security_group.resolver"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.vms_from_gateway": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "cidr_ipv4": [
+     "var.gateway_cidr"
+    ],
+    "security_group_id": [
+     "aws_security_group.vms.id",
+     "aws_security_group.vms"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "aws_vpc_security_group_ingress_rule.vms_ssh_eice": {
+   "type": "aws_vpc_security_group_ingress_rule",
+   "refs": {
+    "referenced_security_group_id": [
+     "aws_security_group.eice.id",
+     "aws_security_group.eice"
+    ],
+    "security_group_id": [
+     "aws_security_group.vms.id",
+     "aws_security_group.vms"
+    ]
+   },
+   "unknown": [
+    "arn",
+    "id",
+    "referenced_security_group_id",
+    "security_group_id",
+    "security_group_rule_id"
+   ],
+   "sensitive": []
+  },
+  "data.aws_availability_zones.available": {
+   "type": "aws_availability_zones",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  },
+  "data.aws_caller_identity.current": {
+   "type": "aws_caller_identity",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  },
+  "data.aws_partition.current": {
+   "type": "aws_partition",
+   "refs": {},
+   "unknown": [],
+   "sensitive": []
+  },
+  "data.aws_ssm_parameter.al2023_arm64": {
+   "type": "aws_ssm_parameter",
+   "refs": {},
+   "unknown": [],
+   "sensitive": [
+    "value"
+   ]
+  },
+  "time_sleep.resolver_tags": {
+   "type": "time_sleep",
+   "refs": {},
+   "unknown": [
+    "id"
+   ],
+   "sensitive": []
+  }
+ }
+}
