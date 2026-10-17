@@ -26,6 +26,15 @@
    "height": 1134
   }
  ],
+ "ans-23-hybrid-dns": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two EC2 Instance Connect Endpoints, two EC2 instances, an S3 bucket, two VPC endpoints and more, in two VPCs with three subnets.",
+   "width": 2131,
+   "height": 1146
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

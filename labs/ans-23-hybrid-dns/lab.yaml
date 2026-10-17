@@ -1,0 +1,51 @@
+# Lab ans-23 (AWS labs batch 4). ANS-C01 ((V) the wording against the current
+# exam guide): Network Design (hybrid DNS); Network Implementation (Route 53
+# Resolver endpoints and rules); Network Security, Compliance, and Governance
+# (DNS Firewall, query logging).
+# London list prices × 0.75 (labs-verify --aws-prices). A Resolver endpoint
+# bills each of its network interfaces by the hour (two each, AWS's minimum:
+# four here), believed by the started hour (V, A20). The private zone bills by
+# the month (a zone deleted within 12 hours is believed not to be charged,
+# spec §15, V); DNS Firewall, Resolver queries and the S3 query logs bill per
+# use (authored).
+id: ans-23-hybrid-dns
+version: 1
+cloud: aws
+title: "Hybrid DNS with Route 53 Resolver"
+summary: >-
+  A cloud VPC and a pretend data centre with its own DNS server (dnsmasq), joined so each can resolve the other's
+  private names through Route 53 Resolver inbound and outbound endpoints and a forwarding rule, with a private hosted
+  zone, a DNS Firewall rule blocking a domain, and query logs to S3.
+exam: ANS-C01
+skill_areas: [ans.design, ans.implementation, ans.security]
+level: expert
+type: explore
+prerequisites: [ans-20-vpc-design]
+cost:
+  items:
+    - name: "Route 53 Resolver endpoint network interfaces (2 endpoints, 2 each)"
+      gbp_h: 0.0938
+      qty: 4
+      whole_hours: true
+      aws_price: { service: AmazonRoute53, unit: Hrs, filters: { usagetype: "{usage}-ResolverNetworkInterface" } }
+    - name: "EC2 t4g.nano, Linux (vm-cloud and vm-dns)"
+      gbp_h: 0.0035
+      qty: 2
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      qty: 2
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - { name: "Route 53 private hosted zone ($0.50 a month)", gbp_h: 0.0005 }
+    - { name: "DNS Firewall and Resolver queries, light test traffic", gbp_h: 0.0001 }
+    - { name: "Query logs to S3, a few kB", gbp_h: 0.0001 }
+    - { name: "EC2 Instance Connect Endpoints (2) and VPC peering in one Region", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 8, destroy_min: 8, session_h: 2, max_h: 3 }
+capacity: { instance_types: [t4g.nano, t4g.nano] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 2 }
+identity:
+  creates: []
+  roles: []
+  governance: false

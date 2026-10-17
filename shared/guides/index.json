@@ -20,6 +20,13 @@
    "kind": "architecture"
   }
  ],
+ "ans-23-hybrid-dns": [
+  {
+   "file": "architecture.svg",
+   "title": "Hybrid DNS with Route 53 Resolver: architecture",
+   "kind": "architecture"
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

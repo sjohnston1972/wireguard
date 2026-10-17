@@ -1,0 +1,549 @@
+{
+ "schema": 1,
+ "labId": "ans-23-hybrid-dns",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:aws_ec2_instance_connect_endpoint.lab",
+   "key": "ec2:instance-connect-endpoint/eice-lab",
+   "kind": "bastion",
+   "label": "eice-lab",
+   "props": {},
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:instance-connect-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_ec2_instance_connect_endpoint.onprem",
+   "key": "ec2:instance-connect-endpoint/eice-onprem",
+   "kind": "bastion",
+   "label": "eice-onprem",
+   "props": {},
+   "parent": "tf:aws_subnet.onprem",
+   "armType": "ec2:instance-connect-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_instance.cloud",
+   "key": "ec2:instance/vm-cloud",
+   "kind": "vm",
+   "label": "vm-cloud",
+   "props": {
+    "size": "t4g.nano"
+   },
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:instance",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_instance.dns",
+   "key": "ec2:instance/vm-dns",
+   "kind": "vm",
+   "label": "vm-dns",
+   "props": {
+    "size": "t4g.nano",
+    "privateIp": "10.71.208.10"
+   },
+   "parent": "tf:aws_subnet.onprem",
+   "armType": "ec2:instance",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_resourcegroups_group.lab",
+   "key": "resource-groups:group/lab-ans-23-hybrid-dns",
+   "kind": "resourceGroup",
+   "label": "lab-ans-23-hybrid-dns · London",
+   "props": {
+    "region": "eu-west-2"
+   },
+   "armType": "resource-groups:group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route53_resolver_endpoint.inbound",
+   "key": "route53resolver:resolver-endpoint/rslvr-in",
+   "kind": "dnsResolver",
+   "label": "rslvr-in",
+   "props": {
+    "sku": "INBOUND"
+   },
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "route53resolver:resolver-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route53_resolver_endpoint.outbound",
+   "key": "route53resolver:resolver-endpoint/rslvr-out",
+   "kind": "dnsResolver",
+   "label": "rslvr-out",
+   "props": {
+    "sku": "OUTBOUND"
+   },
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "route53resolver:resolver-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route53_resolver_firewall_rule_group.lab",
+   "key": "route53resolver:firewall-rule-group/dnsfw-group",
+   "kind": "generic",
+   "label": "dnsfw-group",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "route53resolver:firewall-rule-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route53_resolver_firewall_domain_list.blocked",
+     "label": "dnsfw-blocked",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route53_resolver_firewall_rule.block",
+     "label": "block",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route53_resolver_firewall_rule_group_association.lab",
+     "label": "dnsfw-vpc-lab",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route53_resolver_query_log_config.lab",
+   "key": "route53resolver:resolver-query-log-config/querylog",
+   "kind": "generic",
+   "label": "querylog",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "route53resolver:resolver-query-log-config",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route53_resolver_query_log_config_association.lab",
+     "label": "lab",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route53_resolver_rule.corp",
+   "key": "route53resolver:resolver-rule/rule-corp",
+   "kind": "dnsRuleset",
+   "label": "rule-corp",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "route53resolver:resolver-rule",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route53_resolver_rule_association.corp",
+     "label": "lab-ans-23-hybrid-dns-corp",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route53_zone.cloud",
+   "key": "route53:hostedzone/zone-cloud",
+   "kind": "dnsZone",
+   "label": "zone-cloud",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "route53:hostedzone",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route53_record.app",
+     "label": "app.cloud.a23….internal",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route_table.onprem",
+   "key": "ec2:route-table/rt-onprem",
+   "kind": "routeTable",
+   "label": "rt-onprem",
+   "props": {},
+   "parent": "tf:aws_vpc.onprem",
+   "armType": "ec2:route-table",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route.onprem_to_cloud",
+     "label": "onprem_to_cloud",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.onprem",
+     "label": "onprem",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route_table.private",
+   "key": "ec2:route-table/rt-private",
+   "kind": "routeTable",
+   "label": "rt-private",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:route-table",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route.cloud_to_onprem",
+     "label": "cloud_to_onprem",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.private[0]",
+     "label": "private[0]",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.private[1]",
+     "label": "private[1]",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_s3_bucket.dnslogs",
+   "key": "s3:bucket/dnslogs",
+   "kind": "storage",
+   "label": "dnslogs",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "s3:bucket",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_s3_bucket_policy.dnslogs",
+     "label": "dnslogs",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_s3_bucket_public_access_block.dnslogs",
+     "label": "dnslogs",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.cloud",
+   "key": "ec2:security-group/sg-cloud",
+   "kind": "nsg",
+   "label": "sg-cloud",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.cloud_all",
+     "label": "cloud_all",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.cloud_http_gateway",
+     "label": "cloud_http_gateway",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.cloud_http_onprem",
+     "label": "cloud_http_onprem",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.cloud_ssh_eice",
+     "label": "cloud_ssh_eice",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.cloud_ssh_gateway",
+     "label": "cloud_ssh_gateway",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.dns",
+   "key": "ec2:security-group/sg-dns",
+   "kind": "nsg",
+   "label": "sg-dns",
+   "props": {},
+   "parent": "tf:aws_vpc.onprem",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.dns_all",
+     "label": "dns_all",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.dns_http_gateway",
+     "label": "dns_http_gateway",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.dns_ssh_eice",
+     "label": "dns_ssh_eice",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.dns_ssh_gateway",
+     "label": "dns_ssh_gateway",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.dns_tcp",
+     "label": "dns_tcp",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.dns_udp",
+     "label": "dns_udp",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.eice",
+   "key": "ec2:security-group/sg-eice",
+   "kind": "nsg",
+   "label": "sg-eice",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.eice_ssh",
+     "label": "eice_ssh",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.eice_onprem",
+   "key": "ec2:security-group/sg-eice-onprem",
+   "kind": "nsg",
+   "label": "sg-eice-onprem",
+   "props": {},
+   "parent": "tf:aws_vpc.onprem",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.eice_onprem_ssh",
+     "label": "eice_onprem_ssh",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.resolver",
+   "key": "ec2:security-group/sg-resolver",
+   "kind": "nsg",
+   "label": "sg-resolver",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.resolver_out_tcp",
+     "label": "resolver_out_tcp",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.resolver_out_udp",
+     "label": "resolver_out_udp",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.resolver_tcp",
+     "label": "resolver_tcp",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.resolver_udp",
+     "label": "resolver_udp",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.vms",
+   "key": "ec2:security-group/sg-vms",
+   "kind": "nsg",
+   "label": "sg-vms",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.vms_all",
+     "label": "vms_all",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_from_gateway",
+     "label": "vms_from_gateway",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_ssh_eice",
+     "label": "vms_ssh_eice",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.onprem",
+   "key": "ec2:subnet/snet-onprem-1",
+   "kind": "subnet",
+   "label": "snet-onprem-1",
+   "props": {
+    "prefix": "10.71.208.0/24"
+   },
+   "parent": "tf:aws_vpc.onprem",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.private[0]",
+   "key": "ec2:subnet/snet-private-1",
+   "kind": "subnet",
+   "label": "snet-private-1",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.private[1]",
+   "key": "ec2:subnet/snet-private-2",
+   "kind": "subnet",
+   "label": "snet-private-2",
+   "props": {
+    "prefix": "10.71.193.0/24"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc.lab",
+   "key": "ec2:vpc/vpc-lab",
+   "kind": "vnet",
+   "label": "vpc-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:vpc",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_peering_connection.cloud_onprem",
+     "label": "pcx-cloud-onprem",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc.onprem",
+   "key": "ec2:vpc/vpc-onprem",
+   "kind": "vnet",
+   "label": "vpc-onprem",
+   "props": {
+    "addressSpace": [
+     "10.71.208.0/20"
+    ]
+   },
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:vpc",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc_endpoint.onprem_s3",
+   "key": "ec2:vpc-endpoint/vpce-s3-onprem",
+   "kind": "privateEndpoint",
+   "label": "vpce-s3-onprem",
+   "props": {
+    "groupId": "s3"
+   },
+   "parent": "tf:aws_vpc.onprem",
+   "armType": "ec2:vpc-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc_endpoint.s3",
+   "key": "ec2:vpc-endpoint/vpce-s3",
+   "kind": "privateEndpoint",
+   "label": "vpce-s3",
+   "props": {
+    "groupId": "s3"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:vpc-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:aws_route53_resolver_endpoint.outbound>tf:aws_route53_resolver_rule.corp:forwards",
+   "from": "tf:aws_route53_resolver_endpoint.outbound",
+   "to": "tf:aws_route53_resolver_rule.corp",
+   "kind": "dependency",
+   "label": "forwards",
+   "via": "tf:aws_route53_resolver_rule.corp"
+  },
+  {
+   "id": "traffic:tf:aws_vpc.lab>tf:aws_vpc.onprem:peering",
+   "from": "tf:aws_vpc.lab",
+   "to": "tf:aws_vpc.onprem",
+   "kind": "traffic",
+   "label": "peering",
+   "via": "tf:aws_vpc_peering_connection.cloud_onprem"
+  }
+ ],
+ "notes": [
+  "2 resources of a type the diagram draws plainly"
+ ]
+}
