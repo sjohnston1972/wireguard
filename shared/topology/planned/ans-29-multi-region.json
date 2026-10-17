@@ -43,6 +43,26 @@
      "armType": null
     },
     {
+     "id": "tf:aws_ec2_transit_gateway_route_table.ireland",
+     "label": "tgw-rt-ireland",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table_association.ireland_peering",
+     "label": "ireland_peering",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table_association.ireland_vpc",
+     "label": "ireland_vpc",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table_propagation.ireland_vpc",
+     "label": "ireland_vpc",
+     "armType": null
+    },
+    {
      "id": "tf:aws_ec2_transit_gateway_vpc_attachment.ireland",
      "label": "tgwa-ireland",
      "armType": null
@@ -73,6 +93,26 @@
     {
      "id": "tf:aws_ec2_transit_gateway_route.london_to_ireland",
      "label": "london_to_ireland",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table.london",
+     "label": "tgw-rt-london",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table_association.london_peering",
+     "label": "london_peering",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table_association.london_vpc",
+     "label": "london_vpc",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table_propagation.london_vpc",
+     "label": "london_vpc",
      "armType": null
     },
     {

@@ -10,7 +10,8 @@
 // attachment and its accepter, the two static routes, the VPC peering and
 // its accepter) and compute.tf (the security groups and the three
 // instances). Every CIDR is built from var.address_space, so it is known at
-// plan; ids are not.
+// plan; ids are not. Each side has its own transit gateway route table (the
+// default tables are off), with the attachments associated and the VPC propagated.
 
 import { AWS_PROVIDER_CONFIG, AWS_SECONDARY, al2023Instance, awsData, cidrsubnet, ctxAws, ref, tagged, templateResources } from "../common-aws.mjs";
 
@@ -32,7 +33,16 @@ export default () => {
   const TGW_I = "aws_ec2_transit_gateway.ireland";
   const PCX = "aws_vpc_peering_connection.london_ireland";
   const ACCEPTER = "aws_ec2_transit_gateway_peering_attachment_accepter.ireland";
-  const defaultTable = (tgw) => [`${tgw}.association_default_route_table_id`, tgw];
+  const NO_DEFAULT = { transit_gateway_default_route_table_association: false, transit_gateway_default_route_table_propagation: false };
+  const table = (key, tgwAddr, name, extra = {}) => ({ address: `aws_ec2_transit_gateway_route_table.${key}`, ...extra, values: tagged(c, { tags: { Name: name } }), unknown: ["transit_gateway_id"], refs: { transit_gateway_id: ref(tgwAddr, "id") } });
+  const link = (kind, key, attachment, tbl, extra = {}) => ({
+    address: `aws_ec2_transit_gateway_route_table_${kind}.${key}`,
+    ...extra,
+    values: {},
+    unknown: ["transit_gateway_attachment_id", "transit_gateway_route_table_id"],
+    refs: { transit_gateway_attachment_id: ref(attachment, "id"), transit_gateway_route_table_id: ref(`aws_ec2_transit_gateway_route_table.${tbl}`, "id") },
+  });
+  const PEERING = "aws_ec2_transit_gateway_peering_attachment.london_ireland";
   const onIe = (r) => ({ ...r, providerKey: IE });
   const subnetIe = (key, name, cidr, zone, names, local) => onIe({
     address: `aws_subnet.${key}`,
@@ -43,7 +53,7 @@ export default () => {
   const tgw = (provider, asn, desc, name) => ({
     address: provider === IE ? TGW_I : TGW_L,
     ...(provider === IE ? { providerKey: IE } : {}),
-    values: tagged(c, { description: desc, amazon_side_asn: asn, auto_accept_shared_attachments: "disable", default_route_table_association: "enable", default_route_table_propagation: "enable", dns_support: "enable", tags: { Name: name } }),
+    values: tagged(c, { description: desc, amazon_side_asn: asn, auto_accept_shared_attachments: "disable", default_route_table_association: "disable", default_route_table_propagation: "disable", dns_support: "enable", tags: { Name: name } }),
     refs: { description: ["var.lab_id"] },
   });
   const rule = (kind, key, sg, values, refs = {}, unknown = [], extra = {}) => ({
@@ -78,9 +88,12 @@ export default () => {
       ...templateResources(c),
       // london.tf
       tgw("london", 64512, `lab ${id}: London`, "tgw-london"),
-      { address: "aws_ec2_transit_gateway_vpc_attachment.london", values: tagged(c, { tags: { Name: "tgwa-london" } }), unknown: ["transit_gateway_id", "vpc_id", "subnet_ids"], refs: { transit_gateway_id: ref(TGW_L, "id"), vpc_id: ref("aws_vpc.lab", "id"), subnet_ids: ["aws_subnet.private"] } },
+      { address: "aws_ec2_transit_gateway_vpc_attachment.london", values: tagged(c, { ...NO_DEFAULT, tags: { Name: "tgwa-london" } }), unknown: ["transit_gateway_id", "vpc_id", "subnet_ids"], refs: { transit_gateway_id: ref(TGW_L, "id"), vpc_id: ref("aws_vpc.lab", "id"), subnet_ids: ["aws_subnet.private"] } },
       { address: "aws_route.london_to_ireland_tgw", values: { destination_cidr_block: ieTgw }, unknown: ["route_table_id", "transit_gateway_id"], refs: { route_table_id: ref("aws_route_table.private", "id"), transit_gateway_id: ref(TGW_L, "id"), destination_cidr_block: ["local.ireland_tgw_subnet"] } },
       { address: "aws_route.london_to_ireland_pcx", values: { destination_cidr_block: iePcx }, unknown: ["route_table_id", "vpc_peering_connection_id"], refs: { route_table_id: ref("aws_route_table.private", "id"), vpc_peering_connection_id: ref(PCX, "id"), destination_cidr_block: ["local.ireland_pcx_subnet"] } },
+      table("london", TGW_L, "tgw-rt-london"),
+      link("association", "london_vpc", "aws_ec2_transit_gateway_vpc_attachment.london", "london"),
+      link("propagation", "london_vpc", "aws_ec2_transit_gateway_vpc_attachment.london", "london"),
       // ireland.tf
       onIe({
         address: "aws_resourcegroups_group.secondary",
@@ -113,10 +126,13 @@ export default () => {
       tgw(IE, 64513, `lab ${id}: Ireland`, "tgw-ireland"),
       onIe({
         address: "aws_ec2_transit_gateway_vpc_attachment.ireland",
-        values: tagged(c, { tags: { Name: "tgwa-ireland" } }),
+        values: tagged(c, { ...NO_DEFAULT, tags: { Name: "tgwa-ireland" } }),
         unknown: ["transit_gateway_id", "vpc_id", "subnet_ids"],
         refs: { transit_gateway_id: ref(TGW_I, "id"), vpc_id: ref(VPC_IE, "id"), subnet_ids: ["aws_subnet.ireland_tgw.id", "aws_subnet.ireland_tgw", "aws_subnet.ireland_pcx.id", "aws_subnet.ireland_pcx"] },
       }),
+      table("ireland", TGW_I, "tgw-rt-ireland", { providerKey: IE }),
+      link("association", "ireland_vpc", "aws_ec2_transit_gateway_vpc_attachment.ireland", "ireland", { providerKey: IE }),
+      link("propagation", "ireland_vpc", "aws_ec2_transit_gateway_vpc_attachment.ireland", "ireland", { providerKey: IE }),
       // peering.tf
       {
         address: "aws_ec2_transit_gateway_peering_attachment.london_ireland",
@@ -134,13 +150,15 @@ export default () => {
         address: "aws_ec2_transit_gateway_route.london_to_ireland",
         values: { destination_cidr_block: ie },
         unknown: ["transit_gateway_attachment_id", "transit_gateway_route_table_id"],
-        refs: { destination_cidr_block: ["local.ireland_cidr"], transit_gateway_attachment_id: ref("aws_ec2_transit_gateway_peering_attachment.london_ireland", "id"), transit_gateway_route_table_id: defaultTable(TGW_L) },
+        refs: { destination_cidr_block: ["local.ireland_cidr"], transit_gateway_attachment_id: ref("aws_ec2_transit_gateway_peering_attachment.london_ireland", "id"), transit_gateway_route_table_id: ref("aws_ec2_transit_gateway_route_table.london", "id") },
       },
+      link("association", "london_peering", PEERING, "london"),
+      link("association", "ireland_peering", ACCEPTER, "ireland", { providerKey: IE }),
       onIe({
         address: "aws_ec2_transit_gateway_route.ireland_to_london",
         values: { destination_cidr_block: c.vpcCidr },
         unknown: ["transit_gateway_attachment_id", "transit_gateway_route_table_id"],
-        refs: { destination_cidr_block: ["local.vpc_cidr"], transit_gateway_attachment_id: ref(ACCEPTER, "id"), transit_gateway_route_table_id: defaultTable(TGW_I) },
+        refs: { destination_cidr_block: ["local.vpc_cidr"], transit_gateway_attachment_id: ref(ACCEPTER, "id"), transit_gateway_route_table_id: ref("aws_ec2_transit_gateway_route_table.ireland", "id") },
       }),
       {
         address: PCX,
