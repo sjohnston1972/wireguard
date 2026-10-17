@@ -276,6 +276,11 @@ const FULL_2000 = { w: 1934, h: 746 };
 const FULL_1600 = { w: 1535, h: 660 };
 const TAB_1600 = { w: 905, h: 500 };
 
+// Labs that cannot reach the 60% full-screen floor. The full screen starts at MIN_FIT_ZOOM.full (60%) and lets the reader pan.
+const FULL_SCREEN_EXCEPTIONS: Record<string, { floor: number; why: string }> = {
+  "ans-25-load-balancing": { floor: 0.4, why: "ALB, NLB and GWLB in one VPC: 7 subnets, 7 security groups and 5 route tables; the full screen starts at 60% and pans (ruling, batch 4 Task 20 follow-up)" },
+};
+
 describe("one packing for every view (Steven, 2026-10-09: full screen changed the layout)", () => {
   it("the layout takes nothing about the space it is shown in: the default is the one canonical 9:5 packing", () => {
     expect(LAYOUT_ASPECT).toBe(1.8);
@@ -337,7 +342,15 @@ describe("one packing for every view (Steven, 2026-10-09: full screen changed th
   it("real labs: az104-06 and lab 16 read at about 70% in the dialog's tab; every lab fits the 2000 × 1030 full screen at 60% or more", () => {
     expect(fitZoom(layoutTopology(planned("az104-06-blob-security"), null), TAB_1600.w, TAB_1600.h, 1.75)).toBeGreaterThanOrEqual(0.7);
     expect(fitZoom(layoutTopology(planned("az104-16-lb-appgw"), null), TAB_1600.w, TAB_1600.h, 1.75)).toBeGreaterThanOrEqual(0.69);
-    for (const id of plannedIds()) expect(fitZoom(layoutTopology(planned(id), null), FULL_2000.w, FULL_2000.h, 1.75), `${id} at 2000 × 1030`).toBeGreaterThanOrEqual(0.6);
+    for (const id of plannedIds()) expect(fitZoom(layoutTopology(planned(id), null), FULL_2000.w, FULL_2000.h, 1.75), `${id} at 2000 × 1030`).toBeGreaterThanOrEqual(FULL_SCREEN_EXCEPTIONS[id]?.floor ?? 0.6);
+  });
+
+  it("the full-screen exception list stays exactly one lab, and each listed lab really is below 60%", () => {
+    expect(Object.keys(FULL_SCREEN_EXCEPTIONS)).toEqual(["ans-25-load-balancing"]);
+    for (const id of Object.keys(FULL_SCREEN_EXCEPTIONS)) {
+      expect(plannedIds(), `${id} is still a planned lab`).toContain(id);
+      expect(fitZoom(layoutTopology(planned(id), null), FULL_2000.w, FULL_2000.h, 1.75), `${id} no longer needs its exception: remove it`).toBeLessThan(0.6);
+    }
   });
 
   it("real labs: the canonical packing is never worse than the fixed shelves in the tab (its shape), and the full screen zooms in at least as far as the tab", () => {
