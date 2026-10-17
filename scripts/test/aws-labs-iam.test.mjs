@@ -177,9 +177,7 @@ test("lab-abac.json is the generator's, sorted, for the allow-listed services on
   // Batch 4 (2026-10-16): the two peering accepts left the change list (P3), so ec2:AcceptTransit* and ec2:AcceptVpc*
   // split into the other accepts; ec2:CreateTrafficMirrorFilterRule left the create list (P17); and (fix round 1) the
   // rule's delete and modify left the change list, so ec2:DeleteTraffic* and ec2:ModifyTraffic* split; nothing else changed.
-  // Final fix F1 (2026-10-17): ec2:CreateNetworkInterfacePermission and ec2:ModifyNetworkInterfaceAttribute left the
-  // change list (Route 53 Resolver's untagged ENIs); nothing else changed.
-  assert.equal(createHash("sha256").update(JSON.stringify({ create: ABAC.create, change: ABAC.change })).digest("hex"), "44221862fc872845ff80742cb1d06a1ab14f117e86b3624cf4fd7bd1665d3cea");
+  assert.equal(createHash("sha256").update(JSON.stringify({ create: ABAC.create, change: ABAC.change })).digest("hex"), "c6953632ca5b2cb40321818fd9da8152943b10eee39c263b6282cad949fb5643");
 });
 
 test("lab-policies.json is what --render makes from lab-abac.json", { skip }, () => {
@@ -994,26 +992,6 @@ test("ruling P22: a lab may delete an untagged network interface in its VPC (EFS
     assert.equal(decide(docs, { action: "ec2:DeleteNetworkInterface", resource: eni, ctx: R }), "allowed", `${who}: an untagged lab-VPC ENI`);
     assert.notEqual(decide(docs, { action: "ec2:DeleteNetworkInterface", resource: eni, ctx: { ...R, "aws:ResourceTag/wg-admin": "vpn" } }), "allowed", `${who}: the VPN server's ENI`);
     assert.notEqual(decide(docs, { action: "ec2:DeleteNetworkInterface", resource: eni, ctx: { ...R, "ec2:Vpc": FILL.vpcArns[0] } }), "allowed", `${who}: a default-VPC ENI`);
-  }
-});
-
-// F1: the Service Authorization Reference (2026-10-17) gives route53resolver:UpdateResolverEndpoint the dependent action
-// ec2:ModifyNetworkInterfaceAttribute, and AmazonRoute53ResolverFullAccess (v3) grants it with
-// ec2:CreateNetworkInterfacePermission; the endpoint's ENIs are Resolver-made and untagged.
-const RESOLVER_ENI = ["ec2:CreateNetworkInterfacePermission", "ec2:ModifyNetworkInterfaceAttribute"];
-test("F1 (lab 23): a lab may give an untagged network interface a permission or change its attributes (Resolver endpoints); the VPN server's and the default VPC's stay refused", { skip }, () => {
-  const { ABAC, POLICIES } = files();
-  const coversIt = (x) => (a) => a.toLowerCase() === x.toLowerCase() || (a.endsWith("*") && x.toLowerCase().startsWith(a.slice(0, -1).toLowerCase()));
-  const eni = `arn:aws:ec2:eu-west-2:${A}:network-interface/eni-0123456789abcdef0`;
-  const R = { "aws:RequestedRegion": "eu-west-2" };
-  for (const action of RESOLVER_ENI) {
-    assert.ok(CHANGE_TAG_EXEMPT.includes(action), action);
-    assert.ok(!ABAC.change.some(coversIt(action)), `no change-list entry covers ${action}`);
-    for (const [who, docs] of [["role", POLICIES.role], ["boundary", [POLICIES.boundary]]]) {
-      assert.equal(decide(docs, { action, resource: eni, ctx: R }), "allowed", `${who} ${action}: an untagged lab-VPC ENI`);
-      assert.equal(decide(docs, { action, resource: eni, ctx: { ...R, "aws:ResourceTag/wg-admin": "vpn" } }), "explicitDeny", `${who} ${action}: the VPN server's ENI`);
-      assert.equal(decide(docs, { action, resource: eni, ctx: { ...R, "ec2:Vpc": FILL.vpcArns[0] } }), "explicitDeny", `${who} ${action}: a default-VPC ENI`);
-    }
   }
 });
 

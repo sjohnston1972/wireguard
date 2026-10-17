@@ -1617,6 +1617,7 @@
             "ec2:CreateLaunchTemplateVersion",
             "ec2:CreateLocalGatewayRouteTablePermission",
             "ec2:CreateNetworkAclEntry",
+            "ec2:CreateNetworkInterfacePermission",
             "ec2:CreateOdbNetworkPeering",
             "ec2:CreateRoute",
             "ec2:CreateSubnetCidrReservation",
@@ -1739,6 +1740,7 @@
             "ec2:ModifyInstancePlacement",
             "ec2:ModifyIpam*",
             "ec2:ModifyLaunchTemplate",
+            "ec2:ModifyNetworkInterfaceAttribute",
             "ec2:ModifyOdbNetworkPeering",
             "ec2:ModifyPrivateDnsNameOptions",
             "ec2:ModifyPublicIpDnsNameOptions",
@@ -1782,10 +1784,7 @@
             "ec2:ResetAddressAttribute",
             "ec2:ResetFpgaImageAttribute",
             "ec2:ResetInstanceAttribute",
-            "ec2:ResetNetworkInterfaceAttribute",
-            "ec2:RestoreVolumeFromRecycleBin",
-            "ec2:Revoke*",
-            "ec2:Send*"
+            "ec2:ResetNetworkInterfaceAttribute"
           ],
           "Resource": "*",
           "Condition": {
@@ -1804,6 +1803,9 @@
           "Sid": "ChangeNeedsLabTag4",
           "Effect": "Deny",
           "Action": [
+            "ec2:RestoreVolumeFromRecycleBin",
+            "ec2:Revoke*",
+            "ec2:Send*",
             "ec2:StartVpcEndpointServicePrivateDnsVerification",
             "ec2:StopInstances",
             "ec2:Terminate*",
@@ -1971,9 +1973,7 @@
             "glue:PutDataQuality*",
             "glue:PutSchemaVersionMetadata",
             "glue:PutWorkflowRunProperties",
-            "glue:RegisterSchemaVersion",
-            "glue:RemoveSchemaVersionMetadata",
-            "glue:ResumeWorkflowRun"
+            "glue:RegisterSchemaVersion"
           ],
           "Resource": "*",
           "Condition": {
@@ -1992,6 +1992,8 @@
           "Sid": "ChangeNeedsLabTag5",
           "Effect": "Deny",
           "Action": [
+            "glue:RemoveSchemaVersionMetadata",
+            "glue:ResumeWorkflowRun",
             "glue:RunStatement",
             "glue:StartBlueprintRun",
             "glue:StartCrawler",
@@ -2185,9 +2187,7 @@
             "ssm:DeletePatchBaseline",
             "ssm:Deregister*",
             "ssm:DisassociateOpsItemRelatedItem",
-            "ssm:PutComplianceItems",
-            "ssm:RegisterDefaultPatchBaseline",
-            "ssm:RegisterPatchBaselineForPatchGroup"
+            "ssm:PutComplianceItems"
           ],
           "Resource": "*",
           "Condition": {
@@ -2205,6 +2205,8 @@
           "Sid": "ChangeNeedsLabTag6",
           "Effect": "Deny",
           "Action": [
+            "ssm:RegisterDefaultPatchBaseline",
+            "ssm:RegisterPatchBaselineForPatchGroup",
             "ssm:RegisterTargetWithMaintenanceWindow",
             "ssm:RegisterTaskWithMaintenanceWindow",
             "ssm:RequestManagedInstanceRoleToken",
