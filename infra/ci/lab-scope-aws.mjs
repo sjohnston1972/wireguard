@@ -1640,7 +1640,14 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           needOwn("subnet_id", ["aws_subnet"], "gateway", "one of the lab's own subnets");
           if (written("security_groups")) ownAll("security_groups", ["aws_security_group"], "gateway", "the lab's own security groups");
           for (const ip of list(val.private_ips)) if (plan && !ipInSlot(ip)) refuse("address", `private_ips ${JSON.stringify(ip instanceof Unknown ? "(not known at plan)" : (ip ?? null))}: inside the lab's slot`);
-          if (list(val.attachment).length || blockUnknown(val.attachment)) refuse("gateway", "an interface is its instance's primary_network_interface, never attached by its own block");
+          // Optional and Computed: left unset, a real plan prints `attachment` wholly unknown, with no references and not in the
+          // configuration (the provider's computed block, as the VPN tunnel log options); that passes. A written one (known values,
+          // references, or in the configuration, a dynamic block in HCL too) is refused.
+          {
+            const at = val.attachment;
+            const computedOnly = at instanceof Unknown && !res.configured?.has("attachment") && !(at.refs?.length > 0);
+            if (!computedOnly && (res.configured?.has("attachment") || list(at).length || blockUnknown(at))) refuse("gateway", "an interface is its instance's primary_network_interface, never attached by its own block");
+          }
           break;
         case "aws_instance":
           // Left unset, the block is computed (the interface RunInstances makes); a written one names the lab's own.

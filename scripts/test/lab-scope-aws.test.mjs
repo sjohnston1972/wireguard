@@ -1011,6 +1011,10 @@ test("final fix F2: lab 22's router sits on its own interface in its own subnet;
     return { ...i, unknown: Object.keys(r), refs: { ...i.refs, ...refs(r).refs } };
   };
   assert.deepEqual(rulesFor(c22, [nic(), vm()], net), []);
+  // Real plans print an unset `attachment` wholly unknown (run 39026020372): the computed block passes; a written one does not.
+  const planned = rulesFor(c22, [nic(), vm()], net);
+  assert.deepEqual(planned, []);
+  assert.deepEqual(rulesFor(c22, [nic({}, { subnet_id: "aws_subnet.private", security_groups: "aws_security_group.vms", attachment: "aws_instance.router" }), vm()], net), ["gateway: aws_network_interface.router"], "an attachment built from references");
   assert.deepEqual(rulesFor(c22, [nic({ subnet_id: "subnet-0123456789abcdef0" }, { security_groups: "aws_security_group.vms" })], net), ["gateway: aws_network_interface.router"], "a subnet not the lab's own");
   assert.deepEqual(rulesFor(c22, [nic({ private_ips: ["10.9.9.9"] })], net), ["address: aws_network_interface.router"], "an address outside the slot");
   assert.deepEqual(rulesFor(c22, [nic({ attachment: [{ device_index: 1 }] })], net), ["gateway: aws_network_interface.router"], "attached by its own block");
