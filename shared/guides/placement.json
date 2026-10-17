@@ -1,4 +1,112 @@
 {
+ "ans-20-vpc-design": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. An EC2 Instance Connect Endpoint, an NAT gateway, two internet gateways, an EC2 instance and more, in one VPC with five subnets.",
+   "width": 2075,
+   "height": 1046
+  }
+ ],
+ "ans-21-transit-gateway": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two EC2 Instance Connect Endpoints, an NAT gateway, a transit gateway, an internet gateway and more, in three VPCs with seven subnets.",
+   "width": 2758,
+   "height": 1134
+  }
+ ],
+ "ans-22-s2s-vpn": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A VPN gateway sending traffic to a customer gateway, in two VPCs with three subnets.",
+   "width": 2003,
+   "height": 1134
+  }
+ ],
+ "ans-23-hybrid-dns": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two EC2 Instance Connect Endpoints, two EC2 instances, an S3 bucket, two VPC endpoints and more, in two VPCs with three subnets.",
+   "width": 2131,
+   "height": 1146
+  }
+ ],
+ "ans-24-privatelink": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A load balancer sending traffic to an EC2 instance, in two VPCs with four subnets.",
+   "width": 2148,
+   "height": 1146
+  }
+ ],
+ "ans-25-load-balancing": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Three load balancers sending traffic to three EC2 instances, in one VPC with seven subnets.",
+   "width": 2435,
+   "height": 1586
+  }
+ ],
+ "ans-26-edge": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A CloudFront distribution and a Global Accelerator sending traffic to two EC2 instances, in two VPCs with five subnets.",
+   "width": 2583,
+   "height": 1146
+  }
+ ],
+ "ans-27-network-firewall": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A Network Firewall, two EC2 Instance Connect Endpoints, an NAT gateway, a transit gateway and more, in three VPCs with seven subnets.",
+   "width": 2758,
+   "height": 1134
+  }
+ ],
+ "ans-28-flow-logs-fix": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A load balancer sending traffic to an EC2 instance, in two VPCs with four subnets.",
+   "width": 2195,
+   "height": 1146
+  }
+ ],
+ "ans-29-multi-region": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A transit gateway sending traffic to a transit gateway, in two VPCs with four subnets.",
+   "width": 1939,
+   "height": 1146
+  }
+ ],
+ "ans-30-vpc-lattice": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two VPC Lattice services sending traffic to two EC2 instances, in two VPCs with four subnets.",
+   "width": 2323,
+   "height": 1314
+  }
+ ],
+ "ans-31-client-vpn": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. An EC2 Instance Connect Endpoint, a Client VPN endpoint, an EC2 instance, a VPC endpoint and more, in one VPC with two subnets.",
+   "width": 1387,
+   "height": 928
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

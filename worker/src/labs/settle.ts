@@ -31,7 +31,7 @@ import type { LabEndReason } from "../../../shared/api";
 import { labIsClean } from "./orphans";
 import { UNPEER_FOR_SERVER } from "./engine";
 import { cloudOfId, sessionEstimateGbp, wholeHoursGbpH } from "../../../shared/labs";
-import { clearPasswords, freeSlot, getSession, payloadOf, settleRun, updateSession, type LabRunDb, type LabSessionRow } from "./store";
+import { clearSecrets, freeSlot, getSession, payloadOf, settleRun, updateSession, type LabRunDb, type LabSessionRow } from "./store";
 
 const HOUR = 3_600_000;
 
@@ -112,7 +112,7 @@ export async function endSession(env: Env, s: LabSessionRow, clean: boolean, lef
     { state: clean ? "ended" : "ended_dirty", ended_at: ended, est_gbp: est, end_reason: s.end_reason ?? reason, leftovers_json: clean ? null : JSON.stringify(leftovers) },
     "state NOT IN ('ended', 'ended_dirty')",
   );
-  await clearPasswords(env, s.id);
+  await clearSecrets(env, s.id);
   if (!changed) return;
   if (clean) {
     await freeSlot(env, s.id);

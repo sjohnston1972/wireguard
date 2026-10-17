@@ -346,3 +346,15 @@ test("an AWS target's mock plan runs terraform test -verbose -json and fails on 
   const none = runLabsTf({ labsDir: dir, run: fakeRun({ stream: "not json\n" }).run, log: quiet, only: ["_template-aws"] });
   assert.match(none.failures[0].message, /no test_plan message/);
 });
+
+test("the AWS mock carries one account: the caller identity, its arn, and the plan's account for the P7 rule", async () => {
+  const { MOCK_ACCOUNT, mockPlanScopeProblems } = await import("../labs-tf.mjs");
+  assert.match(MOCK_ACCOUNT, /^\d{12}$/);
+  const f = mockPlanFile("soa-09-route53-cloudfront", ["aws"]);
+  assert.ok(f.includes(`account_id = "${MOCK_ACCOUNT}"`) && f.includes(`arn:aws:iam::${MOCK_ACCOUNT}:user/`));
+  // A soa-09-shaped bucket policy (a service Allow naming an aws:SourceArn in the account) passes; a foreign account's fails.
+  const stream = (acct) => JSON.stringify({ type: "test_plan", test_plan: { resource_changes: [{ address: "aws_s3_bucket_policy.site", mode: "managed", type: "aws_s3_bucket_policy", name: "site", provider_name: "registry.terraform.io/hashicorp/aws", change: { actions: ["create"], after: { bucket: "b", policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: "cloudfront.amazonaws.com" }, Action: "s3:GetObject", Resource: "arn:aws:s3:::b/*", Condition: { ArnLike: { "AWS:SourceArn": `arn:aws:cloudfront::${acct}:distribution/*` } } }] }) }, after_unknown: {} } }] } }) + "\n";
+  const bucket = (ps) => ps.filter((p) => /s3_bucket_policy/.test(p.address) && /P7/.test(p.message));
+  assert.deepEqual(bucket(mockPlanScopeProblems(stream(MOCK_ACCOUNT), "soa-09-route53-cloudfront")), []);
+  assert.equal(bucket(mockPlanScopeProblems(stream("999999999999"), "soa-09-route53-cloudfront")).length, 1);
+});

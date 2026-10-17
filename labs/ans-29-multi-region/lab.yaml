@@ -1,0 +1,62 @@
+# Lab ans-29 (AWS labs batch 4). ANS-C01 ((V) the wording against the current
+# exam guide): Network Design (multi-Region connectivity, transit gateway
+# peering against VPC peering); Network Implementation (peering attachments,
+# accepting across Regions, static transit gateway routes).
+# London list prices × 0.75 (labs-verify --aws-prices); Ireland items are
+# priced in eu-west-1 (region: secondary). Each side bills its transit
+# gateway's attachments by the started hour; whether the peering attachment
+# bills on both sides is V (Task 24 reads Cost Explorer), so both are
+# counted. The attachments are authored only: no Price List product matched
+# their filter (Task 23, 2026-10-17); AWS lists $0.06 an attachment-hour in
+# London (£0.045, the figure here) and $0.05 in Ireland
+# (£0.0375). Inter-Region data is per GB (authored, light test traffic).
+id: ans-29-multi-region
+version: 1
+cloud: aws
+title: "Multi-region: inter-region TGW peering"
+summary: >-
+  A VPC and a transit gateway in London and in Ireland, joined twice: by a transit gateway peering attachment with
+  static routes, and by an inter-Region VPC peering, with one Ireland instance behind each path to compare them.
+exam: ANS-C01
+skill_areas: [ans.design, ans.implementation]
+level: expert
+type: explore
+prerequisites: [ans-21-transit-gateway]
+cost:
+  items:
+    - name: "Transit gateway attachments in London (VPC and peering), hourly"
+      gbp_h: 0.045
+      qty: 2
+      whole_hours: true
+    - name: "Transit gateway attachments in Ireland (VPC and peering), hourly"
+      gbp_h: 0.0375
+      qty: 2
+      whole_hours: true
+      region: secondary
+    - { name: "Inter-Region data transfer, light test traffic", gbp_h: 0.0005 }
+    - name: "EC2 t4g.nano, Linux (London)"
+      gbp_h: 0.0035
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EC2 t4g.nano, Linux (Ireland, 2 running)"
+      gbp_h: 0.0034
+      qty: 2
+      region: secondary
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB (London)"
+      gbp_h: 0.0008
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - name: "EBS gp3 root volume, 8 GiB (Ireland)"
+      gbp_h: 0.0007
+      qty: 2
+      region: secondary
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - { name: "EC2 Instance Connect Endpoints (London and Ireland)", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 15, destroy_min: 12, session_h: 2, max_h: 3 }
+capacity: { instance_types: [t4g.nano, t4g.nano, t4g.nano] }
+regions: { secondary: eu-west-1 }
+connectivity: { peering: optional, dns_link: false, subnets_used: 2 }
+identity:
+  creates: []
+  roles: []
+  governance: false

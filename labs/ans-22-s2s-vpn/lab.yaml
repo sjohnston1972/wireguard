@@ -1,0 +1,50 @@
+# Lab ans-22 (AWS labs batch 4). ANS-C01 ((V) the wording against the current
+# exam guide): Network Implementation (site-to-site VPN, BGP); Network
+# Management and Operation (tunnel status, route propagation, failover);
+# Network Design (hybrid connectivity choices; Direct Connect and
+# accelerated VPN are readme-only, spec §12.2).
+# London list prices × 0.75 (labs-verify --aws-prices); the VPN connection
+# and the router's address bill each started hour whole (V, A20; the VPN
+# filter is V, Task 23). The router is Ubuntu on a t4g.micro (ruling P11).
+id: ans-22-s2s-vpn
+version: 1
+cloud: aws
+title: "Site-to-site VPN with BGP to a pretend data centre"
+summary: >-
+  A site-to-site VPN from a VPC's virtual private gateway to a pretend data centre: a second VPC whose Ubuntu
+  router, behind an Elastic IP, brings up both IPsec tunnels with strongSwan and exchanges routes by BGP with FRR.
+exam: ANS-C01
+skill_areas: [ans.implementation, ans.operations, ans.design]
+level: expert
+type: explore
+prerequisites: [ans-20-vpc-design]
+cost:
+  items:
+    - name: "Site-to-site VPN connection, hourly"
+      gbp_h: 0.0375
+      whole_hours: true
+      aws_price: { service: AmazonVPC, unit: Hrs, filters: { usagetype: "{usage}-VPN-Usage-Hours:ipsec.1" } }
+    - name: "Public IPv4 address (the router's Elastic IP)"
+      gbp_h: 0.0038
+      aws_price: { service: AmazonVPC, unit: Hrs, filters: { group: VPCPublicIPv4Address, usagetype: "{usage}-PublicIPv4:InUseAddress" } }
+    - name: "EC2 t4g.micro, Linux (the router)"
+      gbp_h: 0.0071
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.micro, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EC2 t4g.nano, Linux (vm-aws)"
+      gbp_h: 0.0035
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      qty: 2
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - { name: "VPN data out, light test traffic", gbp_h: 0.0001 }
+    - { name: "EC2 Instance Connect Endpoints (2)", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 12, destroy_min: 10, session_h: 2, max_h: 3 }
+capacity: { instance_types: [t4g.micro, t4g.nano] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 2 }
+identity:
+  creates: []
+  roles: []
+  governance: false

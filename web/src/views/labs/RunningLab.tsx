@@ -7,6 +7,7 @@ import { useLabSecret, useSaveLabNote } from "@/api/mutations";
 import { StepTrack } from "@/views/activity/RunPanels";
 import { useRunData } from "@/views/activity/useRunData";
 import { LIVE_LOG_WAITING } from "@/lib/parseLog";
+import { AWS_FILES_LABS } from "@shared/labs";
 import { fmtClock, fmtSpan, peeringWord, useLabClock } from "./model";
 import { ReadmeView } from "./ReadmeView";
 import { LabGuideButton } from "./LabGuideButton";
@@ -155,8 +156,24 @@ function Addresses({ s, aws, connectPossible }: { s: LabSession; aws: boolean; c
   );
 }
 
-/** The admin password and the lab's Entra users, fetched only on Show and dropped on Hide or close. */
-function Secret({ labId, running, aws = false }: { labId: string; running: boolean; aws?: boolean }) {
+/**
+ * Save one file the lab handed over: a Blob, its own name, the object URL let go on the next tick (ruling P25; some
+ * browsers cancel a download whose URL is revoked in the click's own turn). application/octet-stream, so no browser
+ * adds .txt to ans-31.ovpn.
+ */
+function download(name: string, text: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: "application/octet-stream" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/** The admin password and the lab's Entra users, fetched only on Show and dropped on Hide or close, and lab 31's files, each downloadable (ruling P25). */
+function Secret({ labId, running, aws = false, labFiles = false }: { labId: string; running: boolean; aws?: boolean; labFiles?: boolean }) {
   const fetchSecret = useLabSecret();
   // Held only in this component: Hide forgets it, and closing the modal unmounts it and the secret
   // goes with it. reset() also drops the mutation's copy from the query client (gcTime 0).
@@ -199,7 +216,21 @@ function Secret({ labId, running, aws = false }: { labId: string; running: boole
       {shown ? (
         <KeyValue items={[{ label: "Admin password", value: shown.adminPassword, mono: true, copy: true }, ...users.map(([name, upn]) => ({ label: name, value: upn, mono: true, copy: true }))]} />
       ) : (
-        <p className="labs-muted">The admin password and the lab's {aws ? "" : "Entra "}user names, shown only when you ask.</p>
+        <p className="labs-muted">
+          {aws && labFiles ? "The admin password, the lab's user names and its files, shown only when you ask." : `The admin password and the lab's ${aws ? "" : "Entra "}user names, shown only when you ask.`}
+        </p>
+      )}
+      {shown && Object.keys(shown.files ?? {}).length > 0 && (
+        <ul className="labs-files" aria-label="Lab files">
+          {Object.entries(shown.files).map(([name, text]) => (
+            <li key={name} className="labs-files__row">
+              <span className="labs-files__name">{name}</span>
+              <Button size="sm" variant="secondary" onClick={() => download(name, text)} aria-label={`Download ${name}`}>
+                Download
+              </Button>
+            </li>
+          ))}
+        </ul>
       )}
     </section>
   );
@@ -316,7 +347,7 @@ export function RunningLab({ d }: { d: LabDetail }) {
         {s.state === "failed" && <p className="labs-deploy__blocked">The deploy failed. It is torn down by itself 15 minutes after it failed, or now with Tear down.</p>}
         <Resources d={d} />
         <Addresses s={s} aws={d.cloud === "aws"} connectPossible={d.connect?.possible !== false} />
-        <Secret labId={d.card.id} aws={d.cloud === "aws"} running={s.state === "running"} />
+        <Secret labId={d.card.id} aws={d.cloud === "aws"} labFiles={AWS_FILES_LABS.includes(d.card.id)} running={s.state === "running"} />
         <Note key={s.id} s={s} />
       </div>
       <LabReadmeTabs d={d} />

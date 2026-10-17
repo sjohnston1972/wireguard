@@ -493,4 +493,30 @@ describe("batch 3 reads", () => {
       { name: "zone-dr", type: "route53:hostedzone", group: "lab-saa-16-dr-pilot-light (global: Route 53)", state: null },
     ]);
   });
+
+  it("ruling P22: a WAF ACL and a Lattice listener name their own types", () => {
+    expect(arnParts("arn:aws:wafv2:us-east-1:123456789012:global/webacl/lab-ans-26-edge-waf/0a1b")).toEqual({ service: "wafv2", type: "global/webacl", id: "lab-ans-26-edge-waf/0a1b" });
+    expect(arnParts("arn:aws:vpc-lattice:eu-west-2:123456789012:service/svc-0a/listener/listener-0b")).toEqual({ service: "vpc-lattice", type: "listener", id: "svc-0a/listener/listener-0b" });
+    expect(arnParts("arn:aws:vpc-lattice:eu-west-2:123456789012:service/svc-0a")).toEqual({ service: "vpc-lattice", type: "service", id: "svc-0a" });
+    expect(arnParts("arn:aws:globalaccelerator::123456789012:accelerator/0abc")).toEqual({ service: "globalaccelerator", type: "accelerator", id: "0abc" });
+  });
+
+  it("ruling P24: lab 26's resources come from London, Ireland, us-east-1 and us-west-2, each labelled", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    await runningLab(env, world, "ans-26-edge");
+    const tag = (Name: string) => ({ "cloudlabs-lab": "ans-26-edge", Name });
+    world.labAws.tagged["eu-west-2"] = [{ arn: "arn:aws:ec2:eu-west-2:123456789012:instance/i-0ldn", tags: tag("vm-london") }];
+    world.labAws.tagged["eu-west-1"] = [{ arn: "arn:aws:ec2:eu-west-1:123456789012:instance/i-0dub", tags: tag("vm-ireland") }];
+    world.labAws.tagged["us-east-1"] = [{ arn: "arn:aws:wafv2:us-east-1:123456789012:global/webacl/lab-ans-26-edge-waf/0a1b", tags: tag("waf-lab") }];
+    world.labAws.tagged["us-west-2"] = [{ arn: "arn:aws:globalaccelerator::123456789012:accelerator/0abc", tags: tag("ga-lab") }];
+    const r = await api(env, "GET", "/labs/ans-26-edge");
+    expect(r.json.resources).toEqual([
+      { name: "vm-london", type: "ec2:instance", group: "lab-ans-26-edge (London)", state: null },
+      { name: "vm-ireland", type: "ec2:instance", group: "lab-ans-26-edge (Ireland)", state: null },
+      { name: "waf-lab", type: "wafv2:global/webacl", group: "lab-ans-26-edge (global: CloudFront, WAF)", state: null },
+      { name: "ga-lab", type: "globalaccelerator:accelerator", group: "lab-ans-26-edge (global: Global Accelerator)", state: null },
+    ]);
+  });
 });

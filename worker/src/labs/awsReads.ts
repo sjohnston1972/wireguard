@@ -33,6 +33,13 @@ export function arnParts(arn: string): { service: string; type: string; id: stri
     if (seg[0] === "apis" && seg[2] === "stages" && seg[3]) return { service, type: "stages", id: `${seg[1]}/${seg.slice(3).join("/")}` };
     return { service, type: seg[0] ?? "", id: seg.slice(1).join("/") };
   }
+  // Ruling P22: a WAF ACL's scope and kind are its type (global/webacl, regional/webacl); a Lattice listener is a
+  // listener, not its service.
+  if (service === "wafv2") {
+    const seg = resource.split("/");
+    return { service, type: seg.slice(0, 2).join("/"), id: seg.slice(2).join("/") };
+  }
+  if (service === "vpc-lattice" && /^service\/[^/]+\/listener\//.test(resource)) return { service, type: "listener", id: resource.slice("service/".length) };
   const m = resource.match(/^([^/:]+)[/:](.+)$/);
   if (m) return { service, type: m[1]!, id: m[2]! };
   return { service, type: service === "s3" ? "bucket" : "", id: resource };

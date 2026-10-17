@@ -1,0 +1,598 @@
+{
+ "schema": 1,
+ "labId": "ans-21-transit-gateway",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:aws_ec2_instance_connect_endpoint.lab",
+   "key": "ec2:instance-connect-endpoint/eice-lab",
+   "kind": "bastion",
+   "label": "eice-lab",
+   "props": {},
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:instance-connect-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_ec2_instance_connect_endpoint.spoke_b",
+   "key": "ec2:instance-connect-endpoint/eice-spoke-b",
+   "kind": "bastion",
+   "label": "eice-spoke-b",
+   "props": {},
+   "parent": "tf:aws_subnet.spoke_b[0]",
+   "armType": "ec2:instance-connect-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_ec2_transit_gateway.lab",
+   "key": "ec2:transit-gateway/tgw-lab",
+   "kind": "transitGateway",
+   "label": "tgw-lab",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:transit-gateway",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_ec2_transit_gateway_route.spokes_blackhole_b",
+     "label": "spokes_blackhole_b",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route.spokes_default",
+     "label": "spokes_default",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table.egress",
+     "label": "tgw-rt-egress",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table.spokes",
+     "label": "tgw-rt-spokes",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table_association.egress",
+     "label": "egress",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table_association.spoke_a",
+     "label": "spoke_a",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table_association.spoke_b",
+     "label": "spoke_b",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table_propagation.spoke_a",
+     "label": "spoke_a",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table_propagation.spoke_b",
+     "label": "spoke_b",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_vpc_attachment.egress",
+     "label": "tgwa-egress",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_vpc_attachment.spoke_a",
+     "label": "tgwa-spoke-a",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_vpc_attachment.spoke_b",
+     "label": "tgwa-spoke-b",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_instance.a",
+   "key": "ec2:instance/vm-a",
+   "kind": "vm",
+   "label": "vm-a",
+   "props": {
+    "size": "t4g.nano"
+   },
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:instance",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_instance.b",
+   "key": "ec2:instance/vm-b",
+   "kind": "vm",
+   "label": "vm-b",
+   "props": {
+    "size": "t4g.nano"
+   },
+   "parent": "tf:aws_subnet.spoke_b[0]",
+   "armType": "ec2:instance",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_internet_gateway.egress",
+   "key": "ec2:internet-gateway/igw-egress",
+   "kind": "internetGateway",
+   "label": "igw-egress",
+   "props": {},
+   "parent": "tf:aws_vpc.egress",
+   "armType": "ec2:internet-gateway",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_nat_gateway.egress",
+   "key": "ec2:natgateway/nat-egress",
+   "kind": "natGateway",
+   "label": "nat-egress",
+   "props": {},
+   "parent": "tf:aws_subnet.egress_public",
+   "armType": "ec2:natgateway",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_eip.nat",
+     "label": "eip-nat",
+     "armType": "ec2:elastic-ip"
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_resourcegroups_group.lab",
+   "key": "resource-groups:group/lab-ans-21-transit-gateway",
+   "kind": "resourceGroup",
+   "label": "lab-ans-21-transit-gateway · London",
+   "props": {
+    "region": "eu-west-2"
+   },
+   "armType": "resource-groups:group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route_table.egress_public",
+   "key": "ec2:route-table/rt-egress-public",
+   "kind": "routeTable",
+   "label": "rt-egress-public",
+   "props": {},
+   "parent": "tf:aws_vpc.egress",
+   "armType": "ec2:route-table",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route.egress_public_internet",
+     "label": "egress_public_internet",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route.egress_public_slot",
+     "label": "egress_public_slot",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.egress_public",
+     "label": "egress_public",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route_table.egress_tgw",
+   "key": "ec2:route-table/rt-egress-tgw",
+   "kind": "routeTable",
+   "label": "rt-egress-tgw",
+   "props": {},
+   "parent": "tf:aws_vpc.egress",
+   "armType": "ec2:route-table",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route.egress_tgw_nat",
+     "label": "egress_tgw_nat",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.egress_tgw[0]",
+     "label": "egress_tgw[0]",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.egress_tgw[1]",
+     "label": "egress_tgw[1]",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route_table.private",
+   "key": "ec2:route-table/rt-private",
+   "kind": "routeTable",
+   "label": "rt-private",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:route-table",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route.spoke_a_default",
+     "label": "spoke_a_default",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.private[0]",
+     "label": "private[0]",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.private[1]",
+     "label": "private[1]",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route_table.spoke_b",
+   "key": "ec2:route-table/rt-spoke-b",
+   "kind": "routeTable",
+   "label": "rt-spoke-b",
+   "props": {},
+   "parent": "tf:aws_vpc.spoke_b",
+   "armType": "ec2:route-table",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route.spoke_b_default",
+     "label": "spoke_b_default",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.spoke_b[0]",
+     "label": "spoke_b[0]",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.spoke_b[1]",
+     "label": "spoke_b[1]",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.eice",
+   "key": "ec2:security-group/sg-eice",
+   "kind": "nsg",
+   "label": "sg-eice",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.eice_ssh",
+     "label": "eice_ssh",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.eice_spoke_b",
+   "key": "ec2:security-group/sg-eice-spoke-b",
+   "kind": "nsg",
+   "label": "sg-eice-spoke-b",
+   "props": {},
+   "parent": "tf:aws_vpc.spoke_b",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.eice_spoke_b_ssh",
+     "label": "eice_spoke_b_ssh",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.vms",
+   "key": "ec2:security-group/sg-vms",
+   "kind": "nsg",
+   "label": "sg-vms",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.vms_all",
+     "label": "vms_all",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_from_gateway",
+     "label": "vms_from_gateway",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_ssh_eice",
+     "label": "vms_ssh_eice",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.vms_a",
+   "key": "ec2:security-group/sg-vms-a",
+   "kind": "nsg",
+   "label": "sg-vms-a",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_a_http",
+     "label": "vms_a_http",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_a_icmp",
+     "label": "vms_a_icmp",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.vms_b",
+   "key": "ec2:security-group/sg-vms-b",
+   "kind": "nsg",
+   "label": "sg-vms-b",
+   "props": {},
+   "parent": "tf:aws_vpc.spoke_b",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.vms_b_all",
+     "label": "vms_b_all",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_b_http",
+     "label": "vms_b_http",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_b_icmp",
+     "label": "vms_b_icmp",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_b_ssh_eice",
+     "label": "vms_b_ssh_eice",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.egress_public",
+   "key": "ec2:subnet/snet-egress-public",
+   "kind": "subnet",
+   "label": "snet-egress-public",
+   "props": {
+    "prefix": "10.71.226.0/24"
+   },
+   "parent": "tf:aws_vpc.egress",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.egress_tgw[0]",
+   "key": "ec2:subnet/snet-egress-tgw-1",
+   "kind": "subnet",
+   "label": "snet-egress-tgw-1",
+   "props": {
+    "prefix": "10.71.224.0/24"
+   },
+   "parent": "tf:aws_vpc.egress",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.egress_tgw[1]",
+   "key": "ec2:subnet/snet-egress-tgw-2",
+   "kind": "subnet",
+   "label": "snet-egress-tgw-2",
+   "props": {
+    "prefix": "10.71.225.0/24"
+   },
+   "parent": "tf:aws_vpc.egress",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.private[0]",
+   "key": "ec2:subnet/snet-private-1",
+   "kind": "subnet",
+   "label": "snet-private-1",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.private[1]",
+   "key": "ec2:subnet/snet-private-2",
+   "kind": "subnet",
+   "label": "snet-private-2",
+   "props": {
+    "prefix": "10.71.193.0/24"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.spoke_b[0]",
+   "key": "ec2:subnet/snet-spoke-b-1",
+   "kind": "subnet",
+   "label": "snet-spoke-b-1",
+   "props": {
+    "prefix": "10.71.208.0/24"
+   },
+   "parent": "tf:aws_vpc.spoke_b",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.spoke_b[1]",
+   "key": "ec2:subnet/snet-spoke-b-2",
+   "kind": "subnet",
+   "label": "snet-spoke-b-2",
+   "props": {
+    "prefix": "10.71.209.0/24"
+   },
+   "parent": "tf:aws_vpc.spoke_b",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc.egress",
+   "key": "ec2:vpc/vpc-egress",
+   "kind": "vnet",
+   "label": "vpc-egress",
+   "props": {
+    "addressSpace": [
+     "10.71.224.0/20"
+    ]
+   },
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:vpc",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc.lab",
+   "key": "ec2:vpc/vpc-lab",
+   "kind": "vnet",
+   "label": "vpc-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:vpc",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc.spoke_b",
+   "key": "ec2:vpc/vpc-spoke-b",
+   "kind": "vnet",
+   "label": "vpc-spoke-b",
+   "props": {
+    "addressSpace": [
+     "10.71.208.0/20"
+    ]
+   },
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:vpc",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc_endpoint.s3",
+   "key": "ec2:vpc-endpoint/vpce-s3",
+   "kind": "privateEndpoint",
+   "label": "vpce-s3",
+   "props": {
+    "groupId": "s3"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:vpc-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc_endpoint.spoke_b_s3",
+   "key": "ec2:vpc-endpoint/vpce-s3-spoke-b",
+   "kind": "privateEndpoint",
+   "label": "vpce-s3-spoke-b",
+   "props": {
+    "groupId": "s3"
+   },
+   "parent": "tf:aws_vpc.spoke_b",
+   "armType": "ec2:vpc-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:aws_route_table.egress_public>tf:aws_internet_gateway.egress:0.0.0.0/0",
+   "from": "tf:aws_route_table.egress_public",
+   "to": "tf:aws_internet_gateway.egress",
+   "kind": "dependency",
+   "label": "0.0.0.0/0",
+   "via": "tf:aws_route.egress_public_internet"
+  },
+  {
+   "id": "dependency:tf:aws_route_table.egress_tgw>tf:aws_nat_gateway.egress:0.0.0.0/0",
+   "from": "tf:aws_route_table.egress_tgw",
+   "to": "tf:aws_nat_gateway.egress",
+   "kind": "dependency",
+   "label": "0.0.0.0/0",
+   "via": "tf:aws_route.egress_tgw_nat"
+  },
+  {
+   "id": "traffic:tf:aws_ec2_transit_gateway.lab>tf:aws_vpc.egress:attachment",
+   "from": "tf:aws_ec2_transit_gateway.lab",
+   "to": "tf:aws_vpc.egress",
+   "kind": "traffic",
+   "label": "attachment",
+   "via": "tf:aws_ec2_transit_gateway_vpc_attachment.egress"
+  },
+  {
+   "id": "traffic:tf:aws_ec2_transit_gateway.lab>tf:aws_vpc.lab:attachment",
+   "from": "tf:aws_ec2_transit_gateway.lab",
+   "to": "tf:aws_vpc.lab",
+   "kind": "traffic",
+   "label": "attachment",
+   "via": "tf:aws_ec2_transit_gateway_vpc_attachment.spoke_a"
+  },
+  {
+   "id": "traffic:tf:aws_ec2_transit_gateway.lab>tf:aws_vpc.spoke_b:attachment",
+   "from": "tf:aws_ec2_transit_gateway.lab",
+   "to": "tf:aws_vpc.spoke_b",
+   "kind": "traffic",
+   "label": "attachment",
+   "via": "tf:aws_ec2_transit_gateway_vpc_attachment.spoke_b"
+  }
+ ]
+}

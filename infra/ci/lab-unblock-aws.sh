@@ -38,6 +38,12 @@
 #                          soa-10). Lab regions only (never us-east-1 or
 #                          us-west-2, which hold no lab VPC)
 #   Network Firewall       delete protection off
+#   Traffic mirror         every session carrying the lab's tag (a learner's
+#     sessions             own one too) deleted, so one still using the lab's
+#                          target or filter cannot make the destroy fail;
+#                          listed by describe-traffic-mirror-sessions (the
+#                          tagging API lists deleted ones for a while). Lab
+#                          regions only
 #   EC2 instances          termination protection off, then stop protection off
 #   CloudFormation stacks  termination protection off
 #   Config recorders       named lab-<id>-* stopped (lab 02; never another one),
@@ -51,6 +57,10 @@
 #                          released (AWS takes up to 20 minutes)
 #   S3 buckets             Object Lock switched on is a loud warning: its
 #                          locked versions cannot be deleted until they expire
+#
+# Batch 4 (ruling P26): Network Firewall delete protection and Client VPN
+# connections are already here; no batch 4 Lambda runs in a VPC, so the Lambda
+# interface wait stays as it is.
 #
 # Every wait is also capped at LAB_JOB_DEADLINE (Parse payload: the job's
 # start plus its timeout) less the reserve the later steps need (420 s, the
@@ -213,6 +223,21 @@ nat_delete() {
     esac
   done < <(jq -r "$NAT_ROWS" <<<"$json")
 }
+# Final fix F5: one row per traffic mirror session carrying the lab's tag: id, and 1 when it carries wg-admin too.
+MIRROR_ROWS='.TrafficMirrorSessions[]? | select(any((.Tags // [])[]; .Key == "cloudlabs-lab" and .Value == $lab)) | [.TrafficMirrorSessionId // "", (if any((.Tags // [])[]; .Key == "wg-admin") then "1" else "0" end)] | join("\u001f")'
+# mirror_delete <region>: delete the lab's traffic mirror sessions (never one carrying wg-admin).
+mirror_delete() {
+  local r="$1" json id wg
+  if ! json="$(awsq "$r" ec2 describe-traffic-mirror-sessions)"; then
+    warn "could not list the traffic mirror sessions in $r ($(code))"
+    return
+  fi
+  while IFS=$'\x1f' read -r id wg; do
+    [ -z "$id" ] && continue
+    if [ "$wg" = 1 ]; then warn "never touched: traffic mirror session $id carries the VPN server's tag wg-admin"; continue; fi
+    do_write "$r" "delete traffic mirror session $id" ec2 delete-traffic-mirror-session --traffic-mirror-session-id "$id"
+  done < <(jq -r --arg lab "$LAB_ID" "$MIRROR_ROWS" <<<"$json")
+}
 # nat_wait <region>: poll until every NAT gateway in NATS is deleted (or gone), so the destroy finds its address free.
 nat_wait() {
   local r="$1" json id st end
@@ -247,7 +272,10 @@ echo "unblock: everything tagged cloudlabs-lab=$LAB_ID in $REGIONS"
 for r in $REGIONS; do
   # NAT gateways first, so their deletes run while the rest of the region is unblocked; waited for at the end.
   NATS=()
-  if [ "$r" != us-east-1 ] && [ "$r" != us-west-2 ]; then nat_delete "$r"; fi
+  if [ "$r" != us-east-1 ] && [ "$r" != us-west-2 ]; then
+    nat_delete "$r"
+    mirror_delete "$r"
+  fi
   if ! listed="$(awsq "$r" resourcegroupstaggingapi get-resources --tag-filters "Key=cloudlabs-lab,Values=$LAB_ID")"; then
     warn "could not list the lab's tagged resources in $r ($(code))"
     listed=""

@@ -11,11 +11,12 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AWS_CONFIG_LABS, AWS_DNS_LABS, AWS_GLOBAL_LABS, AWS_IAM_USER_LABS, AWS_INSTANCE_TYPES, AWS_MEDIUM_LABS, LAB_ID_RE } from "../lib/labs.mjs";
+import { AWS_CONFIG_LABS, AWS_DNS_LABS, AWS_GLOBAL_LABS, AWS_IAM_USER_LABS, AWS_INSTANCE_TYPES, AWS_MEDIUM_LABS, AWS_PEER_REGION_LABS, LAB_ID_RE } from "../lib/labs.mjs";
 import * as scope from "../../infra/ci/lab-scope-aws.mjs";
 import { planResources } from "../../infra/ci/lab-scope.mjs";
+import { LAB_PLANS } from "./fixtures/labs/plans/labs.mjs";
 import { realisticPlan } from "./fixtures/labs/plans/realistic.mjs";
-import { ACCOUNT, al2023Instance, AMI, AWS_PROVIDER_CONFIG, awsData, BOUNDARY, ctxAws, ref, tagged, templateMainResources, templateResources } from "./fixtures/labs/plans/common-aws.mjs";
+import { ACCOUNT, al2023Instance, AMI, AWS_PROVIDER_CONFIG, awsData, BOUNDARY, cidrsubnet, ctxAws, ref, tagged, templateMainResources, templateResources } from "./fixtures/labs/plans/common-aws.mjs";
 
 const ID = "soa-01-cloudwatch";
 const c = ctxAws(ID, "01");
@@ -30,7 +31,7 @@ test("the template's plan passes, and with an instance", () => {
 
 test("the constants equal the contract's copies", () => {
   assert.equal(scope.LAB_ID_RE.source, LAB_ID_RE.source);
-  for (const [a, b] of [[scope.AWS_CONFIG_LABS, AWS_CONFIG_LABS], [scope.AWS_DNS_LABS, AWS_DNS_LABS], [scope.AWS_GLOBAL_LABS, AWS_GLOBAL_LABS],[scope.AWS_IAM_USER_LABS, AWS_IAM_USER_LABS], [scope.AWS_INSTANCE_TYPES, AWS_INSTANCE_TYPES], [scope.AWS_MEDIUM_LABS, AWS_MEDIUM_LABS]]) assert.deepEqual([...a], [...b]);
+  for (const [a, b] of [[scope.AWS_CONFIG_LABS, AWS_CONFIG_LABS], [scope.AWS_DNS_LABS, AWS_DNS_LABS], [scope.AWS_GLOBAL_LABS, AWS_GLOBAL_LABS],[scope.AWS_IAM_USER_LABS, AWS_IAM_USER_LABS], [scope.AWS_INSTANCE_TYPES, AWS_INSTANCE_TYPES], [scope.AWS_MEDIUM_LABS, AWS_MEDIUM_LABS], [scope.AWS_PEER_REGION_LABS, AWS_PEER_REGION_LABS]]) assert.deepEqual([...a], [...b]);
 });
 
 const role = (over = {}) => ({
@@ -137,7 +138,8 @@ const EVIL = [
   ["gateway", "a network ACL in an existing VPC by id", () => plan([{ address: "aws_network_acl.other", values: tagged(c, { vpc_id: "vpc-0a1b2c3d4e5f60718" }), refs: {} }])],
   ["gateway", "a network ACL association on an existing subnet by id", () => plan([{ address: "aws_network_acl_association.other", values: { subnet_id: "subnet-0a1b2c3d4e5f60718" }, unknown: ["network_acl_id"], refs: { network_acl_id: ref("aws_network_acl.mine", "id") } }])],
   ["gateway", "a network ACL association onto an existing ACL by id", () => plan([{ address: "aws_network_acl_association.other", values: { network_acl_id: "acl-0a1b2c3d4e5f60718" }, unknown: ["subnet_id"], refs: { subnet_id: ref("aws_subnet.lab", "id") } }])],
-  ["gateway", "a peering accepter", () => plan([{ address: "aws_vpc_peering_connection_accepter.x", values: tagged(c, { auto_accept: true }), unknown: ["vpc_peering_connection_id"], refs: {} }])],
+  // Ruling P3 (batch 4): an accepter outside AWS_PEER_REGION_LABS is refused by rule provider first (rule gateway too).
+  ["provider", "a peering accepter outside AWS_PEER_REGION_LABS", () => plan([{ address: "aws_vpc_peering_connection_accepter.x", values: tagged(c, { auto_accept: true }), unknown: ["vpc_peering_connection_id"], refs: {} }])],
   ["gateway", "a tag key wg-admin", () => plan([{ address: "aws_sns_topic.x", values: { name: "x", tags: { "wg-admin": "vpn" }, tags_all: { ...c.tags, "wg-admin": "vpn" } }, refs: {} }])],
   ["gateway", "an alarm on an existing instance (dimensions InstanceId, review round 1)", () => plan([{ address: "aws_cloudwatch_metric_alarm.cpu", values: tagged(c, { alarm_name: "cpu", comparison_operator: "GreaterThanThreshold", evaluation_periods: 1, metric_name: "CPUUtilization", namespace: "AWS/EC2", period: 300, statistic: "Average", threshold: 80, dimensions: { InstanceId: "i-0123456789abcdef0" } }), refs: {} }])],
   ["gateway", "an SSM association targeting existing instances by id", () => plan([{ address: "aws_ssm_association.patch", values: tagged(c, { name: "AWS-RunPatchBaseline", targets: [{ key: "InstanceIds", values: ["i-0123456789abcdef0"] }] }), refs: {} }])],
@@ -558,6 +560,8 @@ const c19 = ctxAws("saa-19-eks", "19");
 const T = (cx, address, values, more = {}) => ({ address, values: tagged(cx, values), refs: {}, ...more });
 const U = (address, values, more = {}) => ({ address, values, refs: {}, ...more });
 const rulesFor = (cx, extra, base) => rules(realisticPlan({ resources: [...(base ?? templateMainResources(cx)), ...extra], data: awsData(), providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: cx.variables }), cx.id);
+/** A lab's plan fixture (fixtures/labs/plans/labs/<id>.mjs) through the scope check, as lab-plans.test.mjs runs it. */
+const labFixtureRules = (id) => scope.checkPlanAws(LAB_PLANS[id].plan, id).map((x) => `${x.rule}: ${x.address}`);
 const DB = { identifier: "db-a11k3x9q", engine: "mysql", instance_class: "db.t4g.micro", allocated_storage: 20, skip_final_snapshot: true, deletion_protection: false, delete_automated_backups: true, copy_tags_to_snapshot: true, db_subnet_group_name: "lab-saa-11-three-tier-db" };
 
 test("rulings P16 and P13: refuses a public database and a Lambda permission with no own source; an own rule passes", () => {
@@ -674,10 +678,12 @@ const cacheGroup = (cx) => T(cx, "aws_elasticache_subnet_group.data", { name: `l
 const dbGroup = (cx) => T(cx, "aws_db_subnet_group.db", { name: `lab-${cx.id}-db` }, { unknown: ["subnet_ids"], refs: { subnet_ids: ["aws_subnet.private"] } });
 
 test("fix round 1, I-1: a queue's own policy is read like any resource policy (ruling P10)", () => {
-  const q = (Principal) => T(c13, "aws_sqs_queue.open", { name: "lab-saa-13-decoupling-open", policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal, Action: "sqs:SendMessage", Resource: "*" }] }) });
+  const q = (Principal, Condition) => T(c13, "aws_sqs_queue.open", { name: "lab-saa-13-decoupling-open", policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal, Action: "sqs:SendMessage", Resource: "*", ...(Condition ? { Condition } : {}) }] }) });
   assert.deepEqual(rulesFor(c13, [q("*")]), ["public: aws_sqs_queue.open"]);
   assert.deepEqual(rulesFor(c13, [q({ AWS: "arn:aws:iam::999999999999:root" })]), ["public: aws_sqs_queue.open"]);
-  assert.deepEqual(rulesFor(c13, [q({ Service: "sns.amazonaws.com" })]), []);
+  // Ruling P7 (batch 4): a service principal's Allow names its source in the lab's account.
+  assert.deepEqual(rulesFor(c13, [q({ Service: "sns.amazonaws.com" }, { ArnEquals: { "aws:SourceArn": `arn:aws:sns:eu-west-2:${ACCOUNT}:lab-saa-13-decoupling-orders` } })]), []);
+  assert.deepEqual(rulesFor(c13, [q({ Service: "sns.amazonaws.com" })]), ["public: aws_sqs_queue.open"], "ruling P7: no aws:SourceArn or aws:SourceAccount");
   assert.deepEqual(rulesFor(c13, [T(c13, "aws_sqs_queue.plain", { name: "lab-saa-13-decoupling-plain" })]), [], "no policy written: the computed one is AWS's default");
 });
 
@@ -912,4 +918,333 @@ test("Task 15: a cluster's subnet_ids planned as a list of unknown ids (aws_subn
   assert.deepEqual(scope.scopeProblemsAws({ ...planResources(mock), configKeys: {}, providerConfigs: {} }, c19.id, { mode: "mock" }).filter((x) => x.address === "aws_eks_cluster.lab"), []);
   // A literal subnet id is never the lab's own.
   assert.deepEqual(rulesFor(c19, [clusterRole, T(c19, "aws_eks_cluster.lab", { name: "lab-saa-19-eks", access_config: [{ authentication_mode: "API", bootstrap_cluster_creator_admin_permissions: false }], upgrade_policy: [{ support_type: "STANDARD" }], vpc_config: [{ endpoint_private_access: true, endpoint_public_access: true, subnet_ids: ["subnet-0123456789abcdef0", "subnet-0123456789abcdef1"] }] }, { unknown: ["role_arn"], refs: { role_arn: ref("aws_iam_role.cluster", "arn") } })], templateResources(c19)), ["gateway: aws_eks_cluster.lab"]);
+});
+
+// ── Batch 4 (labs 20–31): types, peer regions, IPv6 internet, service principals ──
+
+const c20 = ctxAws("ans-20-vpc-design", "20");
+const c22 = ctxAws("ans-22-s2s-vpn", "22");
+const c29b = ctxAws("ans-29-multi-region", "29");
+const c29 = { ...c29b, variables: { ...c29b.variables, secondary_region: "eu-west-1" } };
+const c24 = ctxAws("ans-24-privatelink", "24");
+
+test("every batch 4 type is allowed with a reason; Direct Connect, Cloud WAN, RAM, Firewall Manager, Shield, Verified Access and TGW Connect stay never", () => {
+  for (const t of ["aws_ec2_transit_gateway", "aws_vpn_connection", "aws_route53_resolver_rule", "aws_vpc_endpoint_service", "aws_globalaccelerator_accelerator", "aws_networkfirewall_firewall", "aws_vpclattice_service", "aws_ec2_client_vpn_endpoint", "aws_vpc_ipam", "tls_locally_signed_cert", "aws_glue_catalog_table"]) assert.ok(scope.AWS_TYPES.get(t), t);
+  const never = (t) => scope.NEVER_TYPES.some((re) => re.test(t));
+  for (const t of ["aws_dx_connection", "aws_networkmanager_core_network", "aws_ram_resource_share", "aws_fms_policy", "aws_shield_protection", "aws_verifiedaccess_instance", "aws_ec2_transit_gateway_connect", "aws_ec2_transit_gateway_multicast_domain", "aws_globalaccelerator_custom_routing_accelerator", "aws_networkfirewall_tls_inspection_configuration", "aws_vpclattice_resource_policy", "aws_ec2_client_vpn_route", "aws_vpc_ipam_scope"]) assert.ok(never(t), t);
+  assert.ok(!never("aws_ec2_transit_gateway_route_table"));
+});
+
+test("Review Focus 1 / P3: an accepter of someone else's peering, outside lab 29 or through the default provider is refused; peer_region only to the secondary", () => {
+  const pcx = (over = {}) => T(c29, "aws_vpc_peering_connection.li", { peer_region: "eu-west-1", auto_accept: false, ...over }, { unknown: ["vpc_id", "peer_vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id"), peer_vpc_id: ref("aws_vpc.ireland", "id") } });
+  const acc = (key = "aws.secondary", cx = c29) => T(cx, "aws_vpc_peering_connection_accepter.li", { auto_accept: true }, { providerKey: key, unknown: ["vpc_peering_connection_id"], refs: { vpc_peering_connection_id: ref("aws_vpc_peering_connection.li", "id") } });
+  // The two VPCs the peering names by reference (rule gateway reads them in the plan).
+  const vpcs = [T(c29, "aws_vpc.lab", { cidr_block: c29.vpcCidr }), T(c29, "aws_vpc.ireland", { cidr_block: cidrsubnet(c29.address, 2, 1) }, { providerKey: "aws.secondary" })];
+  assert.deepEqual(rulesFor(c29, [...vpcs, pcx(), acc()]), []);
+  assert.deepEqual(rulesFor(c29, [...vpcs, pcx({ peer_region: "us-east-2" })]), ["provider: aws_vpc_peering_connection.li"]);
+  assert.deepEqual(rulesFor(c29, [...vpcs, pcx(), acc("aws")]), ["provider: aws_vpc_peering_connection_accepter.li"]);
+  assert.deepEqual(rulesFor(c29, [...vpcs, pcx({ peer_owner_id: "999999999999" })]), ["gateway: aws_vpc_peering_connection.li"], "rule 9: another account never, in lab 29 too");
+  const c21 = ctxAws("ans-21-transit-gateway", "21");
+  // One rule is reported per resource (the first in AWS_RULES): rule provider, ahead of rule 9's own refusal.
+  assert.deepEqual(rulesFor(c21, [T(c21, "aws_vpc_peering_connection.x", { peer_region: "eu-west-1" }, { unknown: ["vpc_id", "peer_vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id"), peer_vpc_id: ref("aws_vpc.lab", "id") } })], templateResources(c21)), ["provider: aws_vpc_peering_connection.x"], "peer_region outside lab 29");
+  const pcx21 = T(c21, "aws_vpc_peering_connection.li", { auto_accept: false }, { unknown: ["vpc_id", "peer_vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id"), peer_vpc_id: ref("aws_vpc.lab", "id") } });
+  assert.deepEqual(rulesFor(c21, [pcx21, acc("aws.secondary", c21)], templateResources(c21)), ["provider: aws_vpc_peering_connection_accepter.li"], "an accepter outside lab 29");
+});
+
+test("rulings P6 and P7: a global IPv6 range is the internet; a service-principal Allow without its source is refused", () => {
+  assert.deepEqual(["::/0", "2000::/3", "2a05:d018::/36", "fd00::/8", "fe80::/10", "10.64.0.0/18", "0.0.0.0/0"].map(scope.fromInternet), [true, true, true, false, false, false, true]);
+  const ssh = (cidr_ipv6) => T(c20, "aws_vpc_security_group_ingress_rule.ssh6", { ip_protocol: "tcp", from_port: 22, to_port: 22, cidr_ipv6 }, { unknown: ["security_group_id"], refs: { security_group_id: ref("aws_security_group.vms", "id") } });
+  assert.deepEqual(rulesFor(c20, [ssh("2000::/3")]), ["public: aws_vpc_security_group_ingress_rule.ssh6"]);
+  assert.deepEqual(rulesFor(c20, [ssh("fd00::/8")]), []);
+  const bucketPolicy = (Condition) => U("aws_s3_bucket_policy.logs", { bucket: "cloudlabs-a20k3x9q-logs", policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: "delivery.logs.amazonaws.com" }, Action: "s3:PutObject", Resource: "arn:aws:s3:::cloudlabs-a20k3x9q-logs/*", ...(Condition ? { Condition } : {}) }] }) });
+  assert.deepEqual(rulesFor(c20, [bucketPolicy(null)]), ["public: aws_s3_bucket_policy.logs"]);
+  assert.deepEqual(rulesFor(c20, [bucketPolicy({ StringEquals: { "aws:SourceAccount": "999999999999" } })]), ["public: aws_s3_bucket_policy.logs"]);
+  assert.deepEqual(rulesFor(c20, [bucketPolicy({ StringEquals: { "aws:SourceAccount": ACCOUNT } })]), []);
+  assert.deepEqual(rulesFor(c20, [bucketPolicy({ ArnLike: { "AWS:SourceArn": `arn:aws:logs:eu-west-2:${ACCOUNT}:*` } })]), []);
+});
+
+test("every existing AWS lab's fixture still passes rule public under ruling P7", () => {
+  for (const id of ["soa-01-cloudwatch", "soa-08-vpc-fix", "soa-09-route53-cloudfront", "saa-13-decoupling", "saa-15-data-security"]) assert.deepEqual(labFixtureRules(id).filter((x) => x.startsWith("public")), [], id);
+});
+
+test("Task 3 fix round 1 (controller override): P7 counts the source only under StringEquals, StringLike, ArnEquals or ArnLike; P6 honours an IPv6 prefix length", () => {
+  const logs = (Condition) => U("aws_s3_bucket_policy.logs", { bucket: "cloudlabs-a20k3x9q-logs", policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: "delivery.logs.amazonaws.com" }, Action: "s3:PutObject", Resource: "arn:aws:s3:::cloudlabs-a20k3x9q-logs/*", Condition }] }) });
+  for (const cond of [
+    { StringNotEquals: { "aws:SourceAccount": ACCOUNT } },
+    { ArnNotLike: { "aws:SourceArn": `arn:aws:logs:eu-west-2:${ACCOUNT}:*` } },
+    { "ForAllValues:StringEquals": { "aws:SourceAccount": ACCOUNT } },
+    { StringEqualsIfExists: { "aws:SourceAccount": ACCOUNT } },
+  ]) assert.deepEqual(rulesFor(c20, [logs(cond)]), ["public: aws_s3_bucket_policy.logs"], JSON.stringify(cond));
+  for (const cond of [{ StringLike: { "AWS:SOURCEACCOUNT": ACCOUNT } }, { ArnEquals: { "aws:SourceArn": `arn:aws:logs:eu-west-2:${ACCOUNT}:log-group:x` } }]) assert.deepEqual(rulesFor(c20, [logs(cond)]), [], JSON.stringify(cond));
+  assert.deepEqual(["fd00::/0", "fc00::/1", "fe80::/2", "fd00::", "fd00::/abc", "fd12:3456::/48", "fe80::/64", "fc00::/7"].map(scope.fromInternet), [true, true, true, true, true, false, false, false]);
+});
+
+// ── Batch 4 (labs 20–31): references, sizes and lingering (Task 4, batch4Problems) ──
+
+const c21 = ctxAws("ans-21-transit-gateway", "21");
+const c23 = ctxAws("ans-23-hybrid-dns", "23");
+const c26b = ctxAws("ans-26-edge", "26");
+const c26 = { ...c26b, variables: { ...c26b.variables, secondary_region: "eu-west-1" } };
+const c27 = ctxAws("ans-27-network-firewall", "27");
+const c28 = ctxAws("ans-28-flow-logs-fix", "28");
+const c30 = ctxAws("ans-30-vpc-lattice", "30");
+const c31 = ctxAws("ans-31-client-vpn", "31");
+const refs = (pairs) => ({ unknown: Object.keys(pairs), refs: Object.fromEntries(Object.entries(pairs).map(([k, v]) => [k, ref(v, k.endsWith("arn") || k.endsWith("_arns") ? "arn" : "id")])) });
+/**
+ * The rules for `extra`, with each address in `owned` planned as a bare, tagged resource of the lab's, so that a reference
+ * to it is a reference to the lab's own (ownRefs reads the referenced resource's type from the plan); the stand-ins' own
+ * refusals are left out of the result.
+ */
+const rulesWith = (cx, owned, extra, base) => rulesFor(cx, [...owned.map((a) => T(cx, a, {})), ...extra], base).filter((x) => !owned.some((a) => x.endsWith(` ${a}`)));
+
+test("final fix F2: lab 22's router sits on its own interface in its own subnet; an interface or primary interface not the lab's own is refused", () => {
+  assert.ok(scope.AWS_TYPES.get("aws_network_interface"));
+  assert.deepEqual(labFixtureRules("ans-22-s2s-vpn"), []);
+  const net = templateResources(c22);
+  const ip = c22.vpcCidr.replace(/\.0\/20$/, ".10");
+  const nic = (values = {}, r = { subnet_id: "aws_subnet.private", security_groups: "aws_security_group.vms" }) => T(c22, "aws_network_interface.router", { private_ips: [ip], source_dest_check: false, ...values }, refs(r));
+  const vm = (r = { "primary_network_interface.0.network_interface_id": "aws_network_interface.router" }) => {
+    const i = al2023Instance(c22, { key: "router", name: "vm-router" });
+    delete i.refs.subnet_id;
+    delete i.refs.vpc_security_group_ids;
+    i.values.primary_network_interface = [{}];
+    return { ...i, unknown: Object.keys(r), refs: { ...i.refs, ...refs(r).refs } };
+  };
+  assert.deepEqual(rulesFor(c22, [nic(), vm()], net), []);
+  assert.deepEqual(rulesFor(c22, [nic({ subnet_id: "subnet-0123456789abcdef0" }, { security_groups: "aws_security_group.vms" })], net), ["gateway: aws_network_interface.router"], "a subnet not the lab's own");
+  assert.deepEqual(rulesFor(c22, [nic({ private_ips: ["10.9.9.9"] })], net), ["address: aws_network_interface.router"], "an address outside the slot");
+  assert.deepEqual(rulesFor(c22, [nic({ attachment: [{ device_index: 1 }] })], net), ["gateway: aws_network_interface.router"], "attached by its own block");
+  assert.deepEqual(rulesFor(c22, [nic(), vm({ "primary_network_interface.0.network_interface_id": "aws_subnet.onprem" })], net), ["gateway: aws_instance.router"], "a primary interface not the lab's own");
+});
+
+test("residual R3: lab 22's Elastic IP association names the lab's own interface or instance and the lab's own address, by reference", () => {
+  const owned = ["aws_network_interface.router", "aws_instance.router", "aws_eip.router", "aws_subnet.onprem"];
+  const assoc = (r) => U("aws_eip_association.router", {}, refs(r));
+  const ok = (r) => assert.deepEqual(rulesWith(c22, owned, [assoc(r)]), [], JSON.stringify(r));
+  const no = (r, why) => assert.deepEqual(rulesWith(c22, owned, [assoc(r)]), ["gateway: aws_eip_association.router"], why);
+  ok({ network_interface_id: "aws_network_interface.router", allocation_id: "aws_eip.router" });
+  ok({ instance_id: "aws_instance.router", allocation_id: "aws_eip.router" });
+  no({ network_interface_id: "aws_subnet.onprem", allocation_id: "aws_eip.router" }, "an interface not the lab's own");
+  no({ instance_id: "aws_network_interface.router", allocation_id: "aws_eip.router" }, "an instance not the lab's own");
+  no({ network_interface_id: "aws_network_interface.router", allocation_id: "aws_subnet.onprem" }, "an address not the lab's own");
+  no({ allocation_id: "aws_eip.router" }, "neither an interface nor an instance");
+  assert.deepEqual(rulesWith(c22, owned, [U("aws_eip_association.router", { network_interface_id: "eni-0123456789abcdef0", allocation_id: "eipalloc-0123456789abcdef0" })]), ["gateway: aws_eip_association.router"], "literal ids");
+});
+
+test("Review Focus 2: refuses an attachment, route, gateway, rule, endpoint, accelerator, auth policy, mirror target or Client VPN piece that names anything not the lab's own", () => {
+  const tgw = T(c21, "aws_ec2_transit_gateway.lab", { auto_accept_shared_attachments: "disable", default_route_table_association: "disable", default_route_table_propagation: "disable" });
+  const net21 = templateResources(c21);
+  assert.deepEqual(rulesFor(c21, [tgw, T(c21, "aws_ec2_transit_gateway_vpc_attachment.a", {}, refs({ transit_gateway_id: "aws_ec2_transit_gateway.lab", vpc_id: "aws_vpc.lab", subnet_ids: "aws_subnet.private" }))], net21), []);
+  assert.deepEqual(rulesFor(c21, [tgw, T(c21, "aws_ec2_transit_gateway_vpc_attachment.a", { vpc_id: "vpc-0123456789abcdef0" }, refs({ transit_gateway_id: "aws_ec2_transit_gateway.lab", subnet_ids: "aws_subnet.private" }))], net21), ["gateway: aws_ec2_transit_gateway_vpc_attachment.a"]);
+  assert.deepEqual(rulesWith(c21, ["aws_ec2_transit_gateway_route_table.spokes", "aws_ec2_transit_gateway_vpc_attachment.a"], [tgw, U("aws_ec2_transit_gateway_route.out", { destination_cidr_block: "8.8.8.0/24" }, refs({ transit_gateway_route_table_id: "aws_ec2_transit_gateway_route_table.spokes", transit_gateway_attachment_id: "aws_ec2_transit_gateway_vpc_attachment.a" }))]), ["address: aws_ec2_transit_gateway_route.out"]);
+  assert.deepEqual(rulesFor(c22, [T(c22, "aws_vpn_connection.lab", { type: "ipsec.1", static_routes_only: false, enable_acceleration: true }, refs({ customer_gateway_id: "aws_customer_gateway.onprem", vpn_gateway_id: "aws_vpn_gateway.lab" }))]), ["never: aws_vpn_connection.lab"]);
+  assert.deepEqual(rulesFor(c22, [T(c22, "aws_customer_gateway.x", { bgp_asn: "65001", ip_address: "203.0.113.10", type: "ipsec.1" })]), ["gateway: aws_customer_gateway.x"]);
+  const rule = (over) => T(c23, "aws_route53_resolver_rule.corp", { rule_type: "FORWARD", domain_name: "corp.a23k3x9q.internal", target_ip: [{ ip: "10.64.80.10", port: 53 }], ...over }, refs({ resolver_endpoint_id: "aws_route53_resolver_endpoint.out" }));
+  const out = ["aws_route53_resolver_endpoint.out"];
+  assert.deepEqual(rulesWith(c23, out, [rule({})]), []);
+  assert.deepEqual(rulesWith(c23, out, [rule({ domain_name: "amazonaws.com" })]), ["gateway: aws_route53_resolver_rule.corp"]);
+  assert.deepEqual(rulesWith(c23, out, [rule({ target_ip: [{ ip: "8.8.8.8", port: 53 }] })]), ["address: aws_route53_resolver_rule.corp"]);
+  assert.deepEqual(rulesFor(c23, [U("aws_route53_resolver_rule_association.x", { vpc_id: "vpc-0123456789abcdef0" }, refs({ resolver_rule_id: "aws_route53_resolver_rule.corp" }))]), ["gateway: aws_route53_resolver_rule_association.x"]);
+  const svc = (principals, over = {}) => T(c24, "aws_vpc_endpoint_service.lab", { acceptance_required: false, allowed_principals: principals, ...over }, refs({ network_load_balancer_arns: "aws_lb.provider" }));
+  assert.deepEqual(rulesWith(c24, ["aws_lb.provider"], [svc([`arn:aws:iam::${ACCOUNT}:root`])]), [], "supported_regions left unset is computed");
+  assert.deepEqual(rulesWith(c24, ["aws_lb.provider"], [svc(["*"])]), ["public: aws_vpc_endpoint_service.lab"]);
+  assert.deepEqual(rulesWith(c24, ["aws_lb.provider"], [svc([`arn:aws:iam::${ACCOUNT}:root`], { supported_regions: ["us-east-1"] })]), ["provider: aws_vpc_endpoint_service.lab"]);
+  assert.deepEqual(rulesFor(c24, [T(c24, "aws_vpc_endpoint.theirs", { vpc_endpoint_type: "Interface", service_name: "com.amazonaws.vpce.eu-west-2.vpce-svc-0123456789abcdef0" }, refs({ vpc_id: "aws_vpc.lab" }))], templateResources(c24)), ["gateway: aws_vpc_endpoint.theirs"]);
+  const eg = (pres) => U("aws_globalaccelerator_endpoint_group.ldn", { endpoint_group_region: "eu-west-2", endpoint_configuration: [{ weight: 100, client_ip_preservation_enabled: pres }] }, { unknown: ["endpoint_configuration.0.endpoint_id", "listener_arn"], refs: { "endpoint_configuration.0.endpoint_id": ref("aws_lb.london", "arn"), listener_arn: ref("aws_globalaccelerator_listener.http", "id") } });
+  const ga = ["aws_lb.london", "aws_globalaccelerator_listener.http"];
+  assert.deepEqual(rulesWith(c26, ga, [eg(false)]), []);
+  assert.deepEqual(rulesWith(c26, ga, [eg(true)]), ["gateway: aws_globalaccelerator_endpoint_group.ldn"]);
+  assert.deepEqual(rulesFor(c30, [T(c30, "aws_vpclattice_service_network_vpc_association.x", { vpc_identifier: "vpc-0123456789abcdef0" }, refs({ service_network_identifier: "aws_vpclattice_service_network.lab", security_group_ids: "aws_security_group.lattice" }))]), ["gateway: aws_vpclattice_service_network_vpc_association.x"]);
+  assert.deepEqual(rulesFor(c28, [T(c28, "aws_ec2_traffic_mirror_target.x", { network_interface_id: "eni-0123456789abcdef0" })]), ["gateway: aws_ec2_traffic_mirror_target.x"]);
+  const cvpn = (over) => T(c31, "aws_ec2_client_vpn_endpoint.lab", { client_cidr_block: "10.64.124.0/22", split_tunnel: true, transport_protocol: "udp", authentication_options: [{ type: "certificate-authentication" }], connection_log_options: [{ enabled: false }], self_service_portal: "disabled", ...over }, { unknown: ["server_certificate_arn", "vpc_id", "authentication_options.0.root_certificate_chain_arn"], refs: { server_certificate_arn: ref("aws_acm_certificate.server", "arn"), vpc_id: ref("aws_vpc.lab", "id"), "authentication_options.0.root_certificate_chain_arn": ref("aws_acm_certificate.server", "arn") } });
+  const cert = ["aws_acm_certificate.server"];
+  const net31 = templateResources(c31);
+  assert.deepEqual(rulesWith(c31, cert, [cvpn({})], net31), [], "security_group_ids left unset is computed: the lab VPC's default group");
+  assert.deepEqual(rulesWith(c31, cert, [cvpn({ client_cidr_block: "172.16.0.0/22" })], net31), ["address: aws_ec2_client_vpn_endpoint.lab"]);
+  assert.deepEqual(rulesWith(c31, cert, [cvpn({ authentication_options: [{ type: "federated-authentication" }] })], net31), ["never: aws_ec2_client_vpn_endpoint.lab"]);
+  assert.deepEqual(rulesWith(c31, cert, [cvpn({ split_tunnel: false })], net31), ["gateway: aws_ec2_client_vpn_endpoint.lab"]);
+});
+
+test("refsOf resolves references inside nested blocks: ip_address.N.subnet_id, config.0.vpc_identifier, target.0.id, authentication_options.0.root_certificate_chain_arn", () => {
+  // Each block's sibling points at the lab's own item, so only a per-path read refuses the foreign one.
+  const ep = (second) => T(c23, "aws_route53_resolver_endpoint.in", { name: "lab-ans-23-hybrid-dns-in", direction: "INBOUND", protocols: ["Do53"], ip_address: [{}, {}] }, refs({ "ip_address.0.subnet_id": "aws_subnet.private", "ip_address.1.subnet_id": second, security_group_ids: "aws_security_group.resolver" }));
+  const sg = ["aws_security_group.resolver"];
+  const net23 = templateResources(c23);
+  assert.deepEqual(rulesWith(c23, sg, [ep("aws_subnet.private")], net23), []);
+  assert.deepEqual(rulesWith(c23, sg, [ep("data.aws_subnet.other")], net23), ["gateway: aws_route53_resolver_endpoint.in"]);
+  // Fail closed: a nested value with no reference of its own never borrows its siblings' (its block's) references.
+  const noRef = T(c23, "aws_route53_resolver_endpoint.in", { name: "lab-ans-23-hybrid-dns-in", direction: "INBOUND", protocols: ["Do53"], ip_address: [{}, {}] }, { unknown: ["ip_address.0.subnet_id", "ip_address.1.subnet_id", "security_group_ids"], refs: { "ip_address.0.subnet_id": ref("aws_subnet.private", "id"), security_group_ids: ref("aws_security_group.resolver", "id") } });
+  assert.deepEqual(rulesWith(c23, sg, [noRef], net23), ["gateway: aws_route53_resolver_endpoint.in"]);
+  const tg = (vpc) => T(c30, "aws_vpclattice_target_group.a", { name: "lab-ans-30-vpc-lattice-tg-a", type: "INSTANCE", config: [{ port: 80, protocol: "HTTP" }] }, refs({ "config.0.vpc_identifier": vpc }));
+  const net30 = templateResources(c30);
+  assert.deepEqual(rulesFor(c30, [tg("aws_vpc.lab")], net30), []);
+  assert.deepEqual(rulesFor(c30, [tg("data.aws_vpc.other")], net30), ["gateway: aws_vpclattice_target_group.a"]);
+  const att = (vm) => U("aws_vpclattice_target_group_attachment.a", { target: [{ port: 80 }] }, refs({ target_group_identifier: "aws_vpclattice_target_group.a", "target.0.id": vm }));
+  const lattice = ["aws_vpclattice_target_group.a", "aws_instance.svc_a"];
+  assert.deepEqual(rulesWith(c30, lattice, [att("aws_instance.svc_a")], net30), []);
+  assert.deepEqual(rulesWith(c30, lattice, [att("aws_vpc.lab")], net30), ["gateway: aws_vpclattice_target_group_attachment.a"]);
+  const cv = (chain) => T(c31, "aws_ec2_client_vpn_endpoint.lab", { client_cidr_block: "10.64.124.0/22", split_tunnel: true, transport_protocol: "udp", authentication_options: [{ type: "certificate-authentication" }], connection_log_options: [{ enabled: false }], self_service_portal: "disabled" }, refs({ server_certificate_arn: "aws_acm_certificate.server", vpc_id: "aws_vpc.lab", security_group_ids: "aws_security_group.cvpn", "authentication_options.0.root_certificate_chain_arn": chain }));
+  const cvpnOwn = ["aws_acm_certificate.server", "aws_security_group.cvpn"];
+  assert.deepEqual(rulesWith(c31, cvpnOwn, [cv("aws_acm_certificate.server")], templateResources(c31)), []);
+  assert.deepEqual(rulesWith(c31, cvpnOwn, [cv("data.aws_acm_certificate.issued")], templateResources(c31)), ["gateway: aws_ec2_client_vpn_endpoint.lab"]);
+});
+
+test("rulings P8, P9 and P11: vended logs to CloudWatch, a paid WAF group, an open router and an accelerated VPN are refused", () => {
+  assert.deepEqual(rulesFor(c23, [T(c23, "aws_route53_resolver_query_log_config.lab", { name: "lab-ans-23-hybrid-dns-queries", destination_arn: `arn:aws:logs:eu-west-2:${ACCOUNT}:log-group:/cloudlabs/ans-23-hybrid-dns/q` })]), ["lingering: aws_route53_resolver_query_log_config.lab"]);
+  const fwLogs = (d) => U("aws_networkfirewall_logging_configuration.lab", { logging_configuration: [{ log_destination_config: [d] }] }, refs({ firewall_arn: "aws_networkfirewall_firewall.lab" }));
+  const fw = ["aws_networkfirewall_firewall.lab"];
+  assert.deepEqual(rulesWith(c27, fw, [fwLogs({ log_destination_type: "CloudWatchLogs", log_type: "ALERT", log_destination: { logGroup: "/cloudlabs/ans-27-network-firewall/alerts" } })]), ["lingering: aws_networkfirewall_logging_configuration.lab"]);
+  assert.deepEqual(rulesWith(c27, fw, [fwLogs({ log_destination_type: "S3", log_type: "ALERT", log_destination: { bucketName: "cloudlabs-a27k3x9q-logs" } })]), []);
+  assert.deepEqual(rulesWith(c27, fw, [fwLogs({ log_destination_type: "S3", log_type: "ALERT", log_destination: { bucketName: "someone-elses-bucket" } })]), ["gateway: aws_networkfirewall_logging_configuration.lab"], "fail closed: the S3 bucket is the lab's own");
+  const waf = (name, over = {}) => T(c26, "aws_wafv2_web_acl.lab", { name: "lab-ans-26-edge-waf", region: "us-east-1", scope: "CLOUDFRONT", default_action: [{ allow: [{}] }], rule: [{ name: "m", priority: 1, statement: [{ managed_rule_group_statement: [{ vendor_name: "AWS", name }] }], override_action: [{ none: [{}] }] }], ...over });
+  assert.deepEqual(rulesFor(c26, [waf("AWSManagedRulesCommonRuleSet")]), []);
+  assert.deepEqual(rulesFor(c26, [waf("AWSManagedRulesBotControlRuleSet")]), ["size: aws_wafv2_web_acl.lab"]);
+  assert.deepEqual(rulesFor(c26, [waf("AWSManagedRulesCommonRuleSet", { rule_json: "[]" })]), ["size: aws_wafv2_web_acl.lab"], "fail closed: rules written as JSON cannot be read rule by rule");
+  const routerSg = (rule, owned = ["aws_vpn_connection.lab", "aws_security_group.router"]) => rulesWith(c22, owned, [T(c22, "aws_vpc_security_group_ingress_rule.r", rule.values, rule.more)]);
+  const sgRef = { security_group_id: ref("aws_security_group.router", "id") };
+  assert.deepEqual(routerSg({ values: { ip_protocol: "udp", from_port: 500, to_port: 500 }, more: { unknown: ["cidr_ipv4", "security_group_id"], refs: { cidr_ipv4: ref("aws_vpn_connection.lab", "tunnel1_address"), ...sgRef } } }), []);
+  assert.deepEqual(routerSg({ values: { ip_protocol: "udp", from_port: 500, to_port: 500, cidr_ipv4: "0.0.0.0/0" }, more: { unknown: ["security_group_id"], refs: sgRef } }), ["public: aws_vpc_security_group_ingress_rule.r"]);
+  assert.deepEqual(routerSg({ values: { ip_protocol: "tcp", from_port: 443, to_port: 443 }, more: { unknown: ["cidr_ipv4", "security_group_id"], refs: { cidr_ipv4: ref("aws_vpn_connection.lab", "tunnel1_address"), ...sgRef } } }), ["public: aws_vpc_security_group_ingress_rule.r"], "a tunnel address admits only UDP 500 or 4500");
+  assert.deepEqual(routerSg({ values: { ip_protocol: "udp", from_port: 500, to_port: 500 }, more: { unknown: ["cidr_ipv4", "security_group_id"], refs: { cidr_ipv4: ref("aws_instance.other", "public_ip"), ...sgRef } } }, ["aws_instance.other", "aws_security_group.router"]), ["public: aws_vpc_security_group_ingress_rule.r"], "an address not known at plan is the lab's own VPN tunnel");
+});
+
+test("rulings P5, P6 and P16: IPAM tiers and pools, prefix list entries, the firewall's mapping and protections", () => {
+  assert.deepEqual(rulesFor(c20, [T(c20, "aws_vpc_ipam.lab", { tier: "advanced", operating_regions: [{ region_name: "eu-west-2" }], cascade: true })]), ["size: aws_vpc_ipam.lab"]);
+  assert.deepEqual(rulesFor(c20, [T(c20, "aws_vpc_ipam.lab", { tier: "free", operating_regions: [{ region_name: "eu-west-2" }], cascade: true })]), []);
+  assert.deepEqual(rulesFor(c20, [U("aws_vpc_ipam_pool_cidr.v6", { cidr: "2001:db8::/52" }, refs({ ipam_pool_id: "aws_vpc_ipam_pool.v6" }))]), ["never: aws_vpc_ipam_pool_cidr.v6"]);
+  assert.deepEqual(rulesFor(c21, [U("aws_vpc_ipam_pool_cidr.v6", { netmask_length: 52 }, refs({ ipam_pool_id: "aws_vpc_ipam_pool.v6" }))]), ["never: aws_vpc_ipam_pool_cidr.v6"], "only lab 20");
+  const pl = (cidr) => T(c20, "aws_ec2_managed_prefix_list.admin", { name: "lab-ans-20-vpc-design-admin", address_family: "IPv4", max_entries: 4, entry: [{ cidr, description: "x" }] });
+  assert.deepEqual(rulesFor(c20, [pl("10.50.0.0/16")]), []);
+  assert.deepEqual(rulesFor(c20, [pl("0.0.0.0/0")]), ["address: aws_ec2_managed_prefix_list.admin"]);
+  const fw = (over) => T(c27, "aws_networkfirewall_firewall.lab", { name: "lab-ans-27-network-firewall", delete_protection: false, subnet_change_protection: false, firewall_policy_change_protection: false, subnet_mapping: [{}], ...over }, refs({ vpc_id: "aws_vpc.inspection", firewall_policy_arn: "aws_networkfirewall_firewall_policy.lab" }));
+  const own27 = ["aws_vpc.inspection", "aws_networkfirewall_firewall_policy.lab"];
+  assert.deepEqual(rulesWith(c27, own27, [fw({})]), []);
+  assert.deepEqual(rulesWith(c27, own27, [fw({ subnet_mapping: [{}, {}] })]), ["size: aws_networkfirewall_firewall.lab"]);
+  assert.deepEqual(rulesWith(c27, own27, [fw({ delete_protection: true })]), ["lingering: aws_networkfirewall_firewall.lab"]);
+});
+
+test("ruling P15 and batch 3 minor 5: transit gateway attachment count, EKS node sizes, ElastiCache replicas", () => {
+  const tgw = T(c21, "aws_ec2_transit_gateway.lab", { auto_accept_shared_attachments: "disable" });
+  const att = (i) => T(c21, `aws_ec2_transit_gateway_vpc_attachment.a${i}`, {}, refs({ transit_gateway_id: "aws_ec2_transit_gateway.lab", vpc_id: "aws_vpc.lab", subnet_ids: "aws_subnet.private" }));
+  assert.deepEqual(rulesFor(c21, [tgw, ...[1, 2, 3, 4].map(att)], templateResources(c21)), []);
+  assert.deepEqual(rulesFor(c21, [tgw, ...[1, 2, 3, 4, 5].map(att)], templateResources(c21)), ["size: aws_ec2_transit_gateway_vpc_attachment.a5"]);
+  const c19 = ctxAws("saa-19-eks", "19");
+  const ng = (over) => T(c19, "aws_eks_node_group.lab", { cluster_name: "lab-saa-19-eks", node_group_name: "lab-saa-19-eks-ng", scaling_config: [{ desired_size: 1, min_size: 1, max_size: 2 }], ...over }, refs({ node_role_arn: "aws_iam_role.node", subnet_ids: "aws_subnet.private" }));
+  // Left unset, instance_types is computed (unknown at plan): EKS would pick t3.medium.
+  assert.deepEqual(rulesWith(c19, ["aws_iam_role.node"], [ng({})], templateResources(c19)), ["size: aws_eks_node_group.lab"]);
+  assert.deepEqual(rulesWith(c19, ["aws_iam_role.node"], [ng({ instance_types: ["t4g.medium"] })], templateResources(c19)), []);
+  const rg = (over) => T(c11, "aws_elasticache_replication_group.cache", { replication_group_id: "lab-saa-11-three-tier-cache", description: "x", engine: "valkey", node_type: "cache.t4g.micro", num_cache_clusters: 1, subnet_group_name: "lab-saa-11-three-tier-cache", ...over });
+  const cacheGroup = T(c11, "aws_elasticache_subnet_group.cache", { name: "lab-saa-11-three-tier-cache" }, refs({ subnet_ids: "aws_subnet.private" }));
+  assert.deepEqual(rulesFor(c11, [cacheGroup, rg({})], templateResources(c11)), []);
+  assert.deepEqual(rulesFor(c11, [cacheGroup, rg({ replicas_per_node_group: 2 })], templateResources(c11)), ["size: aws_elasticache_replication_group.cache"]);
+  assert.deepEqual(rulesFor(c11, [cacheGroup, rg({ global_replication_group_id: "ldgnf-lab-global" })], templateResources(c11)), ["gateway: aws_elasticache_replication_group.cache"]);
+});
+
+test("Task 4 fail closed: ids no known-id rule reads, blocks not known at plan, and the batch 4 routes", () => {
+  // A Client VPN authorization rule or a Lattice listener names its endpoint or target group by reference.
+  assert.deepEqual(rulesFor(c31, [U("aws_ec2_client_vpn_authorization_rule.x", { client_vpn_endpoint_id: "cvpn-endpoint-0123456789abcdef0", target_network_cidr: "10.64.64.0/20", authorize_all_groups: true })]), ["gateway: aws_ec2_client_vpn_authorization_rule.x"]);
+  const listener = (tgRef) => T(c30, "aws_vpclattice_listener.http", { name: "http", protocol: "HTTP", default_action: [{ forward: [{ target_groups: [{ weight: 100 }] }] }] }, refs({ service_identifier: "aws_vpclattice_service.a", "default_action.0.forward.0.target_groups.0.target_group_identifier": tgRef }));
+  const svcA = ["aws_vpclattice_service.a", "aws_vpclattice_target_group.a"];
+  assert.deepEqual(rulesWith(c30, svcA, [listener("aws_vpclattice_target_group.a")]), []);
+  assert.deepEqual(rulesWith(c30, svcA, [listener("aws_vpclattice_service.a")]), ["gateway: aws_vpclattice_listener.http"]);
+  // A resolver rule's targets planned as one unknown (a dynamic block) cannot be read.
+  assert.deepEqual(rulesWith(c23, ["aws_route53_resolver_endpoint.out"], [T(c23, "aws_route53_resolver_rule.corp", { rule_type: "FORWARD", domain_name: "corp.a23k3x9q.internal" }, { unknown: ["resolver_endpoint_id", "target_ip"], refs: { resolver_endpoint_id: ref("aws_route53_resolver_endpoint.out", "id"), target_ip: ["local.targets"] } })]), ["address: aws_route53_resolver_rule.corp"]);
+  // A transit gateway peering to another account.
+  const tgwHub = T(c21, "aws_ec2_transit_gateway.lab", { auto_accept_shared_attachments: "disable" });
+  assert.deepEqual(rulesWith(c21, ["aws_ec2_transit_gateway.far"], [tgwHub, T(c21, "aws_ec2_transit_gateway_peering_attachment.x", { peer_account_id: "999999999999" }, refs({ transit_gateway_id: "aws_ec2_transit_gateway.lab", peer_transit_gateway_id: "aws_ec2_transit_gateway.far" }))]), ["gateway: aws_ec2_transit_gateway_peering_attachment.x"]);
+  // A route to a transit gateway or endpoint names the lab's own; an AWS-managed prefix list read by its data source passes.
+  const route = (more) => U("aws_route.x", { destination_cidr_block: "0.0.0.0/0" }, more);
+  const net21 = templateResources(c21);
+  assert.deepEqual(rulesFor(c21, [tgwHub, route({ unknown: ["route_table_id", "transit_gateway_id"], refs: { route_table_id: ref("aws_route_table.private", "id"), transit_gateway_id: ref("aws_ec2_transit_gateway.lab", "id") } })], net21), []);
+  assert.deepEqual(rulesFor(c21, [route({ unknown: ["route_table_id", "transit_gateway_id"], refs: { route_table_id: ref("aws_route_table.private", "id"), transit_gateway_id: ref("aws_vpc.lab", "id") } })], net21), ["address: aws_route.x"]);
+  assert.deepEqual(rulesWith(c27, ["aws_networkfirewall_firewall.lab"], [route({ unknown: ["route_table_id", "vpc_endpoint_id"], refs: { route_table_id: ref("aws_route_table.private", "id"), vpc_endpoint_id: ["aws_networkfirewall_firewall.lab.firewall_status", "aws_networkfirewall_firewall.lab"] } })], templateResources(c27)), [], "an endpoint from the lab's own firewall's firewall_status");
+  // An inline route is judged as an aws_route is (a vgw- id is no id the known-id rule reads).
+  assert.deepEqual(rulesFor(c21, [T(c21, "aws_route_table.inline", { route: [{ cidr_block: "0.0.0.0/0", gateway_id: "vgw-0123456789abcdef0" }] }, refs({ vpc_id: "aws_vpc.lab" }))], net21), ["address: aws_route_table.inline"]);
+  const plRoute = (pl, more = {}) => U("aws_route.pl", { ...(pl === undefined ? {} : { destination_prefix_list_id: pl }) }, { unknown: ["route_table_id", "gateway_id", ...(more.unknown ?? [])], refs: { route_table_id: ref("aws_route_table.private", "id"), gateway_id: ref("aws_internet_gateway.lab", "id"), ...(more.refs ?? {}) } });
+  const plData = { address: "data.aws_ec2_managed_prefix_list.s3", values: { id: "pl-7ca54015", name: "com.amazonaws.eu-west-2.s3" }, args: ["name"], refs: {} };
+  const plPlan = (r) => rules(realisticPlan({ resources: [...net21, T(c21, "aws_internet_gateway.lab", {}, refs({ vpc_id: "aws_vpc.lab" })), r], data: [...awsData(), plData], providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: c21.variables }), c21.id).filter((x) => x.endsWith("aws_route.pl"));
+  assert.deepEqual(plPlan(plRoute("pl-7ca54015")), [], "an AWS-managed list its data source read");
+  assert.deepEqual(plPlan(plRoute("pl-0123456789abcdef0")), ["gateway: aws_route.pl"], "another prefix list by id");
+  assert.deepEqual(plPlan(plRoute(undefined, { unknown: ["destination_prefix_list_id"], refs: { destination_prefix_list_id: ref("aws_vpc.lab", "id") } })), ["address: aws_route.pl"], "a reference that is no prefix list");
+});
+
+test("batch 3 minor 6: second destinations (dead-letter queues, crawler queues, Cognito triggers) are the lab's own", () => {
+  const foreignQ = "arn:aws:sqs:eu-west-2:999999999999:theirs";
+  const topic = T(c13, "aws_sns_topic.orders", { name: "lab-saa-13-decoupling-orders" });
+  const target = (dlq, more = {}) => U("aws_cloudwatch_event_target.x", { rule: "lab-saa-13-decoupling-placed", target_id: "x", dead_letter_config: [dlq] }, { unknown: ["arn", ...(more.unknown ?? [])], refs: { arn: ref("aws_sns_topic.orders", "arn"), ...(more.refs ?? {}) } });
+  assert.deepEqual(rulesFor(c13, [topic, target({ arn: foreignQ })]), ["gateway: aws_cloudwatch_event_target.x"]);
+  assert.deepEqual(rulesWith(c13, ["aws_sqs_queue.dlq"], [topic, target({}, { unknown: ["dead_letter_config.0.arn"], refs: { "dead_letter_config.0.arn": ref("aws_sqs_queue.dlq", "arn") } })]), []);
+  const queue = (redrive, more = {}) => T(c13, "aws_sqs_queue.work", { name: "lab-saa-13-decoupling-work", ...(redrive === undefined ? {} : { redrive_policy: redrive }) }, more);
+  assert.deepEqual(rulesFor(c13, [queue(JSON.stringify({ deadLetterTargetArn: foreignQ, maxReceiveCount: 3 }))]), ["gateway: aws_sqs_queue.work"]);
+  assert.deepEqual(rulesFor(c13, [queue(JSON.stringify({ deadLetterTargetArn: `arn:aws:sqs:eu-west-2:${ACCOUNT}:lab-saa-13-decoupling-dlq`, maxReceiveCount: 3 }))]), []);
+  assert.deepEqual(rulesWith(c13, ["aws_sqs_queue.dlq"], [queue(undefined, { unknown: ["redrive_policy"], refs: { redrive_policy: ref("aws_sqs_queue.dlq", "arn") } })]), []);
+  const crawlerRole = T(c17, "aws_iam_role.crawler", { name: "lab-saa-17-data-pipeline-crawler", path: "/cloudlabs-lab/", permissions_boundary: BOUNDARY, assume_role_policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: "glue.amazonaws.com" }, Action: "sts:AssumeRole" }] }) });
+  assert.deepEqual(rulesFor(c17, [crawlerRole, T(c17, "aws_glue_crawler.events", { name: "lab-saa-17-data-pipeline-events", database_name: "lab_saa_17_data_pipeline", s3_target: [{ path: "s3://cloudlabs-a17k3x9q-lake/events/", event_queue_arn: foreignQ }] }, { unknown: ["role"], refs: { role: ref("aws_iam_role.crawler", "arn") } })]), ["gateway: aws_glue_crawler.events"]);
+  const pool = (lc, more = {}) => T(c12, "aws_cognito_user_pool.lab", { name: "lab-saa-12-serverless-api-users", user_pool_tier: "LITE", deletion_protection: "INACTIVE", lambda_config: [lc] }, more);
+  assert.deepEqual(rulesFor(c12, [pool({ pre_sign_up: `arn:aws:lambda:eu-west-2:${ACCOUNT}:function:someone-else` })]), ["gateway: aws_cognito_user_pool.lab"]);
+  assert.deepEqual(rulesWith(c12, ["aws_lambda_function.signup"], [pool({}, { unknown: ["lambda_config.0.pre_sign_up"], refs: { "lambda_config.0.pre_sign_up": ref("aws_lambda_function.signup", "arn") } })]), []);
+});
+
+// ── Task 4 fix round 1 ──
+
+/** A plan with `attr` of `address` turned into a dynamic block whose for_each is not known at plan: one unknown, left out of the configuration. */
+const dynamicBlock = (p, address, attr) => {
+  const rc = p.resource_changes.find((x) => x.address === address);
+  rc.change.after_unknown[attr] = true;
+  delete rc.change.after[attr];
+  delete p.planned_values.root_module.resources.find((x) => x.address === address).values[attr];
+  delete p.configuration.root_module.resources.find((x) => x.address === address).expressions[attr];
+  return p;
+};
+const planOf = (cx, resources, base = templateMainResources(cx)) => realisticPlan({ resources: [...base, ...resources], data: awsData(), providers: ["aws"], providerConfig: AWS_PROVIDER_CONFIG, variables: cx.variables });
+
+test("fix round 1: a WAF statement as a plan prints it (every unused nested statement as []) passes; a rule group by reference is refused", () => {
+  const stmt = (over = {}) => ({ and_statement: [], byte_match_statement: [], geo_match_statement: [], ip_set_reference_statement: [], label_match_statement: [], managed_rule_group_statement: [{ name: "AWSManagedRulesCommonRuleSet", vendor_name: "AWS", version: "", rule_action_override: [], scope_down_statement: [], managed_rule_group_configs: [] }], not_statement: [], or_statement: [], rate_based_statement: [], regex_match_statement: [], regex_pattern_set_reference_statement: [], rule_group_reference_statement: [], size_constraint_statement: [], sqli_match_statement: [], xss_match_statement: [], ...over });
+  const waf = (s) => T(c26, "aws_wafv2_web_acl.lab", { name: "lab-ans-26-edge-waf", region: "us-east-1", scope: "CLOUDFRONT", default_action: [{ allow: [{}] }], rule: [{ name: "m", priority: 1, statement: [s], override_action: [{ none: [{}] }] }] });
+  assert.deepEqual(rulesFor(c26, [waf(stmt())]), []);
+  assert.deepEqual(rulesFor(c26, [waf(stmt({ managed_rule_group_statement: [], rule_group_reference_statement: [{ arn: "arn:aws:wafv2:us-east-1:999999999999:global/rulegroup/theirs/0123", rule_action_override: [] }] }))]), ["gateway: aws_wafv2_web_acl.lab"]);
+});
+
+test("fix round 1: a dynamic block whose for_each is not known at plan is refused where its elements are judged", () => {
+  const pl = T(c20, "aws_ec2_managed_prefix_list.admin", { name: "lab-ans-20-vpc-design-admin", address_family: "IPv4", max_entries: 4, entry: [{ cidr: "10.50.0.0/16", description: "x" }] });
+  assert.deepEqual(rules(planOf(c20, [pl]), c20.id), []);
+  assert.deepEqual(rules(dynamicBlock(planOf(c20, [pl]), pl.address, "entry"), c20.id), ["address: aws_ec2_managed_prefix_list.admin"]);
+  const eg = U("aws_globalaccelerator_endpoint_group.ldn", { endpoint_group_region: "eu-west-2", endpoint_configuration: [{ weight: 100, client_ip_preservation_enabled: false }] }, { unknown: ["endpoint_configuration.0.endpoint_id", "listener_arn"], refs: { "endpoint_configuration.0.endpoint_id": ref("aws_lb.london", "arn"), listener_arn: ref("aws_globalaccelerator_listener.http", "id") } });
+  const stand = ["aws_lb.london", "aws_globalaccelerator_listener.http"].map((a) => T(c26, a, {}));
+  const egOnly = (p) => rules(p, c26.id).filter((x) => x.endsWith(` ${eg.address}`));
+  assert.deepEqual(egOnly(planOf(c26, [...stand, eg])), []);
+  // The dynamic block's refs are in no configuration, so the fixture gives the dynamic version none.
+  const egDyn = { ...eg, unknown: ["listener_arn"], refs: { listener_arn: eg.refs.listener_arn } };
+  assert.deepEqual(egOnly(dynamicBlock(planOf(c26, [...stand, egDyn]), eg.address, "endpoint_configuration")), ["gateway: aws_globalaccelerator_endpoint_group.ldn"]);
+  const topic = T(c13, "aws_sns_topic.orders", { name: "lab-saa-13-decoupling-orders" });
+  const target = U("aws_cloudwatch_event_target.x", { rule: "lab-saa-13-decoupling-placed", target_id: "x", dead_letter_config: [{}] }, { unknown: ["arn"], refs: { arn: ref("aws_sns_topic.orders", "arn") } });
+  assert.deepEqual(rules(dynamicBlock(planOf(c13, [topic, target]), target.address, "dead_letter_config"), c13.id), ["gateway: aws_cloudwatch_event_target.x"]);
+  // HCL sees a dynamic block a plan cannot tell from an unset computed one: lab 22's ingress, say.
+  const hcl = { resource: { aws_security_group: { router: [{ name: "lab-router", vpc_id: "${aws_vpc.lab.id}", dynamic: { ingress: [{ for_each: "${var.sources}", content: [{ from_port: 500, to_port: 500, protocol: "udp", cidr_blocks: ["${ingress.value}"] }] }] } }] } } };
+  assert.deepEqual(scope.checkHclAws(hcl, c22.id).filter((x) => x.address === "aws_security_group.router").map((x) => x.rule), ["public"]);
+});
+
+test("fix round 1: a Client VPN connect handler and a cross-region interface endpoint are refused; a state machine logs only to the lab's own group", () => {
+  const cvpn = (over) => T(c31, "aws_ec2_client_vpn_endpoint.lab", { client_cidr_block: "10.64.124.0/22", split_tunnel: true, transport_protocol: "udp", authentication_options: [{ type: "certificate-authentication" }], connection_log_options: [{ enabled: false }], self_service_portal: "disabled", ...over }, { unknown: ["server_certificate_arn", "vpc_id", "authentication_options.0.root_certificate_chain_arn"], refs: { server_certificate_arn: ref("aws_acm_certificate.server", "arn"), vpc_id: ref("aws_vpc.lab", "id"), "authentication_options.0.root_certificate_chain_arn": ref("aws_acm_certificate.server", "arn") } });
+  assert.deepEqual(rulesWith(c31, ["aws_acm_certificate.server"], [cvpn({ client_connect_options: [{ enabled: false }] })], templateResources(c31)), []);
+  assert.deepEqual(rulesWith(c31, ["aws_acm_certificate.server"], [cvpn({ client_connect_options: [{ enabled: true, lambda_function_arn: `arn:aws:lambda:eu-west-2:${ACCOUNT}:function:AWSClientVPN-x` }] })], templateResources(c31)), ["gateway: aws_ec2_client_vpn_endpoint.lab"]);
+  const ep = (over) => T(c24, "aws_vpc_endpoint.ssm", { vpc_endpoint_type: "Interface", service_name: "com.amazonaws.eu-west-2.ssm", ...over }, refs({ vpc_id: "aws_vpc.lab" }));
+  assert.deepEqual(rulesFor(c24, [ep({ service_region: "eu-west-2" })], templateResources(c24)), []);
+  assert.deepEqual(rulesFor(c24, [ep({ service_region: "us-east-1" })], templateResources(c24)), ["provider: aws_vpc_endpoint.ssm"]);
+  const sfnRole = T(c13, "aws_iam_role.sfn", { name: "lab-saa-13-decoupling-sfn", path: "/cloudlabs-lab/", permissions_boundary: BOUNDARY, assume_role_policy: JSON.stringify({ Version: "2012-10-17", Statement: [{ Effect: "Allow", Principal: { Service: "states.amazonaws.com" }, Action: "sts:AssumeRole" }] }) });
+  const sm = (log, more = {}) => T(c13, "aws_sfn_state_machine.orders", { name: "lab-saa-13-decoupling-orders", type: "STANDARD", definition: JSON.stringify({ StartAt: "A", States: { A: { Type: "Pass", End: true } } }), logging_configuration: [{ level: "ALL", include_execution_data: false, ...log }] }, { unknown: ["role_arn", ...(more.unknown ?? [])], refs: { role_arn: ref("aws_iam_role.sfn", "arn"), ...(more.refs ?? {}) } });
+  assert.deepEqual(rulesFor(c13, [sfnRole, sm({ log_destination: `arn:aws:logs:eu-west-2:${ACCOUNT}:log-group:/aws/vendedlogs/states/someone-else:*` })]), ["gateway: aws_sfn_state_machine.orders"]);
+  assert.deepEqual(rulesWith(c13, ["aws_cloudwatch_log_group.sfn"], [sfnRole, sm({}, { unknown: ["logging_configuration.0.log_destination"], refs: { "logging_configuration.0.log_destination": ref("aws_cloudwatch_log_group.sfn", "arn") } })]), []);
+});
+
+test("fix round 2: lab 22's VPN connection leaving its tunnel log options unset (Optional and Computed: planned unknown) passes; a dynamic one in HCL is refused", () => {
+  const cgw = T(c22, "aws_customer_gateway.onprem", { bgp_asn: "65001", type: "ipsec.1" }, { unknown: ["ip_address"], refs: { ip_address: ref("aws_eip.router", "public_ip") } });
+  const vgw = T(c22, "aws_vpn_gateway.lab", { amazon_side_asn: "64512" }, refs({ vpc_id: "aws_vpc.lab" }));
+  const vpn = (over = {}) => T(c22, "aws_vpn_connection.lab", { type: "ipsec.1", static_routes_only: false, ...over }, refs({ customer_gateway_id: "aws_customer_gateway.onprem", vpn_gateway_id: "aws_vpn_gateway.lab" }));
+  const vpnOnly = (xs) => xs.filter((x) => x.endsWith(" aws_vpn_connection.lab"));
+  // UNSET_BLOCKS_UNKNOWN plans both blocks wholly unknown, as AWS does.
+  assert.deepEqual(vpnOnly(rulesWith(c22, ["aws_eip.router"], [cgw, vgw, vpn()], templateResources(c22))), []);
+  assert.deepEqual(vpnOnly(rulesWith(c22, ["aws_eip.router"], [cgw, vgw, vpn({ tunnel1_log_options: [{ cloudwatch_log_options: [{ log_enabled: true }] }] })], templateResources(c22))), ["lingering: aws_vpn_connection.lab"]);
+  const hcl = { resource: { aws_vpn_connection: { lab: [{ type: "ipsec.1", customer_gateway_id: "${aws_customer_gateway.onprem.id}", vpn_gateway_id: "${aws_vpn_gateway.lab.id}", dynamic: { tunnel1_log_options: [{ for_each: "${var.logs}", content: [{ cloudwatch_log_options: [{ log_enabled: true }] }] }] } }] } } };
+  assert.deepEqual(scope.checkHclAws(hcl, c22.id).filter((x) => x.address === "aws_vpn_connection.lab").map((x) => x.rule), ["lingering"]);
 });

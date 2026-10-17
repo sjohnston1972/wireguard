@@ -12,6 +12,8 @@ import {
   AWS_BOUNDARY,
   AWS_CONFIG_LABS,
   AWS_DNS_LABS,
+  AWS_FILES_LABS,
+  AWS_GA_LABS,
   AWS_GLOBAL_LABS,
   AWS_IAM_PATH,
   AWS_IAM_USER_LABS,
@@ -20,6 +22,7 @@ import {
   AWS_LAB_REGIONS,
   AWS_LABS_ROLE,
   AWS_MEDIUM_LABS,
+  AWS_PEER_REGION_LABS,
   AWS_USAGE_PREFIX,
   EXAM_CLOUD,
   FLOW_LOG_LABS,
@@ -283,6 +286,9 @@ describe("contract lists", () => {
     expect([...scripts.AWS_CONFIG_LABS]).toEqual([...AWS_CONFIG_LABS]);
     expect([...scripts.AWS_GLOBAL_LABS]).toEqual([...AWS_GLOBAL_LABS]);
     expect([...scripts.AWS_DNS_LABS]).toEqual([...AWS_DNS_LABS]);
+    expect([...scripts.AWS_FILES_LABS]).toEqual([...AWS_FILES_LABS]);
+    expect([...scripts.AWS_GA_LABS]).toEqual([...AWS_GA_LABS]);
+    expect([...scripts.AWS_PEER_REGION_LABS]).toEqual([...AWS_PEER_REGION_LABS]);
     expect([...scripts.AWS_INSTANCE_TYPES]).toEqual([...AWS_INSTANCE_TYPES]);
     expect([...scripts.AWS_MEDIUM_LABS]).toEqual([...AWS_MEDIUM_LABS]);
     expect(scripts.AWS_USAGE_PREFIX).toEqual(AWS_USAGE_PREFIX);

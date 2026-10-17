@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Join London and Ireland VPCs by transit gateway peering and by VPC peering, and compare them.
+learn:
+  - Peer transit gateways across Regions with static routes
+  - Accept inter-Region peering requests in the other Region
+  - Compare the two paths for latency, reach and cost
+learning_min: 60

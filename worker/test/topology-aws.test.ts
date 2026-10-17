@@ -338,10 +338,24 @@ describe("GET /labs/:id/topology for an AWS lab", () => {
     const seen = fakeAws();
     const r = await api(env, "GET", "/labs/saa-16-dr-pilot-light/topology");
     expect(r.json.status).toBe("ok");
-    expect(AWS_TOPOLOGY_CALLS_MAX).toBe(15);
     expect(seen.length).toBeLessThanOrEqual(AWS_TOPOLOGY_CALLS_MAX);
     expect(seen.filter((s) => s.host.endsWith(".us-east-1.amazonaws.com")).map((s) => s.action)).toEqual(["ResourceGroupsTaggingAPI_20170126.GetResources"]);
     expect(seen.some((s) => s.host === "tagging.eu-west-1.amazonaws.com")).toBe(true);
+    expect(seen.some((s) => s.host.endsWith(".us-west-2.amazonaws.com"))).toBe(false);
+  });
+
+  it("ruling P24: a four-region lab's live graph reads us-west-2 once, within the call cap", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    resetTopologyCache();
+    await runningLab(env, world, "ans-26-edge");
+    const seen = fakeAws();
+    const r = await api(env, "GET", "/labs/ans-26-edge/topology");
+    expect(r.json.status).toBe("ok");
+    expect(AWS_TOPOLOGY_CALLS_MAX).toBe(16);
+    expect(seen.length).toBeLessThanOrEqual(AWS_TOPOLOGY_CALLS_MAX);
+    expect(seen.filter((s) => s.host.endsWith(".us-west-2.amazonaws.com")).map((s) => s.action)).toEqual(["ResourceGroupsTaggingAPI_20170126.GetResources"]);
   });
 
   it("an AWS refusal is failed in plain words; throttling is throttled", async () => {
@@ -541,5 +555,147 @@ describe("batch 3's types on the diagrams", () => {
     expect(keys.some((k) => k.startsWith("apigateway:stages") || k.startsWith("elasticache:cluster"))).toBe(false);
     expect(kindOfAws("events:event-bus")).toBe("messaging");
     expect(kindOfAws("eks:nodegroup")).toBe("aks");
+  });
+});
+
+describe("batch 4's types on the diagrams", () => {
+  const b4 = (labId: string, changes: ReturnType<typeof ch>[], refs: Record<string, Record<string, string[]>>) => plannedGraph({ labId, version: 1, number: labId.slice(4, 6), changes: [ch("aws_resourcegroups_group.lab", { name: `lab-${labId}` }), ...changes], outputs: {}, refs } as never);
+  const kindOf = (g: { nodes: { key: string; kind: string }[] }, k: string) => g.nodes.find((n) => n.key === k)?.kind;
+  const edge = (g: { nodes: { key: string; id: string }[]; edges: { from: string; to: string; label?: string }[] }, a: string, b: string, label: string) => {
+    const nid = (k: string) => g.nodes.find((n) => n.key === k)?.id;
+    return g.edges.some((e) => e.from === nid(a) && e.to === nid(b) && e.label === label);
+  };
+
+  it("a transit gateway draws an edge per attachment; its route tables, associations and routes fold in; a peering joins two TGWs", () => {
+    const g = b4("ans-29-multi-region", [
+      ch("aws_vpc.lab", { tags: { Name: "vpc-lab" } }),
+      ch("aws_ec2_transit_gateway.london", { tags: { Name: "tgw-london" } }),
+      ch("aws_ec2_transit_gateway.ireland", { tags: { Name: "tgw-ireland" } }),
+      ch("aws_ec2_transit_gateway_vpc_attachment.london", { tags: { Name: "tgwa-london" } }),
+      ch("aws_ec2_transit_gateway_peering_attachment.li", { tags: { Name: "tgwp-london-ireland" } }),
+      ch("aws_ec2_transit_gateway_route.l2i", { destination_cidr_block: "10.64.16.0/20" }),
+    ], {
+      "aws_ec2_transit_gateway_vpc_attachment.london": { transit_gateway_id: ["aws_ec2_transit_gateway.london"], vpc_id: ["aws_vpc.lab"] },
+      "aws_ec2_transit_gateway_peering_attachment.li": { transit_gateway_id: ["aws_ec2_transit_gateway.london"], peer_transit_gateway_id: ["aws_ec2_transit_gateway.ireland"] },
+      "aws_ec2_transit_gateway_route.l2i": { transit_gateway_attachment_id: ["aws_ec2_transit_gateway_peering_attachment.li"] },
+    });
+    expect(kindOf(g, "ec2:transit-gateway/tgw-london")).toBe("transitGateway");
+    expect(edge(g, "ec2:transit-gateway/tgw-london", "ec2:vpc/vpc-lab", "attachment")).toBe(true);
+    expect(edge(g, "ec2:transit-gateway/tgw-london", "ec2:transit-gateway/tgw-ireland", "inter-region peering")).toBe(true);
+    expect(g.nodes.some((n) => /attachment|route/.test(n.key))).toBe(false);
+  });
+
+  it("DNS Firewall: a domain list folds into the rule that uses it, and the rule into its group", () => {
+    const g = b4("ans-23-hybrid-dns", [
+      ch("aws_route53_resolver_firewall_rule_group.lab", { name: "lab-ans-23-hybrid-dns-dnsfw", tags: { Name: "dnsfw-lab" } }),
+      ch("aws_route53_resolver_firewall_domain_list.blocked", { name: "lab-ans-23-hybrid-dns-blocked", tags: { Name: "dnsfw-blocked" } }),
+      ch("aws_route53_resolver_firewall_rule.block", { name: "block" }),
+    ], { "aws_route53_resolver_firewall_rule.block": { firewall_rule_group_id: ["aws_route53_resolver_firewall_rule_group.lab"], firewall_domain_list_id: ["aws_route53_resolver_firewall_domain_list.blocked"] } });
+    expect(kindOf(g, "route53resolver:firewall-rule-group/dnsfw-lab")).toBe("generic");
+    expect(g.nodes.some((n) => /domain-list|dnsfw-blocked|firewall-rule\//.test(n.key))).toBe(false);
+  });
+
+  it("VPN: the gateway and customer gateway joined by the connection; Client VPN and Resolver kinds; certificates hidden", () => {
+    const g = b4("ans-22-s2s-vpn", [
+      ch("aws_vpn_gateway.lab", { tags: { Name: "vgw-lab" } }),
+      ch("aws_customer_gateway.onprem", { tags: { Name: "cgw-onprem" } }),
+      ch("aws_vpn_connection.lab", { tags: { Name: "vpn-lab" } }),
+      ch("aws_ec2_client_vpn_endpoint.lab", { tags: { Name: "cvpn-lab" } }),
+      ch("aws_route53_resolver_endpoint.in", { direction: "INBOUND", tags: { Name: "rslvr-in" } }),
+      ch("tls_private_key.ca", {}),
+      ch("aws_acm_certificate.server", { tags: { Name: "cert-cvpn-server" } }),
+    ], { "aws_vpn_connection.lab": { vpn_gateway_id: ["aws_vpn_gateway.lab"], customer_gateway_id: ["aws_customer_gateway.onprem"] } });
+    expect([kindOf(g, "ec2:vpn-gateway/vgw-lab"), kindOf(g, "ec2:customer-gateway/cgw-onprem"), kindOf(g, "ec2:client-vpn-endpoint/cvpn-lab"), kindOf(g, "route53resolver:resolver-endpoint/rslvr-in"), kindOf(g, "acm:certificate/cert-cvpn-server")]).toEqual(["vpnGateway", "localNetworkGateway", "clientVpn", "dnsResolver", "generic"]);
+    expect(edge(g, "ec2:vpn-gateway/vgw-lab", "ec2:customer-gateway/cgw-onprem", "IPsec, BGP")).toBe(true);
+    expect(g.nodes.some((n) => n.key.startsWith("tls"))).toBe(false);
+  });
+
+  it("final fix F9: a Network Firewall sits in the subnet its subnet_mapping names", () => {
+    const g = b4("ans-27-network-firewall", [
+      ch("aws_vpc.inspection", { tags: { Name: "vpc-inspection" } }),
+      ch("aws_subnet.insp_tgw", { tags: { Name: "snet-insp-tgw" } }),
+      ch("aws_subnet.insp_firewall", { tags: { Name: "snet-insp-firewall" } }),
+      ch("aws_networkfirewall_firewall.lab", { name: "lab-ans-27-network-firewall", tags: { Name: "nfw-lab" } }),
+    ], {
+      "aws_subnet.insp_tgw": { vpc_id: ["aws_vpc.inspection"] },
+      "aws_subnet.insp_firewall": { vpc_id: ["aws_vpc.inspection"] },
+      "aws_networkfirewall_firewall.lab": { vpc_id: ["aws_vpc.inspection"], subnet_mapping: ["aws_subnet.insp_firewall"] },
+    });
+    const fw = g.nodes.find((n) => n.key === "network-firewall:firewall/nfw-lab")!;
+    expect(fw.parent).toBe(g.nodes.find((n) => n.key === "ec2:subnet/snet-insp-firewall")!.id);
+  });
+
+  it("final fix F9: a reference to an indexed address is that element; an unindexed one from a counted instance is its own index", () => {
+    const g = b4("soa-02-systems-manager", [
+      ch("aws_vpc.lab", { tags: { Name: "vpc-lab" } }),
+      ch("aws_subnet.private[0]", { tags: { Name: "snet-private-1" } }),
+      ch("aws_subnet.private[1]", { tags: { Name: "snet-private-2" } }),
+      ch("aws_instance.second", { tags: { Name: "vm-second" } }),
+      ch("aws_instance.web[0]", { tags: { Name: "vm-web-1" } }),
+      ch("aws_instance.web[1]", { tags: { Name: "vm-web-2" } }),
+      ch("aws_instance.pinned[1]", { tags: { Name: "vm-pinned" } }),
+    ], {
+      "aws_subnet.private": { vpc_id: ["aws_vpc.lab"] },
+      "aws_instance.second": { subnet_id: ["aws_subnet.private[1]"] },
+      "aws_instance.web": { subnet_id: ["aws_subnet.private"] },
+      "aws_instance.pinned": { subnet_id: ["aws_subnet.private[0]"] },
+    });
+    const parentOf = (k: string) => g.nodes.find((n) => n.id === g.nodes.find((x) => x.key === k)!.parent)?.label;
+    expect([parentOf("ec2:instance/vm-second"), parentOf("ec2:instance/vm-web-1"), parentOf("ec2:instance/vm-web-2"), parentOf("ec2:instance/vm-pinned")]).toEqual(["snet-private-2", "snet-private-1", "snet-private-2", "snet-private-1"]);
+  });
+
+  it("final fix F2: an instance on a lab-made primary interface sits in that interface's subnet with its address; the interface and the EIP association fold in", () => {
+    const g = b4("ans-22-s2s-vpn", [
+      ch("aws_vpc.onprem", { tags: { Name: "vpc-onprem" } }),
+      ch("aws_subnet.onprem", { cidr_block: "10.64.16.0/24", tags: { Name: "snet-onprem" } }),
+      ch("aws_network_interface.router", { private_ips: ["10.64.16.10"], tags: { Name: "nic-router" } }),
+      ch("aws_instance.router", { instance_type: "t4g.micro", tags: { Name: "vm-router" } }),
+      ch("aws_eip.router", { tags: { Name: "eip-router" } }),
+      ch("aws_eip_association.router", {}),
+    ], {
+      "aws_subnet.onprem": { vpc_id: ["aws_vpc.onprem"] },
+      "aws_network_interface.router": { subnet_id: ["aws_subnet.onprem"] },
+      "aws_instance.router": { primary_network_interface: ["aws_network_interface.router"] },
+      "aws_eip_association.router": { network_interface_id: ["aws_network_interface.router"], allocation_id: ["aws_eip.router"] },
+    });
+    const vm = g.nodes.find((n) => n.key === "ec2:instance/vm-router")!;
+    expect(vm.parent).toBe(g.nodes.find((n) => n.key === "ec2:subnet/snet-onprem")!.id);
+    expect(vm.props.privateIp).toBe("10.64.16.10");
+    expect((vm.folded ?? []).map((f) => f.label).sort()).toEqual(["eip-router", "nic-router", "router"]);
+    expect(g.nodes.some((n) => /network-interface|elastic-ip/.test(n.key))).toBe(false);
+  });
+
+  it("the edge: the accelerator's endpoint groups draw edges to their NLBs; the ACL protects the distribution; Lattice joins VPC, network and services", () => {
+    const g = b4("ans-26-edge", [
+      ch("aws_lb.london", { load_balancer_type: "network", tags: { Name: "nlb-ldn" } }),
+      ch("aws_globalaccelerator_accelerator.lab", { tags: { Name: "ga-lab" } }),
+      ch("aws_globalaccelerator_listener.http", {}),
+      ch("aws_globalaccelerator_endpoint_group.ldn", { endpoint_group_region: "eu-west-2" }),
+      ch("aws_cloudfront_distribution.lab", { tags: { Name: "cdn-lab" } }),
+      ch("aws_wafv2_web_acl.lab", { tags: { Name: "waf-lab" } }),
+    ], {
+      "aws_globalaccelerator_listener.http": { accelerator_arn: ["aws_globalaccelerator_accelerator.lab"] },
+      "aws_globalaccelerator_endpoint_group.ldn": { listener_arn: ["aws_globalaccelerator_listener.http"], endpoint_configuration: ["aws_lb.london"] },
+      "aws_cloudfront_distribution.lab": { web_acl_id: ["aws_wafv2_web_acl.lab"] },
+    });
+    expect([kindOf(g, "globalaccelerator:accelerator/ga-lab"), kindOf(g, "wafv2:global/webacl/waf-lab")]).toEqual(["trafficManager", "wafPolicy"]);
+    expect(edge(g, "globalaccelerator:accelerator/ga-lab", "elasticloadbalancing:loadbalancer/nlb-ldn", "eu-west-2")).toBe(true);
+    expect(edge(g, "wafv2:global/webacl/waf-lab", "cloudfront:distribution/cdn-lab", "protects")).toBe(true);
+  });
+
+  it("ruling P22: live, Lattice listeners, target groups and associations and TGW route tables are left out; WAF's ARN is a wafPolicy", () => {
+    const row = (type: string, id: string, region = "eu-west-2", tags: Record<string, string> = {}): AwsRow => ({ arn: `arn:aws:${type.split(":")[0]}:${region}:123456789012:${type.split(":")[1]}/${id}`, type, id, region, name: tags.Name ?? null, tags: { "cloudlabs-lab": "ans-30-vpc-lattice", ...tags }, props: {}, refs: {} });
+    const g = awsLiveGraph([
+      row("resource-groups:group", "lab-ans-30-vpc-lattice", "eu-west-2", { Name: "lab-ans-30-vpc-lattice" }),
+      row("vpc-lattice:service", "svc-0a", "eu-west-2", { Name: "svc-a" }),
+      row("vpc-lattice:listener", "svc-0a/listener/l-1"),
+      row("vpc-lattice:targetgroup", "tg-1"),
+      row("vpc-lattice:servicenetworkvpcassociation", "snva-1"),
+      row("ec2:transit-gateway-route-table", "tgw-rtb-1"),
+    ], { labId: "ans-30-vpc-lattice", version: 1, gatewayVpcIds: [], at: "2026-10-17T00:00:00Z", region: "eu-west-2", secondaryRegion: null });
+    const keys = g.nodes.map((n) => n.key);
+    expect(keys.filter((k) => /listener|targetgroup|association|transit-gateway-route-table/.test(k))).toEqual([]);
+    expect(kindOfAws("wafv2:global/webacl")).toBe("wafPolicy");
+    expect(kindOfAws("ec2:egress-only-internet-gateway")).toBe("internetGateway");
   });
 });

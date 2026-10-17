@@ -34,8 +34,14 @@
 // anything called wg-admin-* except the lab permission boundary; aws-provider
 // (a provider "aws" block holds only region, alias and default_tags with
 // var.tags: no credentials, profile, assume_role, endpoints or account
-// settings); and data (no data "tls_certificate"; an archive_file reads only
-// inside path.module). Bicep files are not read for AWS. `--cloud aws` also
+// settings); data (no data "tls_certificate"; an archive_file reads only
+// inside path.module); and outputs (ruling P2: an output "files" only in
+// AWS_FILES_LABS and with sensitive = true; lintDir takes the lab's id from
+// its labs/<id>/terraform folder, and with no id a files output is
+// refused); and dynamic (AWS batch 4 Task 4 fix round 2: a dynamic block for
+// any block lab-scope-aws.mjs judges element by element, AWS_DYNAMIC_JUDGED:
+// a plan cannot tell one whose for_each is not known at plan from a block left
+// unset, and the deploy-time runner runs this check and the plan check only). Bicep files are not read for AWS. `--cloud aws` also
 // reads the CloudFormation templates in `terraform/cfn/` (lab 06; rule cfn,
 // ruling P4): short-form tags (`!Ref`: Terraform's yamldecode reads none),
 // `Transform`, nested stacks, custom resources, macros, StackSets, SAM, IAM
@@ -62,7 +68,7 @@
 // runner); scripts/lib/labs.mjs re-exports lintTfText for npm run labs-check.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** The providers a lab may use, as full source addresses. lab-scope.mjs checks the plan against the same list. */
@@ -163,6 +169,34 @@ const TEXT_RULES = [
 
 // AWS: the same rules, with IPv6 literals, the VPN server's VPC names and the aws-provider / data checks below.
 const AWS_BOUNDARY_NAME = "wg-admin-lab-boundary";
+/** Ruling P1: a copy of the contract's. */
+export const AWS_FILES_LABS = ["ans-31-client-vpn"];
+/**
+ * Task 4 fix round 2: the blocks lab-scope-aws.mjs judges element by element, by type, each with the scope rule that
+ * refuses a dynamic one. A dynamic block whose for_each is not known at plan plans as one unknown and is left out of
+ * the plan's configuration, so a plan cannot tell it from an Optional and Computed block left unset; this check (and
+ * the scope check's HCL mode, which imports this map) refuses it on the text. One list, so the two cannot drift.
+ */
+export const AWS_DYNAMIC_JUDGED = {
+  aws_cloudwatch_event_target: { dead_letter_config: "gateway" },
+  aws_sfn_state_machine: { logging_configuration: "gateway" },
+  aws_security_group: { ingress: "public" },
+  aws_cloudfront_distribution: { logging_config: "lingering" },
+  aws_glue_catalog_table: { target_table: "gateway" },
+  aws_ec2_client_vpn_endpoint: { authentication_options: "never", client_connect_options: "gateway" },
+  aws_ec2_managed_prefix_list: { entry: "address" },
+  aws_vpn_connection: { tunnel1_log_options: "lingering", tunnel2_log_options: "lingering" },
+  aws_route53_resolver_endpoint: { ip_address: "gateway" },
+  aws_route53_resolver_rule: { target_ip: "address" },
+  aws_globalaccelerator_endpoint_group: { endpoint_configuration: "gateway" },
+  aws_globalaccelerator_accelerator: { attributes: "lingering" },
+  aws_wafv2_web_acl: { rule: "size" },
+  aws_networkfirewall_firewall: { subnet_mapping: "size" },
+  aws_networkfirewall_firewall_policy: { firewall_policy: "never" },
+  aws_networkfirewall_logging_configuration: { logging_configuration: "lingering" },
+  aws_vpclattice_target_group_attachment: { target: "gateway" },
+  aws_vpclattice_listener: { default_action: "gateway" },
+};
 /** Every Name tag in infra/aws/main.tf (lab-scope-aws.mjs GATEWAY_NAME_LIST is the same list; a test keeps them equal). */
 export const AWS_GATEWAY_NAMES = ["vpc-wg", "snet-wg", "rt-wg", "sg-wg", "igw-wg", "nic-wg", "pip-wg", "vm-wg", "osdisk-wg", "rt-workloads", "snet-workloads", "sg-workloads", "vm-test", "osdisk-test"];
 const AWS_TEXT_RULES = [
@@ -220,26 +254,39 @@ function requiredProviders(codes) {
   return out;
 }
 
-/** The top-level entries of a block body: [{ key, kind: "attr" | "block", index, value }] (value: the rest of the line, or the block's body). */
+/**
+ * The top-level entries of a block body: [{ key, label, kind: "attr" | "block", index, value }] (value: the rest of the
+ * line, or the block's body; label: a block's label, dynamic "ingress" { ... }'s ingress, else null).
+ */
 function topLevel(body) {
   const entries = [];
   let depth = 0;
   let inStr = false;
   for (let i = 0; i < body.length; i++) {
     if (depth === 0 && !inStr && (i === 0 || body[i - 1] === "\n")) {
-      const m = /^[ \t]*([A-Za-z_][\w-]*)[ \t]*(=|\{)/.exec(body.slice(i, body.indexOf("\n", i) < 0 ? undefined : body.indexOf("\n", i)));
+      const m = /^[ \t]*([A-Za-z_][\w-]*)(?:[ \t]+(?:"([^"\n]*)"|([A-Za-z_][\w-]*)))?[ \t]*(=|\{)/.exec(body.slice(i, body.indexOf("\n", i) < 0 ? undefined : body.indexOf("\n", i)));
       if (m) {
-        if (m[2] === "{") {
+        const blockLabel = m[2] ?? m[3] ?? null;
+        if (m[4] === "{") {
           const open = i + m[0].length - 1;
           const close = closeOf(body, open);
-          entries.push({ key: m[1], kind: "block", index: i, value: close < 0 ? body.slice(open + 1) : body.slice(open + 1, close) });
-        } else {
+          entries.push({ key: m[1], label: blockLabel, kind: "block", index: i, value: close < 0 ? body.slice(open + 1) : body.slice(open + 1, close) });
+        } else if (blockLabel === null) {
           const end = body.indexOf("\n", i);
-          entries.push({ key: m[1], kind: "attr", index: i, value: body.slice(i + m[0].length, end < 0 ? body.length : end).trim() });
+          entries.push({ key: m[1], label: null, kind: "attr", index: i, value: body.slice(i + m[0].length, end < 0 ? body.length : end).trim() });
         }
       }
     }
     const ch = body[i];
+    // A heredoc's lines are text, never entries (Task 3 fix round 1): skip to its closing marker's line.
+    const doc = !inStr && ch === "<" ? /^<<-?([A-Za-z_][\w-]*)[ \t]*\n/.exec(body.slice(i)) : null;
+    if (doc) {
+      const end = new RegExp(String.raw`\n[ \t]*${doc[1]}[ \t]*(?=\n|$)`, "g");
+      end.lastIndex = i + doc[0].length - 1;
+      const e = end.exec(body);
+      i = e ? e.index + e[0].length - 1 : body.length;
+      continue;
+    }
     if (inStr) {
       if (ch === "\\") i++;
       else if (ch === '"' || ch === "\n") inStr = false;
@@ -293,18 +340,51 @@ function awsDataProblems(file, code) {
   return out;
 }
 
+/** Task 4 fix round 2: a dynamic block for a block the scope check judges element by element (AWS_DYNAMIC_JUDGED). */
+function awsDynamicProblems(file, code) {
+  const out = [];
+  for (const m of code.matchAll(new RegExp(String.raw`\bresource\s+${LABEL}\s+${LABEL}\s*\{`, "g"))) {
+    const judged = AWS_DYNAMIC_JUDGED[label(m, 1)];
+    if (!judged) continue;
+    const open = m.index + m[0].length - 1;
+    const close = closeOf(code, open);
+    for (const e of topLevel(close < 0 ? "" : code.slice(open + 1, close))) {
+      if (e.kind === "block" && e.key === "dynamic" && e.label in judged) out.push({ file, line: lineOf(code, open + 1 + e.index), rule: "dynamic", message: `dynamic "${e.label}" in ${label(m, 1)}: write each ${e.label} block, so the plan check can read it (a dynamic block whose for_each is not known at plan hides its contents)` });
+    }
+  }
+  return out;
+}
+
+/** Ruling P2: the files output (A13) only in AWS_FILES_LABS, and sensitive, so Terraform never prints it. */
+function awsFilesOutputProblems(file, code, labId) {
+  const out = [];
+  // Fix round 1: the label quoted or bare; sensitive read at the block's top level (not in an object or a heredoc).
+  for (const m of code.matchAll(/\boutput\s+(?:"files"|files)\s*\{/g)) {
+    const open = m.index + m[0].length - 1;
+    const close = closeOf(code, open);
+    const body = close < 0 ? "" : code.slice(open + 1, close);
+    const line = lineOf(code, m.index);
+    const sensitive = topLevel(body).some((e) => e.kind === "attr" && e.key === "sensitive" && e.value === "true");
+    if (!AWS_FILES_LABS.includes(labId)) out.push({ file, line, rule: "outputs", message: `output "files": only ${AWS_FILES_LABS.join(", ")} hand files to the dashboard (ruling P2)` });
+    else if (!sensitive) out.push({ file, line, rule: "outputs", message: 'output "files" must say sensitive = true (ruling P2)' });
+  }
+  return out;
+}
+
 /**
  * Lint a lab's Terraform files ({ "main.tf": text, ... }), all of them
  * together (providers are declared in one file and used in another).
- * `cloud` "aws" applies the AWS rules. Returns [{ file, line, rule, message }].
+ * `cloud` "aws" applies the AWS rules; `labId` is the lab's id (the AWS
+ * outputs rule reads it; with none, a files output is refused). Returns
+ * [{ file, line, rule, message }].
  */
-export function lintTfText(files, { cloud = "azure" } = {}) {
+export function lintTfText(files, { cloud = "azure", labId = null } = {}) {
   const aws = cloud === "aws";
   const allowedSources = aws ? ALLOWED_PROVIDER_SOURCES_AWS : ALLOWED_PROVIDER_SOURCES;
   const out = [];
   const codes = Object.entries(files).map(([file, src]) => [file, stripComments(src)]);
   for (const [file, code] of codes) {
-    if (aws) out.push(...awsProviderProblems(file, code), ...awsDataProblems(file, code));
+    if (aws) out.push(...awsProviderProblems(file, code), ...awsDataProblems(file, code), ...awsFilesOutputProblems(file, code, labId), ...awsDynamicProblems(file, code));
     for (const r of aws ? AWS_TEXT_RULES : TEXT_RULES) {
       for (const m of code.matchAll(r.re)) {
         if (r.ok?.(m[0])) continue;
@@ -452,13 +532,16 @@ export function lintCfnText(files) {
   return out;
 }
 
-/** Everything about one lab's terraform/ folder: file names, the text of its .tf files and of its .bicep files (AWS: its cfn/ templates). */
-export function lintDir(dir, { cloud = "azure" } = {}) {
+/**
+ * Everything about one lab's terraform/ folder: file names, the text of its .tf files and of its .bicep files (AWS: its
+ * cfn/ templates). A lab's folder is labs/<id>/terraform, so its id is the parent folder's name unless given.
+ */
+export function lintDir(dir, { cloud = "azure", labId = basename(dirname(resolve(dir))) } = {}) {
   const names = readdirSync(dir).filter((f) => statSync(join(dir, f)).isFile());
   const read = (re) => Object.fromEntries(names.filter((f) => re.test(f)).map((f) => [f, readFileSync(join(dir, f), "utf8")]));
   const cfnDir = join(dir, "cfn");
   const cfn = cloud === "aws" && existsSync(cfnDir) ? Object.fromEntries(readdirSync(cfnDir).filter((f) => /\.(ya?ml|json)$/i.test(f)).map((f) => [`cfn/${f}`, readFileSync(join(cfnDir, f), "utf8")])) : {};
-  return [...fileProblems(names), ...lintTfText(read(/\.tf$/), { cloud }), ...(cloud === "aws" ? lintCfnText(cfn) : lintBicepText(read(/\.bicep$/i)))];
+  return [...fileProblems(names), ...lintTfText(read(/\.tf$/), { cloud, labId }), ...(cloud === "aws" ? lintCfnText(cfn) : lintBicepText(read(/\.bicep$/i)))];
 }
 
 function main(argv) {

@@ -68,6 +68,18 @@ export const AWS_LIVE_SKIP: ReadonlySet<string> = new Set([
   "elasticloadbalancing:listener-rule",
   "ecs:task",
   "ecs:task-definition",
+  "ec2:transit-gateway-route-table",
+  "ec2:ipam-pool",
+  "ec2:ipam-scope",
+  "vpc-lattice:listener",
+  "vpc-lattice:targetgroup",
+  "vpc-lattice:servicenetworkvpcassociation",
+  "vpc-lattice:servicenetworkserviceassociation",
+  "route53resolver:firewall-rule-group-association",
+  "route53resolver:firewall-domain-list",
+  "network-firewall:stateful-rulegroup",
+  "network-firewall:stateless-rulegroup",
+  "ec2:traffic-mirror-filter-rule",
 ]);
 
 const lower = (s: string) => s.toLowerCase();

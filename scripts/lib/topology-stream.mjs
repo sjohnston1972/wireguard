@@ -105,11 +105,30 @@ export function planFromTestStream(text) {
 
 /** A reference to a resource (not a variable, local, data source or a dynamic block's own iterator). */
 const RESOURCE_REF = /^((?:azurerm|azuread|aws|tls|archive|random|time)_[a-z0-9_]+\.[A-Za-z0-9_-]+)/;
+/** Final fix F9: a resource reference in an expression's text, with its numeric index when it has one ([1], not [count.index]). */
+const INDEXED_REF = /(?<![\w.])((?:azurerm|azuread|aws|tls|archive|random|time)_[a-z0-9_]+\.[A-Za-z0-9_-]+)(\[(\d+)\])?/g;
+
+/**
+ * Final fix F9: `list` (an attribute's references, "type.name") with each one the attribute's text names only by
+ * numeric index replaced by those elements ("type.name[1]"), so the builder joins that element and not the first. A
+ * resource also named without one (whole, by count.index, a splat or a for_each key) stays whole.
+ */
+function withIndexes(list, value) {
+  const text = JSON.stringify(value ?? null);
+  const indexed = new Map();
+  const whole = new Set();
+  for (const m of text.matchAll(INDEXED_REF)) {
+    if (m[3] === undefined) whole.add(m[1]);
+    else indexed.set(m[1], [...(indexed.get(m[1]) ?? []), `${m[1]}[${m[3]}]`]);
+  }
+  return [...new Set(list.flatMap((r) => (indexed.has(r) && !whole.has(r) ? indexed.get(r) : [r])))].sort();
+}
 
 /**
  * The references the builder joins on (ruling 1): for each managed resource
  * block (configuration address "type.name"), each top-level attribute's
- * resource references as "type.name" (sorted, unique), from
+ * resource references as "type.name", or "type.name[1]" where it names only
+ * elements by a numeric index (sorted, unique; final fix F9), from
  * lab-scope's hclResources over hcl2json's output (and a `provider` meta-argument as refs[addr].provider = ["aws.secondary"]); and for each output
  * "output.<name>" → { value: [...] }. `hclResources` is passed in (it lives in
  * infra/ci/lab-scope.mjs).
@@ -120,12 +139,13 @@ export function refsFromHcl(hcl, labId, hclResources) {
   for (const r of hclResources(hcl, labId).resources) {
     if (r.mode !== "managed") continue;
     const attrs = {};
+    const name = r.address.slice(r.type.length + 1);
+    const block = [hcl?.resource?.[r.type]?.[name]].flat()[0] ?? {};
     for (const [k, v] of Object.entries(r.refs)) {
-      const list = keep(v);
+      const list = withIndexes(keep(v), block[k]);
       if (list.length) attrs[k] = list;
     }
     // A resource's `provider` meta-argument ("aws.secondary") says which region its card belongs to (AWS labs).
-    const name = r.address.slice(r.type.length + 1);
     const prov = [hcl?.resource?.[r.type]?.[name]].flat()[0]?.provider;
     const provider = typeof prov === "string" ? prov.replace(/^\$\{|\}$/g, "") : "";
     if (provider) attrs.provider = [provider];

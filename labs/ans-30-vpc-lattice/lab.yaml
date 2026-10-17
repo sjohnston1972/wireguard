@@ -1,0 +1,42 @@
+# Lab ans-30 (AWS labs batch 4). ANS-C01 ((V) the wording against the current
+# exam guide): Network Design (service-to-service connectivity across VPCs
+# without peering); Network Security, Compliance, and Governance (IAM auth
+# policies, SigV4-signed requests).
+# London list prices × 0.75 (labs-verify --aws-prices). VPC Lattice bills
+# each service by the hour ($0.025 each, V: AWS's price list has no single
+# regional hourly product the verifier can match, so authored) and requests
+# and data per use (authored).
+id: ans-30-vpc-lattice
+version: 1
+cloud: aws
+title: "VPC Lattice service network with auth policies"
+summary: >-
+  A VPC Lattice service network joins two HTTP services whose instances sit in two different VPCs, with no peering and no routes between them. A client signs its requests with its instance role (SigV4), and IAM auth policies on the
+  network and on each service decide who may call what.
+exam: ANS-C01
+skill_areas: [ans.design, ans.security]
+level: expert
+type: explore
+prerequisites: [ans-24-privatelink]
+cost:
+  items:
+    - { name: "VPC Lattice services (2, $0.025 an hour each)", gbp_h: 0.0188, qty: 2 }
+    - { name: "Lattice requests and data, light test traffic", gbp_h: 0.0001 }
+    - name: "EC2 t4g.nano, Linux (vm-client, vm-svc-a and vm-svc-b)"
+      gbp_h: 0.0035
+      qty: 3
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      qty: 3
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - { name: "EC2 Instance Connect Endpoints (2)", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 6, destroy_min: 5, session_h: 2, max_h: 4 }
+capacity: { instance_types: [t4g.nano, t4g.nano, t4g.nano] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 2 }
+identity:
+  creates: [role]
+  roles: []
+  governance: false

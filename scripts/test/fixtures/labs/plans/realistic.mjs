@@ -135,6 +135,8 @@ export const UNSET_BLOCKS_UNKNOWN = {
   aws_sfn_state_machine: ["encryption_configuration", "logging_configuration", "tracing_configuration"],
   aws_s3_bucket: ["cors_rule", "grant", "lifecycle_rule", "logging", "object_lock_configuration", "replication_configuration", "server_side_encryption_configuration", "versioning", "website"],
   aws_vpc_endpoint: ["dns_options", "subnet_configuration"],
+  // AWS labs batch 4 (Task 4 fix round 2): Optional and Computed in aws 6.69's source (ec2/vpnsite_connection.go).
+  aws_vpn_connection: ["tunnel1_log_options", "tunnel2_log_options"],
 };
 
 /** The aws provider's region when a plan's variables have none (common-aws.mjs's AWS_REGION, London). */

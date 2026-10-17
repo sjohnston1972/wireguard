@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Send every spoke's traffic through AWS Network Firewall in an inspection VPC and read what it allows, drops and logs.
+learn:
+  - Route spokes through an inspection VPC with transit gateway tables and appliance mode
+  - Combine a stateless drop rule with a stateful domain allow-list in strict order
+  - Read the firewall's alert logs and change a rule group live
+learning_min: 75

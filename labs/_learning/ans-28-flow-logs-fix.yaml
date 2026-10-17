@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Find why a load-balanced service never answers its client, using flow logs, Athena, mirroring and the VPC analyzers.
+learn:
+  - See how NLB client IP preservation changes what a target's security group must admit
+  - Tell a stateless network ACL refusal from a security group one in flow logs and Athena
+  - Mirror a service's traffic to a monitor instance and read it with tcpdump
+learning_min: 75

@@ -123,7 +123,7 @@ describe("read routes (L2.7)", () => {
     await report(env, r.json.runId, s.callback_token, "success", { users: { ann: "lab-az104-05-storage-ann@contoso.onmicrosoft.com" } });
     const ok = await api(env, "GET", "/labs/az104-05-storage/secret");
     expect(ok.status).toBe(200);
-    expect(ok.json).toEqual({ adminPassword: s.admin_password, users: { ann: "lab-az104-05-storage-ann@contoso.onmicrosoft.com" } });
+    expect(ok.json).toEqual({ adminPassword: s.admin_password, users: { ann: "lab-az104-05-storage-ann@contoso.onmicrosoft.com" }, files: {} });
     expect(ok.headers.get("Cache-Control")).toBe("no-store");
     await api(env, "POST", "/labs/az104-05-storage/destroy", { confirm: true });
     const torn = await api(env, "GET", "/labs/az104-05-storage/secret");

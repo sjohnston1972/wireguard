@@ -1079,6 +1079,8 @@ export interface LabSecretResponse {
   adminPassword: string;
   /** Entra users the lab made: name -> user principal name (the lab's `users` output). */
   users: Record<string, string>;
+  /** Files the lab's run handed over (AWS_FILES_LABS, ruling P2): name -> text, e.g. lab 31's Client VPN profile and keys. Empty for every other lab. */
+  files: Record<string, string>;
 }
 
 /**

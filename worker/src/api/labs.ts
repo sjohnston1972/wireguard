@@ -321,12 +321,12 @@ export function registerLabs(api: Hono<ApiEnv>): void {
     }
   });
 
-  // The admin password and lab user names: only while the session is running, fetched on Show, never cached.
+  // The admin password, lab user names and the run's files (ruling P2): only while the session is running, fetched on Show, never cached.
   api.get("/labs/:id/secret", async (c) => {
     const def = labDef(c.req.param("id"));
     if (!def) return notFound(c);
     const s = await liveSessionOf(c.env, def.id);
-    const deploy = s?.state === "running" ? await c.env.DB.prepare("SELECT admin_password FROM lab_runs WHERE session_id = ?1 AND action = 'deploy' AND status = 'succeeded' ORDER BY requested_at DESC LIMIT 1").bind(s.id).first<{ admin_password: string | null }>() : null;
+    const deploy = s?.state === "running" ? await c.env.DB.prepare("SELECT admin_password, files_json FROM lab_runs WHERE session_id = ?1 AND action IN ('deploy', 'test') AND status = 'succeeded' ORDER BY requested_at DESC LIMIT 1").bind(s.id).first<{ admin_password: string | null; files_json: string | null }>() : null;
     if (!s || !deploy?.admin_password) return fail(c, 409, "not_running", `${def.title} is not running, so it has no password.`);
     let users: Record<string, string> = {};
     try {
@@ -334,7 +334,13 @@ export function registerLabs(api: Hono<ApiEnv>): void {
     } catch {
       users = {};
     }
-    const out: LabSecretResponse = { adminPassword: deploy.admin_password, users };
+    let files: Record<string, string> = {};
+    try {
+      files = JSON.parse(deploy.files_json ?? "{}") as Record<string, string>;
+    } catch {
+      files = {};
+    }
+    const out: LabSecretResponse = { adminPassword: deploy.admin_password, users, files };
     return c.json(out);
   });
 

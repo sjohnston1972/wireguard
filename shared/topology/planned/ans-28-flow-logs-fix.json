@@ -1,0 +1,620 @@
+{
+ "schema": 1,
+ "labId": "ans-28-flow-logs-fix",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:aws_athena_workgroup.flow",
+   "key": "athena:workgroup/athena-wg",
+   "kind": "generic",
+   "label": "athena-wg",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "athena:workgroup",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_cloudwatch_log_group.flow",
+   "key": "logs:log-group//cloudlabs/ans-28-flow-logs-fix/flow",
+   "kind": "logAnalytics",
+   "label": "/cloudlabs/ans-28-flow-logs-fix/flow",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "logs:log-group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_ec2_instance_connect_endpoint.lab",
+   "key": "ec2:instance-connect-endpoint/eice-lab",
+   "kind": "bastion",
+   "label": "eice-lab",
+   "props": {},
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:instance-connect-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_ec2_instance_connect_endpoint.service",
+   "key": "ec2:instance-connect-endpoint/eice-service",
+   "kind": "bastion",
+   "label": "eice-service",
+   "props": {},
+   "parent": "tf:aws_subnet.svc",
+   "armType": "ec2:instance-connect-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_ec2_traffic_mirror_filter.web",
+   "key": "ec2:traffic-mirror-filter/mirror-filter-web",
+   "kind": "generic",
+   "label": "mirror-filter-web",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:traffic-mirror-filter",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_ec2_traffic_mirror_filter_rule.in",
+     "label": "in",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_traffic_mirror_filter_rule.out",
+     "label": "out",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_ec2_traffic_mirror_target.monitor",
+   "key": "ec2:traffic-mirror-target/mirror-monitor",
+   "kind": "generic",
+   "label": "mirror-monitor",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:traffic-mirror-target",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_flow_log.service",
+   "key": "ec2:vpc-flow-log/flow-service",
+   "kind": "flowLog",
+   "label": "flow-service",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:vpc-flow-log",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_flow_log.service_s3",
+   "key": "ec2:vpc-flow-log/flow-service-s3",
+   "kind": "flowLog",
+   "label": "flow-service-s3",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:vpc-flow-log",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_glue_catalog_database.flow",
+   "key": "glue:database/glue-flowlogs",
+   "kind": "generic",
+   "label": "glue-flowlogs",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "glue:database",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_glue_catalog_table.flow",
+     "label": "vpc_flow_logs",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_iam_role.flowlogs",
+   "key": "iam:role/lab-ans-28-flow-logs-fix-flowlogs",
+   "kind": "managedIdentity",
+   "label": "lab-ans-28-flow-logs-fix-flowlogs",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "iam:role",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_iam_policy.flowlogs",
+     "label": "lab-ans-28-flow-logs-fix-flowlogs",
+     "armType": "iam:policy"
+    },
+    {
+     "id": "tf:aws_iam_role_policy_attachment.flowlogs",
+     "label": "flowlogs",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_instance.client",
+   "key": "ec2:instance/vm-client",
+   "kind": "vm",
+   "label": "vm-client",
+   "props": {
+    "size": "t4g.nano"
+   },
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:instance",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_instance.monitor",
+   "key": "ec2:instance/vm-monitor",
+   "kind": "vm",
+   "label": "vm-monitor",
+   "props": {
+    "size": "t4g.nano"
+   },
+   "parent": "tf:aws_subnet.nlb",
+   "armType": "ec2:instance",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_instance.svc",
+   "key": "ec2:instance/vm-svc",
+   "kind": "vm",
+   "label": "vm-svc",
+   "props": {
+    "size": "t4g.nano"
+   },
+   "parent": "tf:aws_subnet.svc",
+   "armType": "ec2:instance",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_lb.svc",
+   "key": "elasticloadbalancing:loadbalancer/nlb-svc",
+   "kind": "loadBalancer",
+   "label": "nlb-svc",
+   "props": {
+    "sku": "network"
+   },
+   "parent": "tf:aws_vpc.service",
+   "armType": "elasticloadbalancing:loadbalancer",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_lb_listener.svc",
+     "label": "listener-svc",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_lb_target_group.svc",
+     "label": "tg-svc",
+     "armType": "elasticloadbalancing:targetgroup"
+    },
+    {
+     "id": "tf:aws_lb_target_group_attachment.svc",
+     "label": "svc",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_network_acl.svc",
+   "key": "ec2:network-acl/acl-svc",
+   "kind": "generic",
+   "label": "acl-svc",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:network-acl",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_network_acl_association.svc",
+     "label": "svc",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_network_acl_rule.in_all",
+     "label": "in_all",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_network_acl_rule.out_all",
+     "label": "out_all",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_network_acl_rule.out_deny_client",
+     "label": "out_deny_client",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_resourcegroups_group.lab",
+   "key": "resource-groups:group/lab-ans-28-flow-logs-fix",
+   "kind": "resourceGroup",
+   "label": "lab-ans-28-flow-logs-fix · London",
+   "props": {
+    "region": "eu-west-2"
+   },
+   "armType": "resource-groups:group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route_table.private",
+   "key": "ec2:route-table/rt-private",
+   "kind": "routeTable",
+   "label": "rt-private",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:route-table",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route.client_to_service",
+     "label": "client_to_service",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.private[0]",
+     "label": "private[0]",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.private[1]",
+     "label": "private[1]",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route_table.service",
+   "key": "ec2:route-table/rt-service",
+   "kind": "routeTable",
+   "label": "rt-service",
+   "props": {},
+   "parent": "tf:aws_vpc.service",
+   "armType": "ec2:route-table",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route.service_to_client",
+     "label": "service_to_client",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.nlb",
+     "label": "nlb",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.svc",
+     "label": "svc",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_s3_bucket.flowlogs",
+   "key": "s3:bucket/flowlogs",
+   "kind": "storage",
+   "label": "flowlogs",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "s3:bucket",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_s3_bucket_policy.flowlogs",
+     "label": "flowlogs",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_s3_bucket_public_access_block.flowlogs",
+     "label": "flowlogs",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.client",
+   "key": "ec2:security-group/sg-client",
+   "kind": "nsg",
+   "label": "sg-client",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.client_ping",
+     "label": "client_ping",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.eice",
+   "key": "ec2:security-group/sg-eice",
+   "kind": "nsg",
+   "label": "sg-eice",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.eice_ssh",
+     "label": "eice_ssh",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.monitor",
+   "key": "ec2:security-group/sg-monitor",
+   "kind": "nsg",
+   "label": "sg-monitor",
+   "props": {},
+   "parent": "tf:aws_vpc.service",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.monitor_all",
+     "label": "monitor_all",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.monitor_ssh",
+     "label": "monitor_ssh",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.monitor_vxlan",
+     "label": "monitor_vxlan",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.service_eice",
+   "key": "ec2:security-group/sg-eice-service",
+   "kind": "nsg",
+   "label": "sg-eice-service",
+   "props": {},
+   "parent": "tf:aws_vpc.service",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.service_eice_ssh",
+     "label": "service_eice_ssh",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.svc",
+   "key": "ec2:security-group/sg-svc",
+   "kind": "nsg",
+   "label": "sg-svc",
+   "props": {},
+   "parent": "tf:aws_vpc.service",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.svc_all",
+     "label": "svc_all",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.svc_http",
+     "label": "svc_http",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.svc_ssh",
+     "label": "svc_ssh",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.vms",
+   "key": "ec2:security-group/sg-vms",
+   "kind": "nsg",
+   "label": "sg-vms",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.vms_all",
+     "label": "vms_all",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_from_gateway",
+     "label": "vms_from_gateway",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_ssh_eice",
+     "label": "vms_ssh_eice",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.nlb",
+   "key": "ec2:subnet/snet-nlb",
+   "kind": "subnet",
+   "label": "snet-nlb",
+   "props": {
+    "prefix": "10.71.208.0/24"
+   },
+   "parent": "tf:aws_vpc.service",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.private[0]",
+   "key": "ec2:subnet/snet-private-1",
+   "kind": "subnet",
+   "label": "snet-private-1",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.private[1]",
+   "key": "ec2:subnet/snet-private-2",
+   "kind": "subnet",
+   "label": "snet-private-2",
+   "props": {
+    "prefix": "10.71.193.0/24"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.svc",
+   "key": "ec2:subnet/snet-svc",
+   "kind": "subnet",
+   "label": "snet-svc",
+   "props": {
+    "prefix": "10.71.209.0/24"
+   },
+   "parent": "tf:aws_vpc.service",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc.lab",
+   "key": "ec2:vpc/vpc-lab",
+   "kind": "vnet",
+   "label": "vpc-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:vpc",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_peering_connection.client_service",
+     "label": "pcx-client-service",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc.service",
+   "key": "ec2:vpc/vpc-service",
+   "kind": "vnet",
+   "label": "vpc-service",
+   "props": {
+    "addressSpace": [
+     "10.71.208.0/20"
+    ]
+   },
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:vpc",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc_endpoint.s3",
+   "key": "ec2:vpc-endpoint/vpce-s3",
+   "kind": "privateEndpoint",
+   "label": "vpce-s3",
+   "props": {
+    "groupId": "s3"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:vpc-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc_endpoint.service_s3",
+   "key": "ec2:vpc-endpoint/vpce-s3-service",
+   "kind": "privateEndpoint",
+   "label": "vpce-s3-service",
+   "props": {
+    "groupId": "s3"
+   },
+   "parent": "tf:aws_vpc.service",
+   "armType": "ec2:vpc-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  }
+ ],
+ "edges": [
+  {
+   "id": "dependency:tf:aws_ec2_traffic_mirror_target.monitor>tf:aws_instance.monitor:mirror to",
+   "from": "tf:aws_ec2_traffic_mirror_target.monitor",
+   "to": "tf:aws_instance.monitor",
+   "kind": "dependency",
+   "label": "mirror to",
+   "via": "tf:aws_ec2_traffic_mirror_target.monitor"
+  },
+  {
+   "id": "traffic:tf:aws_lb.svc>tf:aws_instance.svc:TCP 80",
+   "from": "tf:aws_lb.svc",
+   "to": "tf:aws_instance.svc",
+   "kind": "traffic",
+   "label": "TCP 80",
+   "via": "tf:aws_lb.svc"
+  },
+  {
+   "id": "traffic:tf:aws_vpc.lab>tf:aws_vpc.service:peering",
+   "from": "tf:aws_vpc.lab",
+   "to": "tf:aws_vpc.service",
+   "kind": "traffic",
+   "label": "peering",
+   "via": "tf:aws_vpc_peering_connection.client_service"
+  }
+ ],
+ "notes": [
+  "5 resources of a type the diagram draws plainly"
+ ]
+}

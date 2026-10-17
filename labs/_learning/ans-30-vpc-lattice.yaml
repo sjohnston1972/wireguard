@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Join two services in different VPCs with VPC Lattice and control who calls them with IAM auth policies.
+learn:
+  - Reach services in another VPC through a Lattice service network
+  - Sign requests with an instance role and SigV4
+  - Allow and refuse callers with network and service auth policies
+learning_min: 60

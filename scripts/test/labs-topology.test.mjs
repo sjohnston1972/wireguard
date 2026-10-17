@@ -168,8 +168,31 @@ test("refsFromHcl joins aws_ references, and records a provider meta-argument", 
   assert.deepEqual(refs["aws_subnet.private"], { vpc_id: ["aws_vpc.lab"] });
   assert.deepEqual(refs["aws_vpc.dr"], { provider: ["aws.secondary"] });
   assert.deepEqual(refs["aws_vpc.lab"], {});
-  assert.deepEqual(refs["aws_instance.app"], { subnet_id: ["aws_subnet.private"], user_data: ["archive_file.z", "tls_private_key.k"] });
+  // Final fix F9: a numeric index is kept, so the builder joins that element (not the first).
+  assert.deepEqual(refs["aws_instance.app"], { subnet_id: ["aws_subnet.private[0]"], user_data: ["archive_file.z", "tls_private_key.k"] });
   assert.deepEqual(refs["output.peer_vpc_id"], { value: ["aws_vpc.lab"] });
+});
+
+test("final fix F9: refsFromHcl keeps a reference's numeric index; a count.index, splat or for_each key, or the same resource also named without an index, joins it whole", () => {
+  const hcl = {
+    resource: {
+      aws_route53_resolver_endpoint: { inbound: [{ ip_address: [{ subnet_id: "${aws_subnet.private[0].id}" }, { subnet_id: "${aws_subnet.private[1].id}" }] }] },
+      aws_instance: {
+        web: [{ count: 2, subnet_id: "${aws_subnet.private[count.index].id}" }],
+        mixed: [{ subnet_id: "${aws_subnet.private[1].id}", tags: { Name: "${aws_subnet.private[*].id}" } }],
+        both: [{ user_data: "${aws_subnet.private[1].id} ${aws_subnet.private.0.id}" }],
+        ami: [{ ami: "${data.aws_subnet.private[1].id}", subnet_id: "${aws_subnet.keyed[\"a\"].id}" }],
+      },
+    },
+    output: { peer_vpc_id: [{ value: "${aws_vpc.lab[0].id}" }] },
+  };
+  const refs = refsFromHcl(hcl, "ans-23-hybrid-dns", hclResources);
+  assert.deepEqual(refs["aws_route53_resolver_endpoint.inbound"], { ip_address: ["aws_subnet.private[0]", "aws_subnet.private[1]"] });
+  assert.deepEqual(refs["aws_instance.web"], { subnet_id: ["aws_subnet.private"] });
+  assert.deepEqual(refs["aws_instance.mixed"], { subnet_id: ["aws_subnet.private[1]"], tags: ["aws_subnet.private"] });
+  assert.deepEqual(refs["aws_instance.both"], { user_data: ["aws_subnet.private"] });
+  assert.deepEqual(refs["aws_instance.ami"], { subnet_id: ["aws_subnet.keyed"] }, "a data source is never a resource reference");
+  assert.deepEqual(refs["output.peer_vpc_id"], { value: ["aws_vpc.lab"] }, "outputs keep the whole resource");
 });
 
 test("diagnostics prints only the stream's diagnostic messages, with the mock secrets redacted", () => {

@@ -1,0 +1,525 @@
+{
+ "schema": 1,
+ "labId": "ans-29-multi-region",
+ "version": 1,
+ "source": "planned",
+ "at": null,
+ "nodes": [
+  {
+   "id": "tf:aws_ec2_instance_connect_endpoint.ireland",
+   "key": "ec2:instance-connect-endpoint/eice-ireland#secondary",
+   "kind": "bastion",
+   "label": "eice-ireland",
+   "props": {},
+   "parent": "tf:aws_subnet.ireland_tgw",
+   "armType": "ec2:instance-connect-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_ec2_instance_connect_endpoint.lab",
+   "key": "ec2:instance-connect-endpoint/eice-lab",
+   "kind": "bastion",
+   "label": "eice-lab",
+   "props": {},
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:instance-connect-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_ec2_transit_gateway.ireland",
+   "key": "ec2:transit-gateway/tgw-ireland#secondary",
+   "kind": "transitGateway",
+   "label": "tgw-ireland",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.secondary",
+   "armType": "ec2:transit-gateway",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_ec2_transit_gateway_route.ireland_to_london",
+     "label": "ireland_to_london",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table.ireland",
+     "label": "tgw-rt-ireland",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table_association.ireland_peering",
+     "label": "ireland_peering",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table_association.ireland_vpc",
+     "label": "ireland_vpc",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table_propagation.ireland_vpc",
+     "label": "ireland_vpc",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_vpc_attachment.ireland",
+     "label": "tgwa-ireland",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_ec2_transit_gateway.london",
+   "key": "ec2:transit-gateway/tgw-london",
+   "kind": "transitGateway",
+   "label": "tgw-london",
+   "props": {},
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:transit-gateway",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_ec2_transit_gateway_peering_attachment.london_ireland",
+     "label": "tgwp-london-ireland",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_peering_attachment_accepter.ireland",
+     "label": "tgwp-london-ireland",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route.london_to_ireland",
+     "label": "london_to_ireland",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table.london",
+     "label": "tgw-rt-london",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table_association.london_peering",
+     "label": "london_peering",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table_association.london_vpc",
+     "label": "london_vpc",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_route_table_propagation.london_vpc",
+     "label": "london_vpc",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_ec2_transit_gateway_vpc_attachment.london",
+     "label": "tgwa-london",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_instance.ireland_pcx",
+   "key": "ec2:instance/vm-ireland-pcx#secondary",
+   "kind": "vm",
+   "label": "vm-ireland-pcx",
+   "props": {
+    "size": "t4g.nano"
+   },
+   "parent": "tf:aws_subnet.ireland_pcx",
+   "armType": "ec2:instance",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_instance.ireland_tgw",
+   "key": "ec2:instance/vm-ireland-tgw#secondary",
+   "kind": "vm",
+   "label": "vm-ireland-tgw",
+   "props": {
+    "size": "t4g.nano"
+   },
+   "parent": "tf:aws_subnet.ireland_tgw",
+   "armType": "ec2:instance",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_instance.london",
+   "key": "ec2:instance/vm-london",
+   "kind": "vm",
+   "label": "vm-london",
+   "props": {
+    "size": "t4g.nano"
+   },
+   "parent": "tf:aws_subnet.private[0]",
+   "armType": "ec2:instance",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_resourcegroups_group.lab",
+   "key": "resource-groups:group/lab-ans-29-multi-region",
+   "kind": "resourceGroup",
+   "label": "lab-ans-29-multi-region · London",
+   "props": {
+    "region": "eu-west-2"
+   },
+   "armType": "resource-groups:group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_resourcegroups_group.secondary",
+   "key": "resource-groups:group/lab-ans-29-multi-region/secondary",
+   "kind": "resourceGroup",
+   "label": "lab-ans-29-multi-region · Ireland",
+   "props": {
+    "region": "eu-west-1"
+   },
+   "armType": "resource-groups:group",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route_table.ireland_pcx",
+   "key": "ec2:route-table/rt-ireland-pcx#secondary",
+   "kind": "routeTable",
+   "label": "rt-ireland-pcx",
+   "props": {},
+   "parent": "tf:aws_vpc.ireland",
+   "armType": "ec2:route-table",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route.ireland_pcx_to_london",
+     "label": "ireland_pcx_to_london",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.ireland_pcx",
+     "label": "ireland_pcx",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route_table.ireland_tgw",
+   "key": "ec2:route-table/rt-ireland-tgw#secondary",
+   "kind": "routeTable",
+   "label": "rt-ireland-tgw",
+   "props": {},
+   "parent": "tf:aws_vpc.ireland",
+   "armType": "ec2:route-table",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route.ireland_tgw_to_london",
+     "label": "ireland_tgw_to_london",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.ireland_tgw",
+     "label": "ireland_tgw",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_route_table.private",
+   "key": "ec2:route-table/rt-private",
+   "kind": "routeTable",
+   "label": "rt-private",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:route-table",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_route.london_to_ireland_pcx",
+     "label": "london_to_ireland_pcx",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route.london_to_ireland_tgw",
+     "label": "london_to_ireland_tgw",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.private[0]",
+     "label": "private[0]",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_route_table_association.private[1]",
+     "label": "private[1]",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.eice",
+   "key": "ec2:security-group/sg-eice",
+   "kind": "nsg",
+   "label": "sg-eice",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.eice_ssh",
+     "label": "eice_ssh",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.eice_ireland",
+   "key": "ec2:security-group/sg-eice-ireland#secondary",
+   "kind": "nsg",
+   "label": "sg-eice-ireland",
+   "props": {},
+   "parent": "tf:aws_vpc.ireland",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.eice_ireland_ssh",
+     "label": "eice_ireland_ssh",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.vms",
+   "key": "ec2:security-group/sg-vms",
+   "kind": "nsg",
+   "label": "sg-vms",
+   "props": {},
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.vms_all",
+     "label": "vms_all",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_from_gateway",
+     "label": "vms_from_gateway",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_http_ireland",
+     "label": "vms_http_ireland",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_icmp_ireland",
+     "label": "vms_icmp_ireland",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.vms_ssh_eice",
+     "label": "vms_ssh_eice",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_security_group.vms_ireland",
+   "key": "ec2:security-group/sg-vms-ireland#secondary",
+   "kind": "nsg",
+   "label": "sg-vms-ireland",
+   "props": {},
+   "parent": "tf:aws_vpc.ireland",
+   "armType": "ec2:security-group",
+   "scope": "lab",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_security_group_egress_rule.ireland_all",
+     "label": "ireland_all",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.ireland_http_london",
+     "label": "ireland_http_london",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.ireland_icmp_london",
+     "label": "ireland_icmp_london",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_security_group_ingress_rule.ireland_ssh_eice",
+     "label": "ireland_ssh_eice",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.ireland_pcx",
+   "key": "ec2:subnet/snet-ireland-pcx#secondary",
+   "kind": "subnet",
+   "label": "snet-ireland-pcx",
+   "props": {
+    "prefix": "10.71.209.0/24"
+   },
+   "parent": "tf:aws_vpc.ireland",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.ireland_tgw",
+   "key": "ec2:subnet/snet-ireland-tgw#secondary",
+   "kind": "subnet",
+   "label": "snet-ireland-tgw",
+   "props": {
+    "prefix": "10.71.208.0/24"
+   },
+   "parent": "tf:aws_vpc.ireland",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.private[0]",
+   "key": "ec2:subnet/snet-private-1",
+   "kind": "subnet",
+   "label": "snet-private-1",
+   "props": {
+    "prefix": "10.71.192.0/24"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_subnet.private[1]",
+   "key": "ec2:subnet/snet-private-2",
+   "kind": "subnet",
+   "label": "snet-private-2",
+   "props": {
+    "prefix": "10.71.193.0/24"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:subnet",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc.ireland",
+   "key": "ec2:vpc/vpc-ireland#secondary",
+   "kind": "vnet",
+   "label": "vpc-ireland",
+   "props": {
+    "addressSpace": [
+     "10.71.208.0/20"
+    ]
+   },
+   "parent": "tf:aws_resourcegroups_group.secondary",
+   "armType": "ec2:vpc",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc.lab",
+   "key": "ec2:vpc/vpc-lab",
+   "kind": "vnet",
+   "label": "vpc-lab",
+   "props": {
+    "addressSpace": [
+     "10.71.192.0/20"
+    ],
+    "peerTarget": true
+   },
+   "parent": "tf:aws_resourcegroups_group.lab",
+   "armType": "ec2:vpc",
+   "folded": [
+    {
+     "id": "tf:aws_vpc_peering_connection.london_ireland",
+     "label": "pcx-london-ireland",
+     "armType": null
+    },
+    {
+     "id": "tf:aws_vpc_peering_connection_accepter.ireland",
+     "label": "pcx-london-ireland",
+     "armType": null
+    }
+   ],
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc_endpoint.ireland_s3",
+   "key": "ec2:vpc-endpoint/vpce-s3-ireland#secondary",
+   "kind": "privateEndpoint",
+   "label": "vpce-s3-ireland",
+   "props": {
+    "groupId": "s3"
+   },
+   "parent": "tf:aws_vpc.ireland",
+   "armType": "ec2:vpc-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  },
+  {
+   "id": "tf:aws_vpc_endpoint.s3",
+   "key": "ec2:vpc-endpoint/vpce-s3",
+   "kind": "privateEndpoint",
+   "label": "vpce-s3",
+   "props": {
+    "groupId": "s3"
+   },
+   "parent": "tf:aws_vpc.lab",
+   "armType": "ec2:vpc-endpoint",
+   "scope": "lab",
+   "cloud": "aws"
+  }
+ ],
+ "edges": [
+  {
+   "id": "traffic:tf:aws_ec2_transit_gateway.ireland>tf:aws_vpc.ireland:attachment",
+   "from": "tf:aws_ec2_transit_gateway.ireland",
+   "to": "tf:aws_vpc.ireland",
+   "kind": "traffic",
+   "label": "attachment",
+   "via": "tf:aws_ec2_transit_gateway_vpc_attachment.ireland"
+  },
+  {
+   "id": "traffic:tf:aws_ec2_transit_gateway.london>tf:aws_ec2_transit_gateway.ireland:inter-region peering",
+   "from": "tf:aws_ec2_transit_gateway.london",
+   "to": "tf:aws_ec2_transit_gateway.ireland",
+   "kind": "traffic",
+   "label": "inter-region peering",
+   "via": "tf:aws_ec2_transit_gateway_peering_attachment.london_ireland"
+  },
+  {
+   "id": "traffic:tf:aws_ec2_transit_gateway.london>tf:aws_vpc.lab:attachment",
+   "from": "tf:aws_ec2_transit_gateway.london",
+   "to": "tf:aws_vpc.lab",
+   "kind": "traffic",
+   "label": "attachment",
+   "via": "tf:aws_ec2_transit_gateway_vpc_attachment.london"
+  },
+  {
+   "id": "traffic:tf:aws_vpc.ireland>tf:aws_vpc.lab:peering",
+   "from": "tf:aws_vpc.ireland",
+   "to": "tf:aws_vpc.lab",
+   "kind": "traffic",
+   "label": "peering",
+   "via": "tf:aws_vpc_peering_connection.london_ireland"
+  }
+ ]
+}

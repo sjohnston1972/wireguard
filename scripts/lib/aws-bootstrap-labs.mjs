@@ -32,6 +32,7 @@ const ctx = (key, values, type = "string") => ({ key, type, values });
 export function simulatorCases(account, defaultVpcArns = []) {
   const region = ctx("aws:RequestedRegion", ["eu-west-2"]);
   const labTag = [ctx(`aws:RequestTag/${LAB_TAG}`, ["soa-01-x"]), ctx("aws:TagKeys", [LAB_TAG], "stringList")];
+  const labResourceTag = [ctx(`aws:ResourceTag/${LAB_TAG}`, ["ans-29-multi-region"])];
   const vpc = (r) => `arn:aws:ec2:${r}:${account}:vpc/*`;
   const role = `arn:aws:iam::${account}:role/cloudlabs-lab/lab-soa-01-x-vm`;
   const bounded = [ctx("iam:PermissionsBoundary", [`arn:aws:iam::${account}:policy/${AWS_BOUNDARY}`])];
@@ -83,6 +84,24 @@ export function simulatorCases(account, defaultVpcArns = []) {
     { name: "delete a load balancer Kubernetes made for lab 19", action: "elasticloadbalancing:DeleteLoadBalancer", resource: `arn:aws:elasticloadbalancing:eu-west-2:${account}:loadbalancer/a1b2c3d4e5f6`, context: [region, ctx("aws:ResourceTag/kubernetes.io/cluster/lab-saa-19-eks", ["owned"])], want: "allowed" },
     { name: "delete an untagged load balancer", action: "elasticloadbalancing:DeleteLoadBalancer", resource: `arn:aws:elasticloadbalancing:eu-west-2:${account}:loadbalancer/app/other/0123456789abcdef`, context: [region], want: "denied" },
     { name: "the Spot service-linked role", action: "iam:CreateServiceLinkedRole", resource: `arn:aws:iam::${account}:role/aws-service-role/spot.amazonaws.com/AWSServiceRoleForEC2Spot`, context: [ctx("iam:AWSServiceName", ["spot.amazonaws.com"])], want: "allowed" },
+    // Batch 4 (labs 20–31).
+    { name: "a tagged transit gateway", action: "ec2:CreateTransitGateway", resource: `arn:aws:ec2:eu-west-2:${account}:transit-gateway/*`, context: [region, ...labTag], want: "allowed" },
+    { name: "an untagged transit gateway", action: "ec2:CreateTransitGateway", resource: `arn:aws:ec2:eu-west-2:${account}:transit-gateway/*`, context: [region], want: "denied" },
+    { name: "accept a peering attachment in Ireland, untagged there", action: "ec2:AcceptTransitGatewayPeeringAttachment", resource: `arn:aws:ec2:eu-west-1:${account}:transit-gateway-attachment/tgw-attach-0123456789abcdef0`, context: [ctx("aws:RequestedRegion", ["eu-west-1"])], want: "allowed" },
+    { name: "accept a VPC peering into a lab VPC", action: "ec2:AcceptVpcPeeringConnection", resource: `arn:aws:ec2:eu-west-1:${account}:vpc/vpc-0123456789abcdef0`, context: [ctx("aws:RequestedRegion", ["eu-west-1"]), ...labResourceTag], want: "allowed" },
+    // Fix round 1: the peering itself is untagged on the accepter side; its requester is one of this account's VPCs.
+    { name: "accept an untagged VPC peering into a lab VPC", action: "ec2:AcceptVpcPeeringConnection", resource: `arn:aws:ec2:eu-west-1:${account}:vpc-peering-connection/pcx-0123456789abcdef0`, context: [ctx("aws:RequestedRegion", ["eu-west-1"]), ctx("ec2:RequesterVpc", [`arn:aws:ec2:eu-west-2:${account}:vpc/vpc-0123456789abcdef1`]), ctx("ec2:AccepterVpc", [`arn:aws:ec2:eu-west-1:${account}:vpc/vpc-0123456789abcdef0`])], want: "allowed" },
+    { name: "accept a VPC peering into an untagged VPC", action: "ec2:AcceptVpcPeeringConnection", resource: `arn:aws:ec2:eu-west-2:${account}:vpc/vpc-0123456789abcdef0`, context: [region], want: "denied" },
+    { name: "accept a VPC peering into the VPN server's VPC", action: "ec2:AcceptVpcPeeringConnection", resource: `arn:aws:ec2:eu-west-2:${account}:vpc/vpc-0123456789abcdef0`, context: [region, ...labResourceTag, ctx("aws:ResourceTag/wg-admin", ["vpn"])], want: "denied" },
+    { name: "a tagged Client VPN endpoint", action: "ec2:CreateClientVpnEndpoint", resource: `arn:aws:ec2:eu-west-2:${account}:client-vpn-endpoint/*`, context: [region, ...labTag], want: "allowed" },
+    { name: "a tagged Network Firewall", action: "network-firewall:CreateFirewall", resource: `arn:aws:network-firewall:eu-west-2:${account}:firewall/lab-ans-27-network-firewall`, context: [region, ...labTag], want: "allowed" },
+    { name: "a Global Accelerator in us-west-2", action: "globalaccelerator:CreateAccelerator", resource: "*", context: [ctx("aws:RequestedRegion", ["us-west-2"])], want: "allowed" },
+    { name: "a WAF web ACL for CloudFront in us-east-1", action: "wafv2:CreateWebACL", resource: `arn:aws:wafv2:us-east-1:${account}:global/webacl/lab-ans-26-edge-waf/*`, context: [ctx("aws:RequestedRegion", ["us-east-1"]), ...labTag], want: "allowed" },
+    { name: "CloudWatch Logs' account resource policy", action: "logs:PutResourcePolicy", resource: "*", context: [region], want: "denied" },
+    { name: "the IPAM service-linked role", action: "iam:CreateServiceLinkedRole", resource: `arn:aws:iam::${account}:role/aws-service-role/ipam.amazonaws.com/AWSServiceRoleForIPAM`, context: [ctx("iam:AWSServiceName", ["ipam.amazonaws.com"])], want: "allowed" },
+    { name: "vended log delivery to a lab bucket", action: "logs:CreateLogDelivery", resource: "*", context: [region], want: "allowed" },
+    { name: "a lab log bucket's policy", action: "s3:PutBucketPolicy", resource: "arn:aws:s3:::cloudlabs-a23k3x9q-dnslogs", context: [region], want: "allowed" },
+    { name: "a mirror filter rule, untagged", action: "ec2:CreateTrafficMirrorFilterRule", resource: `arn:aws:ec2:eu-west-2:${account}:traffic-mirror-filter-rule/*`, context: [region], want: "allowed" },
     ...defaultVpcCase(account, defaultVpcArns),
   ];
 }

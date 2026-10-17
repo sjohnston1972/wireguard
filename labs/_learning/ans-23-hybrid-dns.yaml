@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Resolve private names both ways between a VPC and a data centre with Route 53 Resolver, then filter and log them.
+learn:
+  - Forward cloud questions to a data centre through an outbound endpoint
+  - Answer a data centre's questions through an inbound endpoint
+  - Block a domain with DNS Firewall and read the query logs
+learning_min: 75

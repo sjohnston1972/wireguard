@@ -15,7 +15,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cloudOfId, lintTfText } from "../lib/labs.mjs";
 import fs from "node:fs";
-import { AWS_GATEWAY_NAMES, fileProblems, lintBicepText, lintDir } from "../../infra/ci/lab-lint.mjs";
+import * as contract from "../lib/labs.mjs";
+import { AWS_FILES_LABS, AWS_GATEWAY_NAMES, fileProblems, lintBicepText, lintDir } from "../../infra/ci/lab-lint.mjs";
 import { GATEWAY_NAME_LIST } from "../../infra/ci/lab-scope-aws.mjs";
 import { labFolders } from "../lib/labs.mjs";
 
@@ -62,6 +63,7 @@ test("AWS: literal CIDRs only 0.0.0.0/0 and ::/0", () => {
 test("AWS: the VPN server's names and the wg-admin key are refused; the boundary's name is not", () => {
   // Every Name in infra/aws (final review, Important 3), the same list as the plan check's.
   assert.deepEqual(AWS_GATEWAY_NAMES, GATEWAY_NAME_LIST);
+  assert.deepEqual(AWS_FILES_LABS, contract.AWS_FILES_LABS);
   for (const n of GATEWAY_NAME_LIST) assert.ok(aws({ "main.tf": `locals {\n  x = "${n}"\n}\n` }).some((p) => p.startsWith("gateway:")), n);
   const names = [...fs.readFileSync(new URL("../../infra/aws/main.tf", import.meta.url), "utf8").matchAll(/\bName\s*=\s*"([a-z0-9-]+)"/g)].map((m) => m[1]);
   assert.ok(names.length >= 10, `${names.length} names read from infra/aws/main.tf`);
@@ -293,4 +295,36 @@ test("rulings P4 and P14 (--cloud aws): a literal AMI id and an aws-sdk: workflo
 test("Task 3 fix round 2, R2-2 (--cloud aws): an apply-time function is refused however its call is written", () => {
   const tf = ['locals {', '  a = timestamp(/* x */) != ""', '  b = uuid(', '  )', '  c = timestamp ()', '  d = bcrypt ("x")', '  e = plantimestamp( )', '}', ''].join("\n");
   assert.deepEqual(lintTfText({ "x.tf": tf }, { cloud: "aws" }).filter((p) => p.rule === "apply-time").map((p) => p.line), [2, 3, 5, 6, 7]);
+});
+
+test("ruling P2 (--cloud aws): a files output only in lab 31, and only sensitive", () => {
+  const out = (sensitive) => ['output "files" {', `  value     = { "a.txt" = "x" }`, ...(sensitive ? ["  sensitive = true"] : []), "}", ""].join("\n");
+  const lint = (labId, s) => lintTfText({ "outputs.tf": out(s) }, { cloud: "aws", labId }).filter((p) => p.rule === "outputs").map((p) => p.line);
+  assert.deepEqual(lint("ans-31-client-vpn", true), []);
+  assert.deepEqual(lint("ans-31-client-vpn", false), [1]);
+  assert.deepEqual(lint("ans-30-vpc-lattice", true), [1]);
+  assert.deepEqual(lintTfText({ "outputs.tf": out(true) }, { cloud: "aws" }).filter((p) => p.rule === "outputs").map((p) => p.line), [1], "no lab id: refused");
+});
+
+test("Task 3 fix round 1 (--cloud aws): a bare files label is refused outside lab 31; sensitive counts only at the block's top level", () => {
+  const lint = (labId, body) => lintTfText({ "outputs.tf": body }, { cloud: "aws", labId }).filter((p) => p.rule === "outputs").map((p) => p.line);
+  assert.deepEqual(lint("ans-30-vpc-lattice", 'output files {\n  value     = {}\n  sensitive = true\n}\n'), [1]);
+  assert.deepEqual(lint("ans-31-client-vpn", 'output "files" {\n  value = {\n    sensitive = true\n  }\n}\n'), [1], "only inside the value object");
+  assert.deepEqual(lint("ans-31-client-vpn", 'output "files" {\n  value = <<-EOT\n    sensitive = true\n  EOT\n}\n'), [1], "only inside a heredoc");
+  assert.deepEqual(lint("ans-31-client-vpn", 'output "files" {\n  value = <<-EOT\n    x\n  EOT\n  sensitive = true\n}\n'), [], "after a heredoc, at the top level");
+  assert.deepEqual(lint("ans-31-client-vpn", 'output files {\n  value     = { "a.txt" = "x" }\n  sensitive = true\n}\n'), []);
+});
+
+test("Task 4 fix round 2: --cloud aws refuses a dynamic block the scope check judges element by element (AWS_DYNAMIC_JUDGED)", async () => {
+  const { AWS_DYNAMIC_JUDGED } = await import("../../infra/ci/lab-lint.mjs");
+  const dyn = (type, block, body) => aws({ "main.tf": `resource "${type}" "x" {\n  name = "x"\n  dynamic "${block}" {\n    for_each = var.items\n    content {\n${body}\n    }\n  }\n}\n` }).filter((p) => p.startsWith("dynamic"));
+  assert.equal(dyn("aws_security_group", "ingress", "      from_port = 500\n      to_port = 500\n      protocol = \"udp\"\n      cidr_blocks = [ingress.value]").length, 1);
+  assert.equal(dyn("aws_sfn_state_machine", "logging_configuration", "      level = \"ALL\"\n      log_destination = logging_configuration.value").length, 1);
+  assert.equal(aws({ "main.tf": 'resource aws_sfn_state_machine x {\n  dynamic logging_configuration {\n    for_each = var.logs\n    content {\n      level = "ALL"\n    }\n  }\n}\n' }).filter((p) => p.startsWith("dynamic")).length, 1, "unquoted labels too");
+  // A block written out, and a dynamic block the scope check does not judge, are left alone.
+  assert.deepEqual(aws({ "main.tf": 'resource "aws_security_group" "x" {\n  name = "x"\n  ingress {\n    from_port = 22\n    to_port = 22\n    protocol = "tcp"\n    security_groups = [aws_security_group.y.id]\n  }\n}\n' }).filter((p) => p.startsWith("dynamic")), []);
+  assert.deepEqual(dyn("aws_security_group", "egress", "      from_port = 0"), []);
+  assert.deepEqual(dyn("aws_lb", "subnet_mapping", "      subnet_id = subnet_mapping.value"), []);
+  // Every judged type and block is one the scope check names (the map is the one both read).
+  for (const [type, blocks] of Object.entries(AWS_DYNAMIC_JUDGED)) for (const b of Object.keys(blocks)) assert.equal(dyn(type, b, "      x = 1").length, 1, `${type}.${b}`);
 });

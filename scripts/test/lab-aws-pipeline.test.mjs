@@ -79,6 +79,12 @@ test("ruling P5: a DNS lab's regions add us-east-1 only (Route 53 is listed ther
   assert.equal(r.env.TF_VAR_secondary_region, "eu-west-1");
 });
 
+test("ruling P1: lab 23's regions add us-east-1 only; lab 26's add us-east-1 and us-west-2", { skip: skipParse }, () => {
+  const run = (id, more = {}) => parseRun("aws", { ...PAYLOAD, lab_id: id, version: 1, name_prefix: `a${id.split("-")[1]}k3x9q`, ...more }, { ...LAB, id, version: 1 });
+  assert.equal(run("ans-23-hybrid-dns").env.LAB_REGIONS, "eu-west-2 eu-west-1 us-east-1");
+  assert.equal(run("ans-26-edge", { secondary_region: "eu-west-1" }).env.LAB_REGIONS, "eu-west-2 eu-west-1 us-east-1 us-west-2");
+});
+
 test("Parse payload: an Azure run gains only LAB_CLOUD=azure", { skip: skipParse }, () => {
   const az = { id: "az104-08-vms", version: 1, connectivity: { peering: "optional", dns_link: false }, timing: { deploy_min: 5, destroy_min: 5 }, identity: { creates: [] } };
   const r = parseRun("azure", { ...PAYLOAD, lab_id: az.id, version: 1, region: "uksouth", name_prefix: "l08k3x9q", gateway_cidr: undefined }, az);
@@ -261,6 +267,40 @@ test("ruling P9: a Spot instance AWS took back mid-check is gone, never failed; 
   const r = w.run("infra/ci/lab-ready-aws.sh", ["saa-18-cost-compute", "5"], { LAB_REGIONS: "eu-west-2", LAB_READY_POLL_SECONDS: "0" });
   assert.equal(r.status, 0, r.out);
   w.cleanup();
+});
+
+test("the ready check waits for a peering attachment pending acceptance and an ACM certificate ISSUED", { skip }, () => {
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: JSON.stringify({ ResourceTagMappingList: [{ ResourceARN: "arn:aws:ec2:eu-west-2:123456789012:transit-gateway-attachment/tgw-attach-0p" }, { ResourceARN: "arn:aws:acm:eu-west-2:123456789012:certificate/c1" }] }) },
+    { cmd: "aws", match: "^ec2 describe-transit-gateway-attachments", out: ['{"TransitGatewayAttachments":[{"State":"pendingAcceptance"}]}', '{"TransitGatewayAttachments":[{"State":"available"}]}'] },
+    { cmd: "aws", match: "^acm describe-certificate", out: '{"Certificate":{"Status":"ISSUED"}}' },
+  ]);
+  const r = w.run("infra/ci/lab-ready-aws.sh", ["ans-29-multi-region", "5"], { LAB_REGIONS: "eu-west-2", LAB_READY_POLL_SECONDS: "0" });
+  assert.equal(r.status, 0, r.out);
+  assert.equal(w.calls().filter((c) => c.startsWith("aws ec2 describe-transit-gateway-attachments")).length, 2);
+  w.cleanup();
+});
+
+test("the ready check fails at once on an ACM certificate FAILED, and waits on one PENDING_VALIDATION", { skip }, () => {
+  const arns = JSON.stringify({ ResourceTagMappingList: [{ ResourceARN: "arn:aws:acm:eu-west-2:123456789012:certificate/c1" }] });
+  const bad = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: arns },
+    { cmd: "aws", match: "^acm describe-certificate --certificate-arn arn:aws:acm:eu-west-2:123456789012:certificate/c1 --region eu-west-2", out: '{"Certificate":{"Status":"FAILED"}}' },
+  ]);
+  const b = bad.run("infra/ci/lab-ready-aws.sh", ["ans-22-site-to-site", "5"], { LAB_REGIONS: "eu-west-2", LAB_READY_POLL_SECONDS: "0" });
+  assert.equal(b.status, 1, b.out);
+  assert.match(b.out, /not ready: acm:certificate c1 \(FAILED\)/);
+  assert.equal(bad.calls().filter((c) => c.startsWith("aws acm describe-certificate")).length, 1, "no waiting");
+  const slow = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: arns },
+    { cmd: "aws", match: "^acm describe-certificate", out: '{"Certificate":{"Status":"PENDING_VALIDATION"}}' },
+  ]);
+  const s = slow.run("infra/ci/lab-ready-aws.sh", ["ans-22-site-to-site", "0"], { LAB_REGIONS: "eu-west-2", LAB_READY_POLL_SECONDS: "0" });
+  assert.equal(s.status, 1, s.out);
+  assert.match(s.out, /not ready: acm:certificate c1 \(PENDING_VALIDATION\)/);
+  assert.doesNotMatch(b.out + s.out, /123456789012/);
+  bad.cleanup();
+  slow.cleanup();
 });
 
 test("the ready check and peering refuse a bad lab id with exit 2", { skip: BASH ? false : "no bash found" }, () => {

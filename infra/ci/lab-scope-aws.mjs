@@ -29,7 +29,11 @@
 //                replica or a multi-Region KMS key (copies outside the lab's regions);
 //                (plan, batch 3) a DynamoDB replica anywhere but the session's secondary
 //                region (P3), and an AMI copy's source region, a health check's alarm
-//                region or a private zone's vpc_region that is not a lab region (P4, P6)
+//                region or a private zone's vpc_region that is not a lab region (P4, P6);
+//                batch 4 (P3, P15): a VPC peering's or transit gateway peering's
+//                peer_region outside AWS_PEER_REGION_LABS, or (plan) other than the
+//                session's secondary region; a peering accepter outside
+//                AWS_PEER_REGION_LABS, or (plan) not through the secondary provider
 //   provisioner  any provisioner (it would run commands with the pipeline's keys)
 //   import       adopting an object that already exists: a lab only ever creates
 //   type         a resource type not on AWS_TYPES, a data source not on AWS_DATA or
@@ -38,9 +42,19 @@
 //                outside AWS_CONFIG_LABS (one per region per account), a VPC's untagged
 //                defaults or aws_ec2_tag (UNTAGGED_DEFAULT_TYPES, ruling A48); an Access
 //                Analyzer analyzer outside ACCESS_ANALYZER_LABS or of a type other than
-//                ACCOUNT (ruling P14)
+//                ACCOUNT (ruling P14); batch 4 adds labs 20–31's types (transit gateways,
+//                site-to-site and Client VPN, Resolver, endpoint services, Global
+//                Accelerator, Network Firewall, traffic mirroring, VPC Lattice, IPAM,
+//                hashicorp/tls certificates), each with its reason
 //   never        what a lab only explains in its readme (NEVER_TYPES; dedicated or host
-//                tenancy; StackSets and registered CloudFormation types)
+//                tenancy; StackSets and registered CloudFormation types; batch 4: Transit
+//                Gateway Connect, multicast and policy tables, custom-routing accelerators,
+//                TLS inspection, Lattice resource policies and gateways, Client VPN routes,
+//                IPAM scopes, VPN static routes, CloudFront real-time logs and key stores,
+//                WAF logging; and by value: BYOIP (an IPAM pool CIDR, accelerator addresses),
+//                private CAs, accelerated VPN and Direct Connect outside addresses, TLS
+//                inspection, Transit Gateway Connect CIDRs and multicast, Client VPN
+//                authentication other than certificates, Lambda@Edge)
 //   template     a CloudFormation stack (ruling P4) from a template_url, not named
 //                lab-<id>-*, with capabilities (or capabilities or parameters not known at
 //                plan), without the lab's own service role by reference, with a
@@ -76,7 +90,8 @@
 //                authentication_mode API without the creator's admin (P7); an API Gateway
 //                integration's or authoriser's credentials role not the lab's own (review M-4)
 //   gateway      the VPN server's names (vpc-wg, vm-wg, ...: GATEWAY_NAME_LIST), the wg-admin
-//                key or value, a peering accepter, a peering not between the lab's own VPCs,
+//                key or value, a peering accepter and a peer_region outside
+//                AWS_PEER_REGION_LABS (P3), a peer_owner_id, a peering not between the lab's own VPCs,
 //                and (plan) an id of an existing AWS resource under an id-holding key, or an
 //                instance target selecting every instance (a wildcard id, tag-key, a wildcard
 //                tag value; ruling A50); an instance target off the allow-list (ruling P9:
@@ -115,10 +130,36 @@
 //                default is the default VPC; a block not known at plan (a dynamic block)
 //                where elements are read (DynamoDB replicas, private zone VPCs, crawler
 //                targets, EKS remote networks); data from outside the lab (a table's
-//                import or restore, a cache's snapshot, a linked Glue database; review M-5)
+//                import or restore, a cache's snapshot, a linked Glue database; review M-5);
+//                batch 3 minor 6: an event target's dead-letter queue, a queue's redrive
+//                target, a Cognito trigger and a workflow's log group not the lab's own, a
+//                crawler's event queues; batch 4 (P3, P9, P11–P20), each the lab's own by
+//                reference (a nested one at its own path, never its block's): transit gateway
+//                attachments, route tables, routes and peerings (this account only); VPN and
+//                customer gateways (the router's Elastic IP, a private ASN); Resolver rules
+//                (FORWARD, *.internal), endpoints and associations (spec §7.5: VPCs passed as
+//                parameters); endpoint services' load balancers (no private DNS name) and
+//                endpoints (an AWS service in a lab region or the lab's own service); target
+//                group attachments, listener rules, imported certificates (never requested);
+//                accelerator endpoints (no client IP preservation) and listeners; CloudFront
+//                functions and web ACLs; WAF scope CLOUDFRONT and no rule group or set by
+//                reference; firewalls, their policies and logging buckets; mirror targets
+//                (the lab's instance only) and filters; Glue tables over the lab's bucket;
+//                Lattice associations, target groups (INSTANCE), attachments, listeners and
+//                auth policies; Client VPN endpoints (split tunnel), associations and
+//                authorization rules; a cache's global group; blocks not known at plan (a
+//                dynamic block) wherever their elements are judged
 //   address      (plan) a VPC, secondary CIDR or subnet outside the slot (var.address_space)
 //                or overlapping another; a route other than the slot, var.gateway_cidr or
-//                0.0.0.0/0 (::/0 for IPv6); an IPv6 IPAM pool outside ans-20-vpc-design
+//                0.0.0.0/0 (::/0 for IPv6); an IPv6 IPAM pool outside ans-20-vpc-design;
+//                batch 4: a secondary CIDR from an IPv4 IPAM pool (paid); a lab IPAM pool
+//                other than Amazon-provided IPv6 in the session's region; prefix-list entries
+//                outside the slot or var.gateway_cidr; transit gateway routes and traffic
+//                mirror rules outside the slot or 0.0.0.0/0; Resolver targets outside the
+//                slot; Client VPN client and authorization CIDRs outside the slot; a route's
+//                prefix list not the lab's own or an AWS-managed one its data source read; a
+//                route's transit, VPN, internet or egress-only gateway or endpoint not the
+//                lab's own (an endpoint may be the lab's firewall's, from firewall_status)
 //   public       a public IPv4 on an instance, launch template or Elastic IP outside
 //                PUBLIC_INSTANCE_LABS (spec §7.4); a subnet mapping public IPs; SSH (TCP
 //                22) admitted from the internet; a resource policy (RESOURCE_POLICIES, and
@@ -131,13 +172,27 @@
 //                or secret by reference (P13), an endpoint policy not known at plan or
 //                allowing more than the lab's buckets and Amazon Linux's repositories
 //                (endpointPolicyProblem, P18), SSH to EKS nodes (remote_access, P7); a
-//                queue's own policy, read like any resource policy (fix round 1, I-1)
+//                queue's own policy, read like any resource policy (fix round 1, I-1);
+//                batch 4: any global IPv6 range (outside fc00::/7 and fe80::/10) is the
+//                internet (fromInternet, P6); a resource policy's Allow to a service
+//                principal without aws:SourceAccount (the lab's account) or an
+//                aws:SourceArn in it (P7); a Lattice auth policy, read like any resource policy;
+//                an endpoint service allowing anyone but this account's root (P13); a Client
+//                VPN self-service portal; in PUBLIC_INSTANCE_LABS (lab 22's router, P11) any
+//                ingress from the internet, a source not known at plan other than UDP 500 or
+//                4500 from the lab's own VPN tunnel addresses, and a security group or
+//                prefix list source not the lab's own
 //   lingering    a resource that would outlive tear-down: deletion protection, final
 //                snapshots, retained buckets, keys, vaults, log groups and locks; an IAM
 //                user without force_destroy (ruling P6); batch 3: an Athena workgroup
 //                without force_destroy, a Kinesis stream without enforce_consumer_deletion,
 //                an ElastiCache final snapshot, EKS control-plane logs or deletion
-//                protection, Firehose error logging, Cognito deletion protection
+//                protection, Firehose error logging, Cognito deletion protection; batch 4
+//                (P5, P8, P12, P16): an IPAM without cascade; vended logs anywhere but the
+//                lab's bucket (Resolver query logs, firewall logs, S3 flow logs; no Firehose
+//                flow logs, VPN tunnel logs, accelerator flow logs, Client VPN connection
+//                logs or CloudFront logging); firewall protections, DNS Firewall association
+//                mutation protection
 //   size         instance types, database classes, disks, group sizes and counts above
 //                the labs' caps (ECS tasks, Lambda memory and timeout, CloudFront's
 //                price class, Route 53 health check extras); batch 3: a table not on
@@ -146,7 +201,13 @@
 //                cut-off of at most 1 GiB, more than 2 cache nodes or 1 node group,
 //                provisioned EFS throughput, EKS extended support or Auto Mode, EKS node
 //                types off AWS_INSTANCE_TYPES; a route's own throttle above the cap; an Auto
-//                Scaling override by instance_requirements. Each value rule here also refuses
+//                Scaling override by instance_requirements; batch 3 minor 5: a node group
+//                without instance_types, more than one cache replica a shard; batch 4: an
+//                IPAM tier other than Free, more than 4 VPC attachments on one transit
+//                gateway, prefix lists over 10 entries, Resolver protocols other than Do53,
+//                a firewall with other than one subnet mapping or a rule group over 100, WAF
+//                beyond 5 rules or with a paid or non-AWS managed group (or rules as JSON),
+//                more than one Client VPN association. Each value rule here also refuses
 //                a value built from references and not known at plan (fix round 1, I-6)
 //
 // Every JSON document read from a string (policies, a group's query, a template) is refused when one object
@@ -164,7 +225,7 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { normalizeSource } from "./lab-lint.mjs";
+import { AWS_DYNAMIC_JUDGED, normalizeSource } from "./lab-lint.mjs";
 import { hclResources, planResources, Unknown } from "./lab-scope.mjs";
 
 // ── The contract's copies (a test keeps them equal to scripts/lib/labs.mjs) ──
@@ -173,7 +234,9 @@ export const LAB_ID_RE = /^(az(104|305|700)|soa|saa|ans)-\d{2}-[a-z0-9]+(-[a-z0-
 /** The labs whose provider may also be us-east-1 or us-west-2 (CloudFront's WAF, Global Accelerator). */
 export const AWS_GLOBAL_LABS = ["soa-09-route53-cloudfront", "ans-26-edge"];
 /** Ruling P5: labs with Route 53 items listed in us-east-1 that are not global labs (a copy of the contract's). */
-export const AWS_DNS_LABS = ["saa-16-dr-pilot-light"];
+export const AWS_DNS_LABS = ["saa-16-dr-pilot-light", "ans-23-hybrid-dns", "ans-24-privatelink"];
+/** Ruling P1: a copy of the contract's. */
+export const AWS_PEER_REGION_LABS = ["ans-29-multi-region"];
 /** The one lab that may make the account's Config recorder (one per region per account). */
 export const AWS_CONFIG_LABS = ["soa-02-systems-manager"];
 /** The one lab that may make IAM users. */
@@ -247,6 +310,28 @@ export const AWS_TYPES = new Map([
   ...["aws_glue_catalog_database", "aws_glue_crawler"].map((t) => [t, "lab 17's catalogue, lab_<id>, crawled by hand from the lab's own bucket (ruling P15)"]),
   ["aws_athena_workgroup", "lab 17's workgroup: results in the lab's own bucket, a scan cut-off (ruling P15)"],
   ...["aws_eks_cluster", "aws_eks_node_group"].map((t) => [t, "lab 19's cluster and its one-node group (ruling P7)"]),
+  // Batch 4 (labs 20–31).
+  ...["aws_vpc_ipam", "aws_vpc_ipam_pool", "aws_vpc_ipv6_cidr_block_association"].map((t) => [t, "lab 20's Free Tier IPAM: an Amazon-provided IPv6 pool in the session's region, its /56 on the lab's own VPC (ruling P5)"]),
+  ["aws_vpc_ipam_pool_cidr", "lab 20's /52 of Amazon-provided IPv6, by netmask length only; NEVER_TYPES still holds it for every other lab (IPAM_LAB, ruling P5)"],
+  ["aws_vpc_ipv4_cidr_block_association", "a secondary CIDR from the lab's slot (rule address)"],
+  ["aws_egress_only_internet_gateway", "IPv6 egress for the lab's own VPC"],
+  ["aws_ec2_managed_prefix_list", "a lab prefix list of the slot's and the headend's ranges (ruling P6)"],
+  ...["aws_ec2_transit_gateway", "aws_ec2_transit_gateway_vpc_attachment", "aws_ec2_transit_gateway_route_table", "aws_ec2_transit_gateway_route_table_association", "aws_ec2_transit_gateway_route_table_propagation", "aws_ec2_transit_gateway_route", "aws_ec2_transit_gateway_peering_attachment", "aws_ec2_transit_gateway_peering_attachment_accepter"].map((t) => [t, "labs 21, 27 and 29's transit gateways, attaching only the lab's own VPCs (rulings P3, P15)"]),
+  ...["aws_vpn_gateway", "aws_vpn_gateway_route_propagation", "aws_customer_gateway", "aws_vpn_connection", "aws_eip_association"].map((t) => [t, "lab 22's site-to-site VPN to its own router (ruling P11)"]),
+  ["aws_network_interface", "an instance's primary interface, made by the lab in its own subnet (lab 22's router: AWS authorises AssociateAddress on the interface too, and one RunInstances makes carries no lab tag)"],
+  ...["aws_route53_resolver_endpoint", "aws_route53_resolver_rule", "aws_route53_resolver_rule_association", "aws_route53_resolver_firewall_domain_list", "aws_route53_resolver_firewall_rule_group", "aws_route53_resolver_firewall_rule", "aws_route53_resolver_firewall_rule_group_association", "aws_route53_resolver_query_log_config", "aws_route53_resolver_query_log_config_association"].map((t) => [t, "lab 23's Resolver, DNS Firewall and query logs, on the lab's own VPC (ruling P12)"]),
+  ...["aws_vpc_endpoint_service", "aws_lb_target_group_attachment", "aws_lb_listener_rule"].map((t) => [t, "labs 24, 25's endpoint services (the lab's account only) and load balancer pieces (rulings P13, P14)"]),
+  ...["aws_acm_certificate"].map((t) => [t, "a certificate imported from the lab's own tls resources (labs 25, 31; rulings P14, P20)"]),
+  ...["tls_private_key", "tls_self_signed_cert", "tls_cert_request", "tls_locally_signed_cert"].map((t) => [t, "certificates made in the lab's state (hashicorp/tls); the keys live only in the R2 state and lab 31's sensitive files output"]),
+  ...["aws_globalaccelerator_accelerator", "aws_globalaccelerator_listener", "aws_globalaccelerator_endpoint_group"].map((t) => [t, "lab 26's accelerator to its own load balancers (ruling P9)"]),
+  ["aws_cloudfront_function", "lab 26's viewer-request function, named lab-<id>-* (A4)"],
+  ["aws_wafv2_web_acl", "lab 26's web ACL for CloudFront in us-east-1 (rules provider, size; ruling P9)"],
+  ...["aws_networkfirewall_firewall", "aws_networkfirewall_firewall_policy", "aws_networkfirewall_rule_group", "aws_networkfirewall_logging_configuration"].map((t) => [t, "lab 27's firewall in its own inspection VPC (ruling P16)"]),
+  ...["aws_ec2_traffic_mirror_target", "aws_ec2_traffic_mirror_filter", "aws_ec2_traffic_mirror_filter_rule"].map((t) => [t, "lab 28's mirror target on its own instance (ruling P17)"]),
+  ["aws_glue_catalog_table", "lab 28's flow-log table in lab_<id>, over the lab's own bucket (rulings P15 batch 3, P17)"],
+  ["aws_vpc_peering_connection_accepter", "lab 29's accepter of its own inter-region peering (ruling P3)"],
+  ...["aws_vpclattice_service_network", "aws_vpclattice_service", "aws_vpclattice_target_group", "aws_vpclattice_target_group_attachment", "aws_vpclattice_listener", "aws_vpclattice_service_network_service_association", "aws_vpclattice_service_network_vpc_association", "aws_vpclattice_auth_policy"].map((t) => [t, "lab 30's service network of its own services and VPCs (ruling P19)"]),
+  ...["aws_ec2_client_vpn_endpoint", "aws_ec2_client_vpn_network_association", "aws_ec2_client_vpn_authorization_rule"].map((t) => [t, "lab 31's Client VPN into its own VPC (ruling P20)"]),
 ]);
 
 /** The data sources an AWS lab may read, each with why (and the condition dataProblem checks). None looks up a lab-made-elsewhere VPC, subnet, route table, security group or instance. */
@@ -270,10 +355,15 @@ export const NEVER_TYPES = [
   /^aws_ec2_byoip_/, /^aws_vpc_ipam_pool_cidr$/,
   // StackSets are readme-only (spec §12.2); registering a CloudFormation type changes the whole account.
   /^aws_cloudformation_stack_set/, /^aws_cloudformation_stack_instances$/, /^aws_cloudformation_type$/,
+  // Batch 4: Cloud WAN and RAM (lab 21), Direct Connect (lab 22), Firewall Manager (27), Shield Advanced (26) and
+  // Verified Access (31) are already above; and what a lab could reach past itself with.
+  /^aws_ec2_transit_gateway_(connect|multicast|policy_table|prefix_list_reference|route_table_announcement)/, /^aws_globalaccelerator_custom_routing_/,
+  /^aws_networkfirewall_(tls_inspection_configuration|resource_policy)$/, /^aws_vpclattice_(resource_policy|access_log_subscription|resource_gateway|resource_configuration)/,
+  /^aws_ec2_client_vpn_route$/, /^aws_route53_resolver_(config|dnssec_config|firewall_config)$/, /^aws_vpc_ipam_(scope|resource_discovery|organization_admin_account|preview_next_cidr)/,
+  /^aws_vpn_connection_route$/, /^aws_cloudfront_(realtime_log_config|monitoring_subscription|key_value_store)$/, /^aws_wafv2_web_acl_logging_configuration$/,
 ];
 /** The one lab that may make an IPAM pool CIDR and an IPv6 pool of its own. */
 const IPAM_LAB = "ans-20-vpc-design";
-/** Types the type rule leaves to a later rule, which says more (preflight ruling C1). */
 /**
  * Ruling A48: what AWS makes untagged with every VPC (its default security group, network ACL and main route table), and
  * tags put on an item that is already there. wg-admin-labs may not change them, so a lab is told so at plan time.
@@ -284,7 +374,11 @@ export const UNTAGGED_DEFAULT_TYPES = new Map([
   ["aws_default_route_table", "a VPC's main route table"],
   ["aws_ec2_tag", "a tag on an item that is already there"],
 ]);
-const DEFERRED = { aws_vpc_peering_connection_accepter: "gateway" };
+/**
+ * Types the type rule leaves to a later rule, which says more (preflight ruling C1). None since batch 4: the peering
+ * accepter is on AWS_TYPES, judged by rules provider and gateway (ruling P3).
+ */
+const DEFERRED = {};
 const CONFIG_TYPES = new Set(["aws_config_configuration_recorder", "aws_config_delivery_channel", "aws_config_configuration_recorder_status"]);
 /** Ruling P14: the one lab that may make an Access Analyzer analyzer (one account analyzer per region per account). */
 export const ACCESS_ANALYZER_LABS = ["soa-07-iam-kms"];
@@ -301,13 +395,15 @@ export const CFN_TYPES = new Map([
   ["AWS::SSM::Parameter", "named /cloudlabs/<id>/..."],
 ]);
 /** Ruling P10: resource policy documents a lab may write (type -> attribute), read for who they let in. */
-export const RESOURCE_POLICIES = new Map([["aws_s3_bucket_policy", "policy"], ["aws_sns_topic_policy", "policy"], ["aws_sqs_queue_policy", "policy"], ["aws_ecr_repository_policy", "policy"], ["aws_secretsmanager_secret_policy", "policy"], ["aws_kms_key", "policy"], ["aws_dynamodb_resource_policy", "policy"]]);
+export const RESOURCE_POLICIES = new Map([["aws_s3_bucket_policy", "policy"], ["aws_sns_topic_policy", "policy"], ["aws_sqs_queue_policy", "policy"], ["aws_ecr_repository_policy", "policy"], ["aws_secretsmanager_secret_policy", "policy"], ["aws_kms_key", "policy"], ["aws_dynamodb_resource_policy", "policy"], ["aws_vpclattice_auth_policy", "policy"]]);
 /**
  * Preflight C12 and Task 3 fix round 1 (I-1): a resource's own inline policy (type -> attribute), read as a resource
  * policy when the lab writes one (left unset it is computed: AWS's default). aws_dynamodb_table has no inline policy
  * in aws 6.69 (aws_dynamodb_resource_policy, above, is not on AWS_TYPES).
  */
 const INLINE_POLICIES = new Map([["aws_sns_topic", "policy"], ["aws_secretsmanager_secret", "policy"], ["aws_s3_bucket", "policy"], ["aws_sqs_queue", "policy"]]);
+/** Ruling P7: the condition operators under which aws:SourceAccount or aws:SourceArn names a service principal's source. */
+const SOURCE_CONDITION_OPS = ["StringEquals", "StringLike", "ArnEquals", "ArnLike"];
 /** An AWS service principal (events.amazonaws.com). */
 const SERVICE_PRINCIPAL = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.amazonaws\.com(\.cn)?$/;
 /** Ruling P9: the resources whose { key, values } blocks select instances. */
@@ -417,8 +513,22 @@ const overlaps = (a, b) => {
   const y = cidr4(b);
   return Boolean(x && y && x[0] <= y[1] && y[0] <= x[1]);
 };
-/** A CIDR that reaches beyond the private ranges (IPv4), or all of IPv6. */
-const fromInternet = (c) => (typeof c !== "string" ? false : c.includes(":") ? /\/0$/.test(c) : Boolean(cidr4(c)) && !PRIVATE.some((p) => inside(c, p)));
+/**
+ * Ruling P6: a CIDR from the internet: IPv4 beyond the private ranges, or any global IPv6 range (outside fc00::/7 and
+ * fe80::/10). Fix round 1 (controller override): an IPv6 range is private only when it lies wholly inside one of them,
+ * so its prefix length must be at least 7 (fc00::/7) or 10 (fe80::/10); a missing or invalid length is the internet.
+ */
+export const fromInternet = (c) => {
+  if (typeof c !== "string") return false;
+  if (!c.includes(":")) return Boolean(cidr4(c)) && !PRIVATE.some((p) => inside(c, p));
+  const [addr, len, ...rest] = c.split("/");
+  const bits = /^\d{1,3}$/.test(len ?? "") && !rest.length ? Number(len) : -1;
+  if (bits < 0 || bits > 128) return true;
+  const n = parseInt(addr.toLowerCase().split(":")[0].padStart(4, "0"), 16);
+  const uniqueLocal = (n & 0xfe00) === 0xfc00 && bits >= 7;
+  const linkLocal = (n & 0xffc0) === 0xfe80 && bits >= 10;
+  return !(uniqueLocal || linkLocal);
+};
 
 /** A JSON document from a value: { doc }, { unknown: true } or { bad: true }. */
 function jsonDoc(v) {
@@ -583,6 +693,15 @@ function resourcePolicyProblem(doc, account) {
       if (k === "AWS" && account && list(v).every((x) => typeof x === "string" && (x === account || x.startsWith(`arn:aws:iam::${account}:`)))) continue;
       return `it allows ${k} ${JSON.stringify(v).replace(/\d{12}/g, "<account>")}: only AWS services and the lab's own account`;
     }
+    // Ruling P7: a service principal acts for whoever calls it, so its Allow names the lab's account or resource.
+    const services = list(s.Principal?.Service);
+    if (services.length) {
+      // Fix round 1 (controller override): only a plain equality or match operator names the source (no Not, no
+      // IfExists, no ForAllValues:/ForAnyValue: set operator, which pass when the key is absent or empty).
+      const cond = Object.entries(isObj(s.Condition) ? s.Condition : {}).filter(([op]) => SOURCE_CONDITION_OPS.includes(op)).flatMap(([, o]) => Object.entries(isObj(o) ? o : {}));
+      const named = cond.some(([k, v]) => (/^aws:sourceaccount$/i.test(k) && list(v).length > 0 && list(v).every((x) => x === account)) || (/^aws:sourcearn$/i.test(k) && list(v).length > 0 && list(v).every((x) => typeof x === "string" && x.split(":")[4] === account)));
+      if (!named) return `an Allow to ${services.join(", ")} names neither aws:SourceAccount (${account ? "this account" : "the plan's account"}) nor an aws:SourceArn in it (ruling P7)`;
+    }
   }
   return null;
 }
@@ -720,8 +839,18 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
     const rest = (refs ?? []).filter((x) => !INDEX_REF.test(x));
     return rest.length > 0 && rest.every((x) => types.includes(target(x)?.type));
   };
-  /** An Unknown's references: its own (plan, HCL) or, failing that, its whole attribute's. */
+  /**
+   * An Unknown's references: its own (plan, HCL; a nested one's from its own path), or failing that its attribute's
+   * entry. `attr` may be a dotted path (ip_address.0.subnet_id, config.0.vpc_identifier, target.0.id): Task 4 (fail
+   * closed) reads only that path's own entry, never the whole block's, which would lend a value with no reference of
+   * its own (an apply-time function) its siblings' references. A real plan gives a nested unknown the references of
+   * the expression at its own path; a mocked plan has none to read.
+   */
   const refsOf = (v, r, attr) => (v instanceof Unknown && v.refs?.length ? v.refs : (r.refs?.[attr] ?? []));
+  /** The lab's own account: the plan's caller identity; a mocked plan's (no data sources), its roles' boundary's. */
+  const labAccount = callerAccount ?? (mode === "mock" ? boundaryAccount : null);
+  /** The ids of the AWS-managed prefix lists the plan's data.aws_ec2_managed_prefix_list read (rule 10, batch 4). */
+  const awsPrefixLists = new Set(data.filter((d) => d.type === "aws_ec2_managed_prefix_list").map((d) => d.values?.id).filter(nonEmpty));
   /** A plan value built from something not known until apply (not a provider-computed default). */
   const opaque = (v) => plan && v instanceof Unknown && (v.refs?.length ?? 0) > 0;
   /**
@@ -729,6 +858,11 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
    * known at plan is planned as one unknown, and a plan's configuration leaves dynamic blocks out). Fail closed.
    */
   const blockUnknown = (x) => plan && (x instanceof Unknown || list(x).some((e) => !isObj(e)));
+  /**
+   * Task 4 fix round 1: a dynamic block, as HCL sees it (hcl2json keeps it under "dynamic"). A plan cannot tell one whose
+   * for_each is not known at plan from an Optional and Computed block left unset, so CI's HCL check refuses it there.
+   */
+  const dynamicHcl = (res, attr) => !plan && isObj(res.values?.dynamic) && attr in res.values.dynamic;
   /** HCL leaves expressions to the plan; a plan refuses what it cannot see where the rule needs a value. */
   const skip = (v) => (!plan && v instanceof Unknown) || (plan && v instanceof Unknown && !(v.refs?.length > 0));
   /**
@@ -740,6 +874,8 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
   // Regions (rule provider), as the plan's variables give them.
   const secondaryOk = mode === "hcl" || (nonEmpty(variables.secondary_region) && variables.secondary_region !== variables.region);
   const globalLab = AWS_GLOBAL_LABS.includes(labId);
+  /** Ruling P1 / P3: the labs whose peerings cross to the session's secondary region and accept their own. */
+  const peerLab = AWS_PEER_REGION_LABS.includes(labId);
   const regionWhy = (region, alias) => {
     if (region === "var.region") return null;
     if (region === "var.secondary_region") {
@@ -762,6 +898,9 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
   // Rule address: the lab's VPC ranges in order, to find overlaps.
   const vpcRanges = [];
   let natGateways = 0;
+  // Rule size (ruling P20): Client VPN target network associations; (P15) VPC attachments per transit gateway.
+  let clientVpnAssociations = 0;
+  const tgwAttachments = new Map();
 
   for (const r of resources) {
     const v = r.values ?? {};
@@ -822,6 +961,19 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
     if (plan && isManaged && type === "aws_route53_zone") list(v.vpc).forEach((z, i) => {
       if (isObj(z) && !labRegion(z.vpc_region)) refuse("provider", `vpc.${i}.vpc_region: only the session's region or its secondary, written in the configuration (ruling P6)`);
     });
+    // Ruling P3 / P15: a peering crosses to the secondary region only in AWS_PEER_REGION_LABS, and an accepter is
+    // the secondary provider's, of the lab's own peering by reference.
+    for (const [t, attr] of [["aws_vpc_peering_connection", "peer_region"], ["aws_ec2_transit_gateway_peering_attachment", "peer_region"]]) {
+      if (isManaged && type === t && (r.configured?.has(attr) || nonEmpty(v[attr]))) {
+        if (!peerLab) refuse("provider", `${attr}: a peering crosses regions only in ${AWS_PEER_REGION_LABS.join(", ")}`);
+        else if (plan && !(secondaryOk && v[attr] === variables.secondary_region)) refuse("provider", `${attr} must be the session's secondary region`);
+      }
+    }
+    if (isManaged && ["aws_vpc_peering_connection_accepter", "aws_ec2_transit_gateway_peering_attachment_accepter"].includes(type)) {
+      const key = configKeys?.[stripIndex(r.address)] ?? ""; // as rule provider finds a resource's provider block
+      if (!peerLab) refuse("provider", `${type}: only ${AWS_PEER_REGION_LABS.join(", ")} accept their own peering (ruling P3)`);
+      else if (mode === "plan" && key !== "aws.secondary") refuse("provider", `${type}: through the secondary provider only (ruling P3)`);
+    }
 
     // 2. provisioner, 3. import
     if (r.provisioners > 0) refuse("provisioner", "a provisioner would run commands with the pipeline's keys");
@@ -875,12 +1027,15 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         else if (kind === "key" ? s.toLowerCase().includes("wg-admin") : s.toLowerCase().includes("wg-admin") && !BOUNDARY_RE.test(s)) hit = `${path.join(".")} holds wg-admin, the VPN server's own name`;
       });
       if (hit) refuse("gateway", hit);
-      if (type === "aws_vpc_peering_connection_accepter") refuse("gateway", "a lab never accepts a peering: the pipeline peers the lab to the VPN server");
+      // Ruling P3: only AWS_PEER_REGION_LABS accept a peering, their own (rule 1: through aws.secondary). Outside them,
+      // this clause and the peer_region one below are shadowed by rule 1 (reported first), kept as defence in depth.
+      if (type === "aws_vpc_peering_connection_accepter" && !peerLab) refuse("gateway", "a lab never accepts a peering: the pipeline peers the lab to the VPN server (ruling P3: only AWS_PEER_REGION_LABS accept their own)");
       if (type === "aws_vpc_peering_connection") {
         for (const attr of ["vpc_id", "peer_vpc_id"]) {
           if (!(v[attr] instanceof Unknown && (ownRefs(refsOf(v[attr], r, attr), ["aws_vpc"]) || (mode === "mock" && !refsOf(v[attr], r, attr).length)))) refuse("gateway", `${attr} must be one of the lab's own VPCs, by reference (aws_vpc.<name>.id)`);
         }
-        for (const attr of ["peer_owner_id", "peer_region"]) if (r.configured?.has(attr)) refuse("gateway", `a lab's peering stays in this account and region: no ${attr}`);
+        // Ruling P3 / P15: peer_region is rule 1's in AWS_PEER_REGION_LABS; another account never.
+        for (const attr of ["peer_owner_id", "peer_region"]) if (r.configured?.has(attr) && !(attr === "peer_region" && peerLab)) refuse("gateway", `a lab's peering stays in this account and region: no ${attr}`);
       }
       // Review I-1: an alarm's EC2 action acts on instances; a lab's alarms notify (its topics) and never act on one.
       if (type === "aws_cloudwatch_metric_alarm" || type === "aws_cloudwatch_composite_alarm") {
@@ -990,8 +1145,13 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
     // 14. description (AWS rejects a security group or rule description outside its character set at apply)
     if (isManaged) descriptionProblems(r, v, refuse);
 
+    // Task 4 fix round 2: HCL sees a dynamic block a plan cannot tell from an unset computed one (lab-lint's
+    // AWS_DYNAMIC_JUDGED, the same list, refuses it on the text too).
+    if (isManaged) for (const [attr, rule] of Object.entries(AWS_DYNAMIC_JUDGED[type] ?? {})) if (dynamicHcl(r, attr)) refuse(rule, `${attr} is a dynamic block: write each one, so the plan check can read it`);
+
     // Batch 3's reference and value rules (rules provider to size, by type; preflight C14: before the report below).
     if (isManaged) batch3Problems(r, v);
+    if (isManaged) batch4Problems(r, v);
 
     if (found.length) out.push(found.sort((a, b) => AWS_RULES.indexOf(a.rule) - AWS_RULES.indexOf(b.rule))[0]);
 
@@ -1116,7 +1276,28 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           break;
         case "aws_cloudwatch_event_target":
           needOwn("arn", ["aws_sns_topic", "aws_sqs_queue", "aws_lambda_function", "aws_sfn_state_machine", "aws_kinesis_stream", "aws_cloudwatch_log_group"], "gateway", "the lab's own topic, queue, function, state machine, stream or log group (ruling P14)");
+          // Batch 3 whole-branch minor 6: a failed event's second destination is the lab's own queue too.
+          if (blockUnknown(val.dead_letter_config)) refuse("gateway", "dead_letter_config is not known at plan: write the lab's own queue (ruling P14)");
+          list(val.dead_letter_config).forEach((d, i) => {
+            if (isObj(d) && d.arn != null && plan && !own(d.arn, ["aws_sqs_queue"], `dead_letter_config.${i}.arn`)) refuse("gateway", `dead_letter_config.${i}.arn must be the lab's own queue, by reference (ruling P14)`);
+          });
           break;
+        case "aws_sqs_queue": {
+          // Batch 3 whole-branch minor 6: a queue's dead-letter queue is the lab's own, by reference (saa-13) or, known at
+          // plan, named lab-<id>-* in the lab's own account and regions.
+          const rp = val.redrive_policy;
+          if (plan && rp instanceof Unknown && (res.configured?.has("redrive_policy") || opaque(rp))) {
+            const refs = refsOf(rp, res, "redrive_policy");
+            if (!((mode === "mock" && !refs.length) || ownRefs(refs, ["aws_sqs_queue"]))) refuse("gateway", "redrive_policy's deadLetterTargetArn must be the lab's own queue, by reference (ruling P14)");
+          } else if (plan && nonEmpty(rp)) {
+            const j = jsonDoc(rp);
+            const t = j.doc?.deadLetterTargetArn;
+            const regions = [...knownRegions].filter((x) => !GLOBAL_REGIONS.includes(x));
+            const ok = typeof t === "string" && nonEmpty(labAccount) && regions.some((g) => t.startsWith(`arn:aws:sqs:${g}:${labAccount}:${prefix}`));
+            if (!ok) refuse("gateway", `redrive_policy's deadLetterTargetArn must be the lab's own queue (arn:aws:sqs:<region>:<this account>:${prefix}*; ruling P14)`);
+          }
+          break;
+        }
         case "aws_sns_topic_subscription":
           if (!["sqs", "lambda"].includes(val.protocol)) refuse("gateway", `protocol ${JSON.stringify(val.protocol ?? null)}: a subscription delivers only to the lab's own queue or function (ruling P14)`);
           needOwn("endpoint", ["aws_sqs_queue", "aws_lambda_function"], "gateway", "the lab's own queue or function (ruling P14)");
@@ -1133,6 +1314,13 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
             const why = workflowProblem(j.doc, labId, plan ? { account, regions: [...knownRegions].filter((x) => !GLOBAL_REGIONS.includes(x)) } : {});
             if (why) refuse("gateway", `definition: ${why} (ruling P14)`);
           }
+          // Batch 3 whole-branch minor 6: execution logs go to the lab's own log group (an unset block is computed: unknown).
+          // logging_configuration is Optional and Computed (planned wholly unknown when unset, saa-13's real plan), so in a
+          // plan only a written one not known at plan is refused; HCL refuses a dynamic one.
+          if (blockUnknown(val.logging_configuration) && res.configured?.has("logging_configuration")) refuse("gateway", "logging_configuration is not known at plan: write the lab's own log group");
+          list(val.logging_configuration).forEach((l, i) => {
+            if (isObj(l) && l.log_destination != null && plan && !own(l.log_destination, ["aws_cloudwatch_log_group"], `logging_configuration.${i}.log_destination`)) refuse("gateway", `logging_configuration.${i}.log_destination must be the lab's own log group, by reference`);
+          });
           break;
         }
         case "aws_kinesis_firehose_delivery_stream": {
@@ -1157,6 +1345,8 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           for (const t of ["jdbc_target", "dynamodb_target", "catalog_target", "mongodb_target", "delta_target", "iceberg_target", "hudi_target"]) if (list(val[t]).some(isObj) || blockUnknown(val[t])) refuse("gateway", `${t}: a lab's crawler reads only the lab's own bucket (ruling P14)`);
           const paths = list(val.s3_target).map((t) => (isObj(t) ? t.path : undefined));
           if (plan && !(paths.length > 0 && paths.every(ownBucket))) refuse("gateway", `every s3_target path must start s3://cloudlabs-${variables.name_prefix ?? "<name_prefix>"}- (ruling P14)`);
+          // Batch 3 whole-branch minor 6: no lab crawls from S3 events, so no queue (or dead-letter queue) is named.
+          if (list(val.s3_target).some((t) => isObj(t) && (t.event_queue_arn != null || t.dlq_event_queue_arn != null))) refuse("gateway", "s3_target event_queue_arn and dlq_event_queue_arn: a lab's crawler runs by hand, reading no queue (ruling P14)");
           if (list(val.lake_formation_configuration).some((x) => isObj(x) && x.account_id != null)) refuse("gateway", "lake_formation_configuration.account_id: another account's lake (review M-5)");
           if (badOr(val.schedule, nonEmpty, "schedule")) refuse("size", "schedule: every crawler run is billed; a lab's crawler runs by hand, known at plan (ruling P15)");
           // Preflight C2: in HCL a name that is only an expression is left to the plan.
@@ -1259,6 +1449,25 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         case "aws_cognito_user_pool":
           if (badOr(val.user_pool_tier, (x) => x === "PLUS", "user_pool_tier")) refuse("size", "user_pool_tier PLUS is billed per user: LITE, known at plan (ruling P12)");
           if (badOr(val.deletion_protection, (x) => x === "ACTIVE", "deletion_protection")) refuse("lingering", "deletion_protection must be INACTIVE so tear-down can delete the pool, known at plan");
+          // Batch 3 whole-branch minor 6: every trigger is the lab's own function, by reference. kms_key_id and
+          // lambda_version name no function; pre_token_generation left unset is computed from its _config block.
+          list(val.lambda_config).forEach((lc, i) => {
+            if (!isObj(lc)) {
+              if (plan) refuse("gateway", "lambda_config is not known at plan: write each trigger, the lab's own function");
+              return;
+            }
+            const leaves = [];
+            const visit = (x, path) => {
+              if (x === null || x === undefined) return;
+              if (x instanceof Unknown || typeof x !== "object") return leaves.push([path, x]);
+              for (const [k, y] of Object.entries(x)) if (k !== "kms_key_id" && k !== "lambda_version") visit(y, [...path, k]);
+            };
+            visit(lc, ["lambda_config", i]);
+            for (const [path, x] of leaves) {
+              if (path[2] === "pre_token_generation" && x instanceof Unknown && !(x.refs?.length > 0)) continue;
+              if (plan && !own(x, ["aws_lambda_function"], path.join("."))) refuse("gateway", `${path.join(".")} must be the lab's own function, by reference`);
+            }
+          });
           break;
         case "aws_cognito_user_pool_client":
         case "aws_cognito_user":
@@ -1303,6 +1512,426 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           if (blockUnknown(val.remote_access) || list(val.remote_access).some(isObj)) refuse("public", "remote_access opens SSH to the nodes; reach them through the cluster (ruling P7)");
           // Preflight C2: in HCL aws_eks_cluster.lab.name is only an expression, left to the plan.
           if (!(!plan && val.cluster_name instanceof Unknown) && !(val.cluster_name === `lab-${labId}` || (plan && own(val.cluster_name, ["aws_eks_cluster"], "cluster_name")))) refuse("gateway", `cluster_name must be the lab's own cluster, lab-${labId}`);
+          break;
+        default:
+      }
+    }
+
+    /** Batch 4's reference, value, size and lingering rules (rulings P3, P5, P6, P8, P9, P11–P20), one switch by type. */
+    function batch4Problems(res, val) {
+      /** The lab's own item of `types`, by reference (an Unknown's own references, else its path's; a mocked plan has none to read). */
+      const own = (x, types, attr) => {
+        if (!(x instanceof Unknown)) return false;
+        const refs = refsOf(x, res, attr);
+        return (mode === "mock" && !refs.length) || ownRefs(refs, types);
+      };
+      const first = (x) => list(x).find(isObj) ?? {};
+      const needOwn = (attr, types, rule, why) => {
+        if (plan && !own(val[attr], types, attr)) refuse(rule, `${attr} must be ${why}, by reference`);
+      };
+      /** Every element of a list attribute (or the whole list, not known at plan) is the lab's own. */
+      const ownAll = (attr, types, rule, why) => {
+        const xs = list(val[attr]);
+        if (plan && !((xs.length > 0 && xs.every((x) => own(x, types, attr))) || own(val[attr], types, attr))) refuse(rule, `every ${attr} must be ${why}, by reference`);
+      };
+      /** As batch 3's: a value that is `bad`, built from references and not known at plan, or (a top-level attr the lab writes) any value not known at plan. */
+      const badOr = (x, bad, attr) => bad(x) || opaque(x) || (plan && x instanceof Unknown && attr !== undefined && Boolean(res.configured?.has(attr)));
+      /** An attribute the lab sets at all: written in the configuration, or a value the plan shows. */
+      const written = (attr) => Boolean(res.configured?.has(attr)) || nonEmpty(val[attr]) || opaque(val[attr]);
+      /**
+       * Task 4 (fail closed): a block whose elements are judged, which a plan cannot read element by element (a dynamic
+       * block whose for_each is not known at plan). Fix round 1: the blocks read here are not Optional and Computed, so
+       * left unset each plans as [], and a wholly unknown one is refused; fix round 2: but VPN tunnel log options are
+       * (their caller exempts an unset one). HCL and lab-lint refuse a dynamic block on the text (AWS_DYNAMIC_JUDGED).
+       */
+      const unread = (attr, rule) => {
+        if (!blockUnknown(val[attr])) return false;
+        refuse(rule, `${attr} is not known at plan (a dynamic block): write each one, so it can be read`);
+        return true;
+      };
+      const slot = variables.address_space;
+      const inSlot = (c) => typeof c === "string" && nonEmpty(slot) && inside(c, slot);
+      const ipInSlot = (ip) => typeof ip === "string" && inSlot(`${ip}/32`);
+      const internal = (n) => typeof n === "string" && /\.internal\.?$/.test(n);
+      /** HCL leaves an expression to the plan. */
+      const later = (x) => !plan && x instanceof Unknown;
+      /** The session's region, or (HCL) an expression left to the plan. */
+      const sessionRegion = (x) => later(x) || (nonEmpty(variables.region) && x === variables.region);
+      const ownAccountRoot = (p) => typeof p === "string" && nonEmpty(labAccount) && p === `arn:aws:iam::${labAccount}:root`;
+      const ATTACHMENTS = ["aws_ec2_transit_gateway_vpc_attachment", "aws_ec2_transit_gateway_peering_attachment", "aws_ec2_transit_gateway_peering_attachment_accepter"];
+      const TGW_TABLES = ["aws_ec2_transit_gateway_route_table", "aws_ec2_transit_gateway"];
+      switch (type) {
+        // ── Lab 20 (rulings P5, P6) ──
+        case "aws_vpc_ipam":
+          if (val.tier !== "free") refuse("size", `tier ${JSON.stringify(val.tier instanceof Unknown ? "(not known at plan)" : (val.tier ?? null))}: only the Free Tier (ruling P5)`);
+          if (!(list(val.operating_regions).length === 1 && sessionRegion(first(val.operating_regions).region_name))) refuse("provider", "operating_regions: the session's region only (ruling P5)");
+          if (val.cascade !== true) refuse("lingering", "cascade must be true, so tear-down takes the pools and scopes with it (ruling P5)");
+          break;
+        case "aws_vpc_ipam_pool":
+          if (!(val.address_family === "ipv6" && val.public_ip_source === "amazon" && val.aws_service === "ec2" && sessionRegion(val.locale))) refuse("address", "a lab IPAM pool is an Amazon-provided IPv6 pool for EC2 in the session's region (ruling P5)");
+          needOwn("ipam_scope_id", ["aws_vpc_ipam"], "gateway", "the lab's own IPAM's scope");
+          break;
+        case "aws_vpc_ipam_pool_cidr":
+          if (res.configured?.has("cidr") || nonEmpty(val.cidr) || opaque(val.cidr)) refuse("never", "cidr: a lab never brings its own addresses (BYOIP); give netmask_length only (ruling P5)");
+          needOwn("ipam_pool_id", ["aws_vpc_ipam_pool"], "gateway", "the lab's own pool");
+          break;
+        case "aws_vpc_ipv6_cidr_block_association":
+          needOwn("ipv6_ipam_pool_id", ["aws_vpc_ipam_pool"], "address", "the lab's own IPv6 pool (ruling P5)");
+          needOwn("vpc_id", ["aws_vpc"], "gateway", "one of the lab's own VPCs");
+          break;
+        case "aws_vpc_ipv4_cidr_block_association":
+          // Rule 10 reads cidr_block (the slot, no overlap); an IPv4 pool is IPAM's paid tier.
+          if (written("ipv4_ipam_pool_id")) refuse("address", "an IPv4 IPAM pool needs the paid tier (ruling P5)");
+          needOwn("vpc_id", ["aws_vpc"], "gateway", "one of the lab's own VPCs");
+          break;
+        case "aws_ec2_managed_prefix_list":
+          if (val.address_family !== "IPv4") refuse("address", "a lab prefix list is IPv4 (ruling P6)");
+          if (!(typeof val.max_entries === "number" && val.max_entries <= 10) && !later(val.max_entries)) refuse("size", "max_entries at most 10 (each entry counts against every rule and route that uses the list)");
+          if (!unread("entry", "address")) {
+            for (const e of list(val.entry)) if (isObj(e) && plan && !(inSlot(e.cidr) || (nonEmpty(variables.gateway_cidr) && e.cidr === variables.gateway_cidr))) refuse("address", `entry ${JSON.stringify(e.cidr instanceof Unknown ? "(not known at plan)" : e.cidr)}: only the slot's ranges or var.gateway_cidr (ruling P6)`);
+          }
+          break;
+        // ── Labs 21, 27, 29 (ruling P15) ──
+        case "aws_ec2_transit_gateway":
+          if (badOr(val.auto_accept_shared_attachments, (x) => x === "enable", "auto_accept_shared_attachments")) refuse("gateway", "auto_accept_shared_attachments: no other account's attachment, known at plan (ruling P15)");
+          if (list(val.transit_gateway_cidr_blocks).length) refuse("never", "transit_gateway_cidr_blocks are for Connect, which is never (ruling P15)");
+          if (badOr(val.multicast_support, (x) => x === "enable", "multicast_support")) refuse("never", "multicast is never (ruling P15)");
+          break;
+        case "aws_ec2_transit_gateway_vpc_attachment":
+          needOwn("transit_gateway_id", ["aws_ec2_transit_gateway"], "gateway", "the lab's own transit gateway");
+          needOwn("vpc_id", ["aws_vpc"], "gateway", "one of the lab's own VPCs");
+          ownAll("subnet_ids", ["aws_subnet"], "gateway", "the lab's own subnets");
+          break;
+        case "aws_ec2_transit_gateway_route_table":
+          needOwn("transit_gateway_id", ["aws_ec2_transit_gateway"], "gateway", "the lab's own transit gateway");
+          break;
+        case "aws_ec2_transit_gateway_route_table_association":
+        case "aws_ec2_transit_gateway_route_table_propagation":
+          needOwn("transit_gateway_route_table_id", TGW_TABLES, "gateway", "the lab's own route table (or its transit gateway's default one)");
+          needOwn("transit_gateway_attachment_id", ATTACHMENTS, "gateway", "the lab's own attachment");
+          break;
+        case "aws_ec2_transit_gateway_route":
+          if (plan && !(val.destination_cidr_block === "0.0.0.0/0" || inSlot(val.destination_cidr_block))) refuse("address", `destination ${JSON.stringify(val.destination_cidr_block instanceof Unknown ? "(not known at plan)" : (val.destination_cidr_block ?? null))}: only the slot or 0.0.0.0/0 (ruling P15)`);
+          needOwn("transit_gateway_route_table_id", TGW_TABLES, "gateway", "the lab's own route table (or its transit gateway's default one)");
+          if (val.blackhole !== true) needOwn("transit_gateway_attachment_id", ATTACHMENTS, "gateway", "the lab's own attachment");
+          break;
+        case "aws_ec2_transit_gateway_peering_attachment":
+          needOwn("transit_gateway_id", ["aws_ec2_transit_gateway"], "gateway", "the lab's own transit gateway");
+          needOwn("peer_transit_gateway_id", ["aws_ec2_transit_gateway"], "gateway", "the lab's own transit gateway in the secondary region (ruling P15)");
+          // Left unset it is computed (this account); a written value is this account, known at plan.
+          if (badOr(val.peer_account_id, (x) => nonEmpty(x) && x !== labAccount, "peer_account_id")) refuse("gateway", "peer_account_id: this account only, known at plan (ruling P15)");
+          break;
+        case "aws_ec2_transit_gateway_peering_attachment_accepter":
+          needOwn("transit_gateway_attachment_id", ["aws_ec2_transit_gateway_peering_attachment"], "gateway", "the lab's own peering attachment (ruling P3)");
+          break;
+        case "aws_vpc_peering_connection_accepter":
+          needOwn("vpc_peering_connection_id", ["aws_vpc_peering_connection"], "gateway", "the lab's own peering (ruling P3)");
+          break;
+        // ── Lab 22 (ruling P11) ──
+        case "aws_vpn_gateway":
+          needOwn("vpc_id", ["aws_vpc"], "gateway", "one of the lab's own VPCs");
+          break;
+        case "aws_vpn_gateway_route_propagation":
+          needOwn("vpn_gateway_id", ["aws_vpn_gateway"], "gateway", "the lab's own gateway");
+          needOwn("route_table_id", ["aws_route_table"], "gateway", "the lab's own route table");
+          break;
+        case "aws_network_interface":
+          // Final fix F2: the lab's own subnet, groups and slot; attached only as an instance's primary interface.
+          needOwn("subnet_id", ["aws_subnet"], "gateway", "one of the lab's own subnets");
+          if (written("security_groups")) ownAll("security_groups", ["aws_security_group"], "gateway", "the lab's own security groups");
+          for (const ip of list(val.private_ips)) if (plan && !ipInSlot(ip)) refuse("address", `private_ips ${JSON.stringify(ip instanceof Unknown ? "(not known at plan)" : (ip ?? null))}: inside the lab's slot`);
+          if (list(val.attachment).length || blockUnknown(val.attachment)) refuse("gateway", "an interface is its instance's primary_network_interface, never attached by its own block");
+          break;
+        case "aws_instance":
+          // Left unset, the block is computed (the interface RunInstances makes); a written one names the lab's own.
+          if (res.configured?.has("primary_network_interface") || nonEmpty(first(val.primary_network_interface).network_interface_id)) {
+            const id = first(val.primary_network_interface).network_interface_id;
+            if (plan && !own(id, ["aws_network_interface"], "primary_network_interface.0.network_interface_id")) refuse("gateway", "primary_network_interface.0.network_interface_id must be the lab's own interface, by reference");
+          }
+          break;
+        case "aws_eip_association": {
+          // Residual R3 (only PUBLIC_INSTANCE_LABS get this far: rule public refuses it elsewhere): the lab's own address
+          // on the lab's own interface or instance, by reference.
+          const nic = written("network_interface_id");
+          const vm = written("instance_id");
+          if (plan && mode !== "mock" && !nic && !vm) refuse("gateway", "an Elastic IP association names the lab's own interface or instance (ruling P11)");
+          if (nic) needOwn("network_interface_id", ["aws_network_interface"], "gateway", "the lab's own interface");
+          if (vm) needOwn("instance_id", ["aws_instance"], "gateway", "the lab's own instance");
+          needOwn("allocation_id", ["aws_eip"], "gateway", "the lab's own Elastic IP");
+          break;
+        }
+        case "aws_customer_gateway": {
+          needOwn("ip_address", ["aws_eip"], "gateway", "the lab's own router's Elastic IP (ruling P11)");
+          const asn = val.bgp_asn;
+          const n = typeof asn === "string" && /^\d+$/.test(asn) ? Number(asn) : typeof asn === "number" ? asn : NaN;
+          if (!later(asn) && !((n >= 64512 && n <= 65534) || (n >= 4200000000 && n <= 4294967294))) refuse("gateway", "bgp_asn: a private ASN, known at plan (ruling P11)");
+          if (written("certificate_arn")) refuse("never", "certificate_arn needs a private CA, which is never");
+          break;
+        }
+        case "aws_vpn_connection":
+          needOwn("customer_gateway_id", ["aws_customer_gateway"], "gateway", "the lab's own customer gateway");
+          if (written("transit_gateway_id")) refuse("gateway", "a lab VPN ends on its own virtual private gateway (ruling P11)");
+          needOwn("vpn_gateway_id", ["aws_vpn_gateway"], "gateway", "the lab's own virtual private gateway");
+          if (badOr(val.enable_acceleration, (x) => x === true, "enable_acceleration")) refuse("never", "enable_acceleration: accelerated VPN is readme-only (§12.2)");
+          if (badOr(val.outside_ip_address_type, (x) => x === "PrivateIpv4", "outside_ip_address_type")) refuse("never", "PrivateIpv4 outside addresses need Direct Connect, which is never");
+          for (const k of ["tunnel1_log_options", "tunnel2_log_options"]) {
+            // Fix round 2: Optional and Computed (the provider's vpnsite_connection.go), so left unset each plans wholly
+            // unknown, with no references and not in the configuration; HCL and lab-lint refuse a dynamic one.
+            const x = val[k];
+            if (x instanceof Unknown && !res.configured?.has(k) && !(x.refs?.length > 0)) continue;
+            if (unread(k, "lingering")) continue;
+            if (list(val[k]).some((o) => isObj(o) && (blockUnknown(o.cloudwatch_log_options) || list(o.cloudwatch_log_options).some((x) => isObj(x) && badOr(x.log_enabled, (e) => e === true))))) refuse("lingering", `${k}: VPN tunnel logs make a log delivery outside /cloudlabs/ (ruling P8)`);
+          }
+          break;
+        // ── Lab 23 (ruling P12) ──
+        case "aws_route53_resolver_endpoint":
+          ownAll("security_group_ids", ["aws_security_group"], "gateway", "the lab's own security groups");
+          if (!unread("ip_address", "gateway")) {
+            for (const [i, ip] of list(val.ip_address).entries()) if (isObj(ip) && plan && !own(ip.subnet_id, ["aws_subnet"], `ip_address.${i}.subnet_id`)) refuse("gateway", `ip_address.${i}.subnet_id must be one of the lab's own subnets, by reference`);
+          }
+          // Left unset, protocols is computed (Do53); written, Do53 only.
+          if ((res.configured?.has("protocols") || Array.isArray(val.protocols)) && list(val.protocols).some((p) => p !== "Do53")) refuse("size", "protocols: Do53 only");
+          break;
+        case "aws_route53_resolver_rule":
+          if (val.rule_type !== "FORWARD") refuse("gateway", `rule_type ${JSON.stringify(val.rule_type instanceof Unknown ? "(not known at plan)" : (val.rule_type ?? null))}: FORWARD only (ruling P12)`);
+          if (!internal(val.domain_name) && !later(val.domain_name)) refuse("gateway", `domain_name ${JSON.stringify(typeof val.domain_name === "string" ? val.domain_name : "(not known at plan)")}: a lab forwards only *.internal names, known at plan (ruling P12)`);
+          if (!unread("target_ip", "address")) {
+            for (const t of list(val.target_ip)) if (isObj(t) && plan && !ipInSlot(t.ip)) refuse("address", `target_ip ${JSON.stringify(typeof t.ip === "string" ? t.ip : "(not known at plan)")}: an address in the lab's slot (ruling P12)`);
+          }
+          needOwn("resolver_endpoint_id", ["aws_route53_resolver_endpoint"], "gateway", "the lab's own outbound endpoint");
+          break;
+        case "aws_route53_resolver_rule_association":
+          needOwn("vpc_id", ["aws_vpc"], "gateway", "one of the lab's own VPCs (spec §7.5: a VPC passed as a parameter)");
+          needOwn("resolver_rule_id", ["aws_route53_resolver_rule"], "gateway", "the lab's own rule");
+          break;
+        case "aws_route53_resolver_firewall_rule_group_association":
+          // Its mutation protection is rule lingering's.
+          needOwn("vpc_id", ["aws_vpc"], "gateway", "one of the lab's own VPCs (spec §7.5: a VPC passed as a parameter)");
+          needOwn("firewall_rule_group_id", ["aws_route53_resolver_firewall_rule_group"], "gateway", "the lab's own rule group");
+          break;
+        case "aws_route53_resolver_query_log_config_association":
+          needOwn("resource_id", ["aws_vpc"], "gateway", "one of the lab's own VPCs (spec §7.5: a VPC passed as a parameter)");
+          needOwn("resolver_query_log_config_id", ["aws_route53_resolver_query_log_config"], "gateway", "the lab's own query log config");
+          break;
+        case "aws_route53_resolver_firewall_rule":
+          needOwn("firewall_rule_group_id", ["aws_route53_resolver_firewall_rule_group"], "gateway", "the lab's own rule group");
+          needOwn("firewall_domain_list_id", ["aws_route53_resolver_firewall_domain_list"], "gateway", "the lab's own domain list");
+          break;
+        case "aws_route53_resolver_query_log_config":
+          needOwn("destination_arn", ["aws_s3_bucket"], "lingering", "the lab's own bucket (ruling P8: vended logs to S3, never CloudWatch Logs)");
+          break;
+        // ── Labs 24, 25 (rulings P13, P14) ──
+        case "aws_vpc_endpoint_service": {
+          // allowed_principals, private_dns_name and supported_regions are computed when left unset (none, none, the session's).
+          const p = val.allowed_principals;
+          if (plan && !(Array.isArray(p) && p.every(ownAccountRoot))) refuse("public", "allowed_principals: only this account's root, known at plan (ruling P13)");
+          if (written("private_dns_name")) refuse("gateway", "private_dns_name needs a public domain's TXT record (ruling P13)");
+          if ((res.configured?.has("supported_regions") || Array.isArray(val.supported_regions)) && list(val.supported_regions).some((x) => !sessionRegion(x))) refuse("provider", "supported_regions: the session's only");
+          if (list(val.network_load_balancer_arns).length) ownAll("network_load_balancer_arns", ["aws_lb"], "gateway", "the lab's own load balancers");
+          if (list(val.gateway_load_balancer_arns).length) ownAll("gateway_load_balancer_arns", ["aws_lb"], "gateway", "the lab's own load balancers");
+          break;
+        }
+        case "aws_vpc_endpoint": {
+          const n = val.service_name;
+          // A lab region: the session's, or its secondary (saa-16's Ireland endpoint, through the secondary provider).
+          const regions = [variables.region, ...(secondaryOk ? [variables.secondary_region] : [])].filter(nonEmpty);
+          const aws = typeof n === "string" && regions.some((g) => n.startsWith(`com.amazonaws.${g}.`)) && !n.startsWith("com.amazonaws.vpce.");
+          // Fix round 1: no cross-region PrivateLink (service_region is computed: unknown when unset).
+          const sr = val.service_region;
+          if (written("service_region") && !later(sr) && !(typeof sr === "string" && regions.includes(sr))) refuse("provider", `service_region ${JSON.stringify(typeof sr === "string" ? sr : "(not known at plan)")}: a lab region only, the endpoint's own`);
+          if (!(aws || (plan && own(n, ["aws_vpc_endpoint_service"], "service_name")) || later(n))) refuse("gateway", `service_name ${JSON.stringify(typeof n === "string" ? n : "(computed)")}: an AWS service in a lab region or the lab's own endpoint service, by reference (ruling P13)`);
+          break;
+        }
+        case "aws_lb_target_group_attachment":
+          needOwn("target_group_arn", ["aws_lb_target_group"], "gateway", "the lab's own target group");
+          needOwn("target_id", ["aws_instance"], "gateway", "the lab's own instance");
+          break;
+        case "aws_lb_listener_rule":
+          needOwn("listener_arn", ["aws_lb_listener"], "gateway", "the lab's own listener");
+          break;
+        case "aws_acm_certificate":
+          // domain_name is computed for an imported certificate (from the certificate itself).
+          if (written("domain_name")) refuse("gateway", "domain_name: a lab certificate is imported from its own tls resources, never requested (ruling P14)");
+          if (written("certificate_authority_arn")) refuse("never", "certificate_authority_arn: a private CA is never");
+          needOwn("private_key", ["tls_private_key"], "gateway", "the lab's own key");
+          needOwn("certificate_body", ["tls_locally_signed_cert", "tls_self_signed_cert"], "gateway", "the lab's own certificate");
+          break;
+        // ── Lab 26 (ruling P9) ──
+        case "aws_globalaccelerator_endpoint_group":
+          if (plan && !(nonEmpty(variables.region) && (val.endpoint_group_region === variables.region || (secondaryOk && val.endpoint_group_region === variables.secondary_region)))) refuse("provider", "endpoint_group_region: a lab region, known at plan (ruling P9)");
+          if (!unread("endpoint_configuration", "gateway")) {
+            for (const [i, e] of list(val.endpoint_configuration).entries()) if (isObj(e)) {
+              if (plan && !own(e.endpoint_id, ["aws_lb"], `endpoint_configuration.${i}.endpoint_id`)) refuse("gateway", `endpoint_configuration.${i}.endpoint_id must be the lab's own load balancer, by reference (ruling P9)`);
+              if (e.client_ip_preservation_enabled !== false) refuse("gateway", `endpoint_configuration.${i}.client_ip_preservation_enabled must be false: preservation makes untagged interfaces and a security group in the lab VPC (ruling P9)`);
+            }
+          }
+          needOwn("listener_arn", ["aws_globalaccelerator_listener"], "gateway", "the lab's own listener");
+          break;
+        case "aws_globalaccelerator_accelerator":
+          if (list(val.ip_addresses).length || res.configured?.has("ip_addresses")) refuse("never", "ip_addresses: BYOIP is never");
+          if (unread("attributes", "lingering") || list(val.attributes).some((a) => isObj(a) && badOr(a.flow_logs_enabled, (x) => x === true))) refuse("lingering", "flow logs: off (ruling P8)");
+          break;
+        case "aws_globalaccelerator_listener":
+          needOwn("accelerator_arn", ["aws_globalaccelerator_accelerator"], "gateway", "the lab's own accelerator");
+          break;
+        case "aws_wafv2_web_acl": {
+          if (val.scope !== "CLOUDFRONT") refuse("gateway", "scope CLOUDFRONT only (ruling P9)");
+          // Task 4 (fail closed): rules written as JSON, or a block not known at plan, cannot be read rule by rule.
+          if (written("rule_json")) refuse("size", "rule_json: write each rule as a rule block, so its groups can be read (ruling P9)");
+          if (unread("rule", "size")) break;
+          const PAID = /^AWSManagedRules(BotControl|ATP|ACFP|AntiDDoS)RuleSet$/;
+          let rules = 0;
+          for (const r of list(val.rule)) if (isObj(r)) {
+            rules++;
+            if (blockUnknown(r.statement) || !list(r.statement).some(isObj)) refuse("size", `rule ${r.name}: its statement is not known at plan (ruling P9)`);
+            /** The value at a walk path under this rule's statement. */
+            const at = (path) => path.slice(1).reduce((o, k) => (o == null ? o : o[k]), r.statement);
+            walk(r.statement, ["statement"], (kind, path, s) => {
+              const key = path[path.length - 1];
+              if (kind === "string" && key === "vendor_name" && s !== "AWS") refuse("size", `rule ${r.name}: managed rule groups from AWS only (ruling P9)`);
+              if (kind === "string" && key === "name" && path.includes("managed_rule_group_statement") && PAID.test(s)) refuse("size", `rule ${r.name}: ${s} is billed per request and per month (ruling P9)`);
+              // A rule group or set the lab cannot make (not on AWS_TYPES) is someone else's.
+              // (A plan prints every unused nested statement as []: only one holding a block, or not known at plan, names one.)
+              if (kind === "key" && /_reference_statement$/.test(s) && (list(at(path)).some(isObj) || blockUnknown(at(path)))) refuse("gateway", `rule ${r.name}: ${s} names a rule group or set outside the lab`);
+            });
+            // A managed group named by an expression is not known at plan, so neither is its price.
+            if (unknownLeaves(r.statement, []).some(([p]) => p.includes("managed_rule_group_statement") && ["name", "vendor_name"].includes(p[p.length - 1]))) refuse("size", `rule ${r.name}: a managed rule group must be named at plan (ruling P9)`);
+          }
+          if (rules > 5) refuse("size", "at most 5 rules");
+          break;
+        }
+        case "aws_cloudfront_distribution": {
+          // Each function association at its own path: default_cache_behavior.N... and ordered_cache_behavior.N....
+          const behaviours = [...list(val.default_cache_behavior).map((b, i) => [`default_cache_behavior.${i}`, b]), ...list(val.ordered_cache_behavior).map((b, i) => [`ordered_cache_behavior.${i}`, b])];
+          for (const [where, b] of behaviours) {
+            if (!isObj(b)) continue;
+            if (blockUnknown(b.function_association) && plan) refuse("gateway", `${where}.function_association is not known at plan (a dynamic block)`);
+            list(b.function_association).forEach((fa, j) => {
+              if (isObj(fa) && plan && !own(fa.function_arn, ["aws_cloudfront_function"], `${where}.function_association.${j}.function_arn`)) refuse("gateway", `${where}.function_association.${j}.function_arn must be the lab's own function, by reference (ruling P9)`);
+            });
+            if (list(b.lambda_function_association).length) refuse("never", "Lambda@Edge runs in every edge region (ruling P9)");
+          }
+          if (written("web_acl_id") || val.web_acl_id instanceof Unknown) needOwn("web_acl_id", ["aws_wafv2_web_acl"], "gateway", "the lab's own web ACL");
+          if (list(val.logging_config).some(isObj) || blockUnknown(val.logging_config)) refuse("lingering", "logging_config writes to a bucket with ACLs; a lab distribution keeps no logs (ruling P8)");
+          break;
+        }
+        // ── Lab 27 (ruling P16) ──
+        case "aws_networkfirewall_firewall":
+          if (unread("subnet_mapping", "size") || list(val.subnet_mapping).length !== 1) refuse("size", "one subnet mapping (spec §7.3, ruling P16)");
+          for (const k of ["delete_protection", "subnet_change_protection", "firewall_policy_change_protection"]) if (badOr(val[k], (x) => x === true, k)) refuse("lingering", `${k} must be false (ruling P16)`);
+          needOwn("vpc_id", ["aws_vpc"], "gateway", "one of the lab's own VPCs");
+          needOwn("firewall_policy_arn", ["aws_networkfirewall_firewall_policy"], "gateway", "the lab's own policy");
+          break;
+        case "aws_networkfirewall_rule_group":
+          if (!(typeof val.capacity === "number" && val.capacity <= 100) && !later(val.capacity)) refuse("size", "capacity at most 100, known at plan (ruling P16)");
+          break;
+        case "aws_networkfirewall_firewall_policy": {
+          if (unread("firewall_policy", "never")) break;
+          const t = first(val.firewall_policy).tls_inspection_configuration_arn;
+          if (nonEmpty(t) || opaque(t)) refuse("never", "TLS inspection is never (ruling P16)");
+          break;
+        }
+        case "aws_networkfirewall_logging_configuration":
+          needOwn("firewall_arn", ["aws_networkfirewall_firewall"], "gateway", "the lab's own firewall");
+          if (unread("logging_configuration", "lingering")) break;
+          if (blockUnknown(first(val.logging_configuration).log_destination_config)) refuse("lingering", "log_destination_config is not known at plan (a dynamic block)");
+          list(first(val.logging_configuration).log_destination_config).forEach((d, i) => {
+            if (!isObj(d)) return;
+            if (d.log_destination_type !== "S3") refuse("lingering", `log_destination_type ${JSON.stringify(typeof d.log_destination_type === "string" ? d.log_destination_type : null)}: the lab's bucket only (ruling P8)`);
+            // Task 4 (fail closed): and that bucket is the lab's own, by name (cloudlabs-<name_prefix>-*) or by reference.
+            else {
+              const b = isObj(d.log_destination) ? d.log_destination.bucketName : d.log_destination;
+              const ok = typeof b === "string" ? nonEmpty(variables.name_prefix) && b.startsWith(`cloudlabs-${variables.name_prefix}-`) : plan && own(b, ["aws_s3_bucket"], `logging_configuration.0.log_destination_config.${i}.log_destination`);
+              if (plan && !ok) refuse("gateway", `log_destination_config.${i}.log_destination.bucketName must be the lab's own bucket (ruling P8)`);
+            }
+          });
+          break;
+        // ── Lab 28 (ruling P17) ──
+        case "aws_ec2_traffic_mirror_target":
+          if (written("network_load_balancer_arn") || written("gateway_load_balancer_endpoint_id")) refuse("gateway", "a mirror target is the lab's own instance's interface (ruling P17)");
+          needOwn("network_interface_id", ["aws_instance"], "gateway", "the lab's own instance's primary interface");
+          break;
+        case "aws_ec2_traffic_mirror_filter_rule":
+          for (const k of ["source_cidr_block", "destination_cidr_block"]) if (plan && !(val[k] === "0.0.0.0/0" || inSlot(val[k]))) refuse("address", `${k}: the slot or 0.0.0.0/0`);
+          needOwn("traffic_mirror_filter_id", ["aws_ec2_traffic_mirror_filter"], "gateway", "the lab's own filter");
+          break;
+        case "aws_glue_catalog_table": {
+          const loc = first(val.storage_descriptor).location;
+          if (plan && !(typeof loc === "string" && nonEmpty(variables.name_prefix) && loc.startsWith(`s3://cloudlabs-${variables.name_prefix}-`))) refuse("gateway", "storage_descriptor.location must be in the lab's own bucket (ruling P17)");
+          if (!(!plan && val.database_name instanceof Unknown) && !startsKnown(val.database_name, glueName) && !(plan && own(val.database_name, ["aws_glue_catalog_database"], "database_name"))) refuse("gateway", `database_name must be the lab's own database (${glueName})`);
+          // As the lab's Glue database (review M-5): never another catalogue, nor a link to another table.
+          if (res.configured?.has("catalog_id") || list(val.target_table).some(isObj) || blockUnknown(val.target_table)) refuse("gateway", "catalog_id and target_table reach another catalogue or table (review M-5)");
+          break;
+        }
+        case "aws_flow_log":
+          if (val.log_destination_type === "s3") needOwn("log_destination", ["aws_s3_bucket"], "lingering", "the lab's own bucket (ruling P8)");
+          if (val.log_destination_type === "kinesis-data-firehose") refuse("lingering", "Firehose flow logs: a lab's own group or bucket only (ruling P8)");
+          break;
+        // ── Lab 30 (ruling P19) ──
+        case "aws_vpclattice_service_network_vpc_association":
+          needOwn("vpc_identifier", ["aws_vpc"], "gateway", "one of the lab's own VPCs (spec §7.5)");
+          ownAll("security_group_ids", ["aws_security_group"], "gateway", "the lab's own security groups");
+          needOwn("service_network_identifier", ["aws_vpclattice_service_network"], "gateway", "the lab's own service network");
+          break;
+        case "aws_vpclattice_service_network_service_association":
+          needOwn("service_identifier", ["aws_vpclattice_service"], "gateway", "the lab's own service");
+          needOwn("service_network_identifier", ["aws_vpclattice_service_network"], "gateway", "the lab's own service network");
+          break;
+        case "aws_vpclattice_target_group":
+          if (val.type !== "INSTANCE") refuse("gateway", "type INSTANCE: the lab's own instances (ruling P19)");
+          if (plan && !own(first(val.config).vpc_identifier, ["aws_vpc"], "config.0.vpc_identifier")) refuse("gateway", "config.vpc_identifier must be one of the lab's own VPCs, by reference");
+          break;
+        case "aws_vpclattice_target_group_attachment":
+          needOwn("target_group_identifier", ["aws_vpclattice_target_group"], "gateway", "the lab's own target group");
+          if (!unread("target", "gateway")) {
+            for (const [i, t] of list(val.target).entries()) if (isObj(t) && plan && !own(t.id, ["aws_instance"], `target.${i}.id`)) refuse("gateway", `target.${i}.id must be the lab's own instance, by reference`);
+          }
+          break;
+        case "aws_vpclattice_listener": {
+          // Task 4 (fail closed): a Lattice id (svc-, tg-) is no EC2 id, so the known-id rule never sees a foreign one.
+          needOwn("service_identifier", ["aws_vpclattice_service"], "gateway", "the lab's own service");
+          if (unread("default_action", "gateway")) break;
+          const fwd = list(first(val.default_action).forward);
+          if (blockUnknown(first(val.default_action).forward)) refuse("gateway", "default_action.forward is not known at plan (a dynamic block)");
+          fwd.forEach((f, i) => {
+            if (!isObj(f)) return;
+            if (blockUnknown(f.target_groups)) refuse("gateway", `default_action.0.forward.${i}.target_groups is not known at plan (a dynamic block)`);
+            list(f.target_groups).forEach((g, j) => {
+              if (isObj(g) && plan && !own(g.target_group_identifier, ["aws_vpclattice_target_group"], `default_action.0.forward.${i}.target_groups.${j}.target_group_identifier`)) refuse("gateway", `default_action.0.forward.${i}.target_groups.${j}.target_group_identifier must be the lab's own target group, by reference`);
+            });
+          });
+          break;
+        }
+        case "aws_vpclattice_auth_policy":
+          needOwn("resource_identifier", ["aws_vpclattice_service", "aws_vpclattice_service_network"], "gateway", "the lab's own service or network");
+          break;
+        // ── Lab 31 (ruling P20) ──
+        case "aws_ec2_client_vpn_endpoint": {
+          if (plan && !inSlot(val.client_cidr_block)) refuse("address", "client_cidr_block must be inside the lab's slot (ruling P20)");
+          const kinds = blockUnknown(val.authentication_options) ? [] : list(val.authentication_options).filter(isObj).map((a) => a.type);
+          if (!(kinds.length > 0 && kinds.every((k) => k === "certificate-authentication"))) refuse("never", "certificate authentication only; directory and federated authentication are never (ruling P20)");
+          if (val.split_tunnel !== true) refuse("gateway", "split_tunnel must be true: a lab VPN never takes Steven's whole internet (ruling P20)");
+          // connection_log_options (and its enabled) is required: written false, known at plan.
+          if (first(val.connection_log_options).enabled !== false) refuse("lingering", "connection_log_options.enabled must be false, known at plan (ruling P8)");
+          if (badOr(val.self_service_portal, (x) => x === "enabled", "self_service_portal")) refuse("public", "self_service_portal must be disabled");
+          // Fix round 1: a connect handler is a Lambda named AWSClientVPN-*, never a lab function (a computed block: unknown when unset).
+          if (list(val.client_connect_options).some((o) => isObj(o) && badOr(o.enabled, (x) => x === true))) refuse("gateway", "client_connect_options.enabled: a connect handler is never a lab function (ruling P20)");
+          needOwn("server_certificate_arn", ["aws_acm_certificate"], "gateway", "the lab's own imported certificate");
+          for (const [i, a] of list(val.authentication_options).entries()) if (isObj(a) && plan && !own(a.root_certificate_chain_arn, ["aws_acm_certificate"], `authentication_options.${i}.root_certificate_chain_arn`)) refuse("gateway", `authentication_options.${i}.root_certificate_chain_arn must be the lab's own imported certificate, by reference (ruling P20)`);
+          needOwn("vpc_id", ["aws_vpc"], "gateway", "one of the lab's own VPCs");
+          // Left unset, security_group_ids is computed: the lab VPC's default group (the lab's own VPC's).
+          if (res.configured?.has("security_group_ids") || Array.isArray(val.security_group_ids) || opaque(val.security_group_ids)) ownAll("security_group_ids", ["aws_security_group"], "gateway", "the lab's own security groups");
+          break;
+        }
+        case "aws_ec2_client_vpn_network_association":
+          needOwn("client_vpn_endpoint_id", ["aws_ec2_client_vpn_endpoint"], "gateway", "the lab's own endpoint");
+          needOwn("subnet_id", ["aws_subnet"], "gateway", "one of the lab's own subnets");
+          if (++clientVpnAssociations > 1) refuse("size", "one target network association (each bills by the hour; ruling P20)");
+          break;
+        case "aws_ec2_client_vpn_authorization_rule":
+          // Task 4 (fail closed): a cvpn-endpoint- id is no EC2 id the known-id rule reads.
+          needOwn("client_vpn_endpoint_id", ["aws_ec2_client_vpn_endpoint"], "gateway", "the lab's own endpoint");
+          if (plan && !inSlot(val.target_network_cidr)) refuse("address", "target_network_cidr must be inside the lab's slot (ruling P20)");
           break;
         default:
       }
@@ -1399,12 +2028,38 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         else if (opaque(d)) no("address", "destination_cidr_block is not known at plan");
         const d6 = val.destination_ipv6_cidr_block;
         if (nonEmpty(d6) && d6 !== "::/0") no("address", `an IPv6 route to ${d6}: only ::/0`);
+        routeTargets(val, "", (a) => Boolean(res.configured?.has(a)));
       }
       if (type === "aws_route_table" && Array.isArray(val.route)) {
-        for (const rt of val.route) {
-          if (!isObj(rt)) continue;
+        val.route.forEach((rt, i) => {
+          if (!isObj(rt)) return;
           if (nonEmpty(rt.cidr_block) && !routeOk(rt.cidr_block)) no("address", `a route to ${rt.cidr_block}: only the lab's slot, var.gateway_cidr or 0.0.0.0/0`);
           if (nonEmpty(rt.ipv6_cidr_block) && rt.ipv6_cidr_block !== "::/0") no("address", `an IPv6 route to ${rt.ipv6_cidr_block}: only ::/0`);
+          // Task 4 (fail closed): an inline route is judged as an aws_route is.
+          routeTargets(rt, `route.${i}.`, () => false);
+        });
+      }
+      /**
+       * Batch 4: a route's prefix-list destination is the lab's own list by reference, or an AWS-managed one its data
+       * source read; a route to a transit, VPN or internet gateway, egress-only gateway or endpoint names the lab's own,
+       * by reference (an endpoint may be the lab's own Network Firewall's, from its firewall_status). Neither a vgw- id
+       * nor a gateway's is one the known-id rule reads. `path`: "" for an aws_route, route.N. for an inline route.
+       */
+      function routeTargets(r, path, configured) {
+        const refsAt = (x, attr) => (x instanceof Unknown ? refsOf(x, res, `${path}${attr}`).filter((y) => !INDEX_REF.test(y)) : []);
+        const pl = r.destination_prefix_list_id;
+        if (configured("destination_prefix_list_id") || nonEmpty(pl) || pl instanceof Unknown) {
+          const refs = refsAt(pl, "destination_prefix_list_id");
+          // A mocked plan's stream holds no data sources, so a known AWS-managed list's id cannot be read there.
+          const ok = typeof pl === "string" ? awsPrefixLists.has(pl) || (mode === "mock" && !data.length) : pl instanceof Unknown && ((mode === "mock" && !refs.length) || ownRefs(refs, ["aws_ec2_managed_prefix_list"]) || (refs.length > 0 && refs.every((y) => y.startsWith("data.aws_ec2_managed_prefix_list."))));
+          if (!ok) no("address", `${path}destination_prefix_list_id must be the lab's own prefix list, by reference, or an AWS-managed one (data.aws_ec2_managed_prefix_list)`);
+        }
+        const targets = { transit_gateway_id: ["aws_ec2_transit_gateway"], gateway_id: ["aws_internet_gateway", "aws_vpn_gateway"], vpn_gateway_id: ["aws_vpn_gateway"], egress_only_gateway_id: ["aws_egress_only_internet_gateway"], vpc_endpoint_id: ["aws_vpc_endpoint", "aws_networkfirewall_firewall"] };
+        for (const [attr, types] of Object.entries(targets)) {
+          const x = r[attr];
+          if (!(configured(attr) || nonEmpty(x) || opaque(x) || (path && x instanceof Unknown))) continue;
+          const refs = refsAt(x, attr);
+          if (!(x instanceof Unknown && ((mode === "mock" && !refs.length) || ownRefs(refs, types)))) no("address", `${path}${attr} must be the lab's own ${types.join(" or ")}, by reference`);
         }
       }
       if ((res.configured?.has("ipv6_ipam_pool_id") || nonEmpty(val.ipv6_ipam_pool_id)) && labId !== IPAM_LAB) no("address", `an IPv6 IPAM pool only in ${IPAM_LAB}`);
@@ -1450,6 +2105,10 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         const open = x.cidrs.find(fromInternet);
         if (open && ssh(x.proto, x.from, x.to)) no("public", `it admits SSH (TCP 22) from ${open}: never from the internet (AWS labs spec §7.4)`);
       }
+      // Ruling P11: lab 22's router has a public address, so no ingress rule there admits the internet. A source not
+      // known at plan is the lab's own VPN tunnel (UDP 500 or 4500 from aws_vpn_connection's tunnel1_address or
+      // tunnel2_address, by reference); a security group or prefix list source is the lab's own, by reference.
+      if (publicLab) publicLabIngress(res, val, no);
       // Ruling P10: who a resource policy lets in, and who may invoke a lab function. A topic's or secret's own policy
       // is read too when the lab writes one (preflight C12; left unset it is computed). An unset key policy is AWS's
       // default (computed: unknown with no references), which grants the account root only.
@@ -1479,6 +2138,53 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         else if ((fua != null || res.configured?.has("function_url_auth_type")) && fua !== "AWS_IAM" && !(!plan && fua instanceof Unknown)) no("public", "function_url_auth_type must be AWS_IAM, known at plan (review I-2)");
       }
       if (type === "aws_ecs_service" && list(val.network_configuration).some((n) => isObj(n) && n.assign_public_ip === true)) no("public", "assign_public_ip: tasks reach out through the lab's NAT gateway, never from a public address");
+    }
+
+    /** Ruling P11: lab 22's ingress rules (rule public), each source by its own value or reference. */
+    function publicLabIngress(res, val, no) {
+      const rules = [];
+      const at = (attr, x, path) => ({ attr: path ?? attr, top: attr, x });
+      if (type === "aws_vpc_security_group_ingress_rule") {
+        rules.push({ where: "", proto: val.ip_protocol, from: val.from_port, to: val.to_port, cidrs: ["cidr_ipv4", "cidr_ipv6"].map((a) => at(a, val[a])), groups: [at("referenced_security_group_id", val.referenced_security_group_id)], lists: [at("prefix_list_id", val.prefix_list_id)] });
+      }
+      if (type === "aws_security_group_rule" && val.type === "ingress") {
+        const each = (a) => (val[a] instanceof Unknown ? [at(a, val[a])] : list(val[a]).map((x, i) => at(a, x, `${a}.${i}`)));
+        rules.push({ where: "", proto: val.protocol, from: val.from_port, to: val.to_port, cidrs: [...each("cidr_blocks"), ...each("ipv6_cidr_blocks")], groups: [at("source_security_group_id", val.source_security_group_id)], lists: each("prefix_list_ids") });
+      }
+      if (type === "aws_security_group") {
+        // Left unset, inline ingress is computed (unknown); written as one expression not known at plan, it cannot be read.
+        // A plan cannot tell a dynamic ingress whose for_each is not known at plan from one left unset (computed), which
+        // the template's own groups leave (their rules are separate resources): HCL and lab-lint refuse a dynamic one.
+        if (val.ingress instanceof Unknown && plan && (res.configured?.has("ingress") || opaque(val.ingress))) no("public", "ingress is not known at plan: write each rule, so its source can be read (ruling P11)");
+        list(val.ingress).forEach((i, n) => {
+          if (!isObj(i)) return;
+          const each = (a) => (i[a] instanceof Unknown ? [at("ingress", i[a], `ingress.${n}.${a}`)] : list(i[a]).map((x, k) => at("ingress", x, `ingress.${n}.${a}.${k}`)));
+          rules.push({ where: `ingress.${n} `, proto: i.protocol, from: i.from_port, to: i.to_port, cidrs: [...each("cidr_blocks"), ...each("ipv6_cidr_blocks")], groups: each("security_groups"), lists: each("prefix_list_ids") });
+        });
+      }
+      const refsAt = (s) => (s.x instanceof Unknown ? (s.x.refs?.length ? s.x.refs : (res.refs?.[s.attr] ?? [])).filter((y) => !INDEX_REF.test(y)) : []);
+      const mockUnread = (s) => mode === "mock" && s.x instanceof Unknown && !refsAt(s).length;
+      for (const r of rules) {
+        const p = String(r.proto ?? "").toLowerCase();
+        const ike = (p === "udp" || p === "17") && r.from === r.to && (r.from === 500 || r.from === 4500);
+        for (const s of r.cidrs) {
+          if (typeof s.x === "string") {
+            if (fromInternet(s.x)) no("public", `${r.where}${s.attr} ${s.x} is the internet: lab 22's router has a public address (ruling P11)`);
+          } else if (s.x instanceof Unknown && plan) {
+            const refs = refsAt(s);
+            // Every reference is the lab's own VPN connection, and at least one is one of its tunnel addresses.
+            const tunnel = refs.length > 0 && refs.every((y) => target(y)?.type === "aws_vpn_connection" && (y.split(".").length === 2 || /\.tunnel[12]_address$/.test(y))) && refs.some((y) => /\.tunnel[12]_address$/.test(y));
+            if (!(ike && (mockUnread(s) || tunnel))) no("public", `${r.where}${s.attr} is not known at plan: only UDP 500 or 4500 from the lab's own VPN tunnel (aws_vpn_connection's tunnel1_address or tunnel2_address, by reference; ruling P11)`);
+          }
+        }
+        for (const [kind, ownType] of [["groups", "aws_security_group"], ["lists", "aws_ec2_managed_prefix_list"]]) {
+          for (const s of r[kind]) {
+            if (s.x == null || s.x === "") continue;
+            // An AWS-managed prefix list (CloudFront's, say) holds the internet's ranges.
+            if (!(s.x instanceof Unknown && plan && (mockUnread(s) || ownRefs(refsAt(s), [ownType]))) && plan) no("public", `${r.where}${s.attr} must be the lab's own ${ownType}, by reference (ruling P11)`);
+          }
+        }
+      }
     }
 
     function lingeringProblems(res, val, no) {
@@ -1596,6 +2302,12 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         case "aws_networkfirewall_firewall":
           off("delete_protection");
           break;
+        case "aws_route53_resolver_firewall_rule_group_association": {
+          // Ruling P12: mutation protection would keep tear-down from removing it. Left unset it is computed (DISABLED).
+          const m = val.mutation_protection;
+          if (m === "ENABLED" || opaque(m) || (plan && m instanceof Unknown && res.configured?.has("mutation_protection"))) no("lingering", "mutation_protection must be DISABLED so tear-down can remove it, known at plan");
+          break;
+        }
         case "aws_instance":
           off("disable_api_termination");
           off("disable_api_stop");
@@ -1672,6 +2384,21 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
       if (type === "aws_launch_template") for (const b of list(val.block_device_mappings)) for (const e of list(isObj(b) ? b.ebs : [])) disk(e, "block_device_mappings.ebs.", "volume_size", "volume_type");
       if (type === "aws_eks_node_group") for (const s of list(val.scaling_config)) if (isObj(s)) max(s.max_size, 2, "scaling_config.max_size");
       if (type === "aws_eks_node_group") list(val.instance_types).forEach((t) => instanceType(t, "instance_types"));
+      // Batch 3 whole-branch minor 5: a node group names its sizes (left unset it is computed, and EKS picks
+      // t3.medium); a cache has at most one replica a shard and never joins a global group (other regions).
+      if (type === "aws_eks_node_group" && !(Array.isArray(val.instance_types) && val.instance_types.length > 0) && !(!plan && val.instance_types instanceof Unknown)) no("size", "instance_types must be set (else EKS picks t3.medium)");
+      if (type === "aws_elasticache_replication_group") {
+        const rp = val.replicas_per_node_group;
+        if ((typeof rp === "number" && rp > 1) || opaque(rp) || (plan && rp instanceof Unknown && res.configured?.has("replicas_per_node_group"))) no("size", "replicas_per_node_group at most 1, known at plan");
+        const g = val.global_replication_group_id;
+        if (res.configured?.has("global_replication_group_id") || nonEmpty(g) || opaque(g)) no("gateway", "global_replication_group_id reaches other regions");
+      }
+      // Ruling P15: at most 4 VPC attachments per transit gateway (counted by the transit gateway the reference names).
+      if (type === "aws_ec2_transit_gateway_vpc_attachment") {
+        const tgw = refsOf(val.transit_gateway_id, res, "transit_gateway_id").filter((x) => !INDEX_REF.test(x)).map((x) => x.replace(/\[[^\]]*\]/g, "").split(".").slice(0, 2).join("."))[0] ?? (typeof val.transit_gateway_id === "string" ? val.transit_gateway_id : "?");
+        tgwAttachments.set(tgw, (tgwAttachments.get(tgw) ?? 0) + 1);
+        if (tgwAttachments.get(tgw) > 4) no("size", "at most 4 VPC attachments on one transit gateway (ruling P15)");
+      }
       if (type === "aws_ecs_task_definition" && list(val.requires_compatibilities).includes("FARGATE") && Number(val.cpu) > 512) no("size", `cpu ${val.cpu} is over 512 (0.5 vCPU) per Fargate task`);
       if (type === "aws_kinesis_stream") {
         const mode2 = list(val.stream_mode_details).find(isObj)?.stream_mode;

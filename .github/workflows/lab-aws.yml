@@ -243,8 +243,10 @@ jobs:
       # ── 7 ────────────────────────────────────────────────────────────────
       # Retried only on AWS transient errors (throttling, RequestLimitExceeded,
       # 5xx, a dropped connection; never AccessDenied or another 4xx), after a
-      # fresh plan that passes the scope check. Outputs are masked; the VPC to
-      # peer and its route tables are kept for Peer.
+      # fresh plan that passes the scope check. Outputs are masked (a lab's
+      # files only by their PEM lines, so an OpenVPN profile's directives do
+      # not mask common words across the job log); the VPC to peer and its
+      # route tables are kept for Peer.
       - name: Apply
         id: apply
         if: success() && steps.plan.outcome == 'success' && (inputs.action == 'deploy' || inputs.action == 'test')
@@ -258,7 +260,10 @@ jobs:
           bash "$GITHUB_WORKSPACE/infra/ci/lab-tf-run.sh" apply
           cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
           terraform output -no-color -json > "$RUNNER_TEMP/outputs.json"
-          jq -r '.. | strings' "$RUNNER_TEMP/outputs.json" | while IFS= read -r s; do
+          jq -r 'del(.files) | .. | strings' "$RUNNER_TEMP/outputs.json" | while IFS= read -r s; do
+            [ "${#s}" -ge 4 ] && echo "::add-mask::$s"
+          done
+          jq -r '(.files.value // {}) | .[]? | strings' "$RUNNER_TEMP/outputs.json" | awk '/^-----BEGIN /{p=1} p{print} /^-----END /{p=0}' | while IFS= read -r s; do
             [ "${#s}" -ge 4 ] && echo "::add-mask::$s"
           done
           peer_vpc="$(jq -r '.peer_vpc_id.value // empty' "$RUNNER_TEMP/outputs.json")"
@@ -411,10 +416,11 @@ jobs:
           bash "$GITHUB_WORKSPACE/infra/ci/lab-state-reset.sh" "$LAB_ID"
           exit "$rc"
 
-      # ── 16 ──────── (lab.yml's step 16 with peer_vpc_id, and no "files")
+      # ── 16 ──────── (lab.yml's step 16 with peer_vpc_id, and "files" apart)
       # First the live log's last lines, then the result: LAB_RESULT in this
-      # log (no addresses) and the full result to the Worker. A lab's "files"
-      # output (batch 4) never leaves the runner this way.
+      # log (no addresses) and the full result to the Worker. A lab's files
+      # output (AWS_FILES_LABS, ruling P2) goes to the Worker in the body's own
+      # files key, never in LAB_RESULT or outputs.
       - name: Finish live log, Report result
         if: always()
         env:
@@ -450,10 +456,15 @@ jobs:
           # Names, a verdict and timings only: never an address (lab-release-test.mjs reads this line).
           echo "LAB_RESULT $result"
           if [ -n "${CALLBACK_URL:-}" ] && [ -n "${CALLBACK_TOKEN:-}" ]; then
-            body="$(jq -cn --argjson r "$result" --argjson o "$outputs" --arg gh_run_id "${GITHUB_RUN_ID:-}" --arg gh_run_url "${GH_RUN_URL:-}" \
+            files="{}"
+            if [ "$status" = success ] && { [ "$action" = deploy ] || [ "$action" = test ]; } && [ -f "$RUNNER_TEMP/outputs.json" ]; then
+              files="$(jq -c '.files.value // {}' "$RUNNER_TEMP/outputs.json")"
+            fi
+            body="$(jq -cn --argjson r "$result" --argjson o "$outputs" --argjson files "$files" --arg gh_run_id "${GITHUB_RUN_ID:-}" --arg gh_run_url "${GH_RUN_URL:-}" \
               '{run_id:$r.run_id, action:$r.action, status:$r.status, github_run_id:$gh_run_id, github_run_url:$gh_run_url,
                 outputs:{private_ips:($o.private_ips // {}), connect:($o.connect // []), users:($o.users // {}), peer_vpc_id:($o.peer_vpc_id // null),
-                         clean:$r.clean, leftovers:$r.leftovers, deploy_seconds:$r.deploy_seconds, destroy_seconds:$r.destroy_seconds}}')"
+                         clean:$r.clean, leftovers:$r.leftovers, deploy_seconds:$r.deploy_seconds, destroy_seconds:$r.destroy_seconds},
+                files:$files}')"
             curl -fsS --max-time 20 -X POST -H "Authorization: Bearer $CALLBACK_TOKEN" -H "Content-Type: application/json" \
               -d "$body" "$CALLBACK_URL" || echo "::warning::callback to the Worker failed"
           fi

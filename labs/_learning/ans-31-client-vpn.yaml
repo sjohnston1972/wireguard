@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Connect your PC to a VPC through AWS Client VPN with certificates, and compare it with WireGuard.
+learn:
+  - Authenticate VPN clients with certificates from your own CA
+  - Send only the VPC's range through the VPN with split tunnel
+  - Grant and revoke access with Client VPN authorisation rules
+learning_min: 60

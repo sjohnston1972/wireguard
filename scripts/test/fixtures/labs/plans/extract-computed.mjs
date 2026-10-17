@@ -17,7 +17,9 @@
 // (batch 3: azurerm 4.81.0, azuread 3.10.0, and what "~> 0.13" and "~> 3.7"
 // resolve to for time and random, 0.14.2 and 3.9.1 on 2026-10-05; AWS labs
 // batch 1: what "~> 6.0", "~> 4.0" and "~> 2.0" resolved to for aws, tls and
-// archive on 2026-10-15, 6.69.0, 4.4.1 and 2.8.1), in a scratch folder:
+// archive on 2026-10-15, 6.69.0, 4.4.1 and 2.8.1; batch 4 reads the
+// hashicorp/tls schema too, pinned at the template's version, for its
+// certificate resources), in a scratch folder:
 //
 //   mkdir /tmp/s && cd /tmp/s && printf '%s\n' 'terraform {' ' required_providers {' \
 //     '  azurerm = { source = "hashicorp/azurerm", version = "4.81.0" }' \
@@ -140,6 +142,26 @@ export const TYPES = [
   "aws_efs_file_system", "aws_efs_mount_target", "aws_s3_bucket_intelligent_tiering_configuration",
   "aws_s3_bucket_server_side_encryption_configuration", "aws_vpc_endpoint_policy", "aws_ami_copy", "aws_kinesis_stream",
   "aws_kinesis_firehose_delivery_stream", "aws_glue_catalog_database", "aws_glue_crawler", "aws_athena_workgroup", "aws_eks_node_group",
+  // AWS labs batch 4 (labs 20-31): every type batch 4 adds to AWS_TYPES (aws_vpc_peering_connection_accepter and
+  // aws_wafv2_web_acl are listed above), and hashicorp/tls's certificate resources (their PEMs and ids are computed)
+  "aws_vpc_ipam", "aws_vpc_ipam_pool", "aws_vpc_ipv6_cidr_block_association", "aws_vpc_ipam_pool_cidr", "aws_vpc_ipv4_cidr_block_association",
+  "aws_egress_only_internet_gateway", "aws_ec2_managed_prefix_list", "aws_ec2_transit_gateway", "aws_ec2_transit_gateway_vpc_attachment",
+  "aws_ec2_transit_gateway_route_table", "aws_ec2_transit_gateway_route_table_association", "aws_ec2_transit_gateway_route_table_propagation",
+  "aws_ec2_transit_gateway_route", "aws_ec2_transit_gateway_peering_attachment", "aws_ec2_transit_gateway_peering_attachment_accepter",
+  "aws_vpn_gateway", "aws_vpn_gateway_route_propagation", "aws_customer_gateway", "aws_vpn_connection", "aws_eip_association",
+  "aws_route53_resolver_endpoint", "aws_route53_resolver_rule", "aws_route53_resolver_rule_association", "aws_route53_resolver_firewall_domain_list",
+  "aws_route53_resolver_firewall_rule_group", "aws_route53_resolver_firewall_rule", "aws_route53_resolver_firewall_rule_group_association",
+  "aws_route53_resolver_query_log_config", "aws_route53_resolver_query_log_config_association", "aws_vpc_endpoint_service",
+  "aws_lb_target_group_attachment", "aws_lb_listener_rule", "aws_acm_certificate", "aws_globalaccelerator_accelerator", "aws_globalaccelerator_listener",
+  "aws_globalaccelerator_endpoint_group", "aws_cloudfront_function", "aws_networkfirewall_firewall", "aws_networkfirewall_firewall_policy",
+  "aws_networkfirewall_rule_group", "aws_networkfirewall_logging_configuration", "aws_ec2_traffic_mirror_target", "aws_ec2_traffic_mirror_filter",
+  "aws_ec2_traffic_mirror_filter_rule", "aws_glue_catalog_table", "aws_vpclattice_service_network", "aws_vpclattice_service",
+  "aws_vpclattice_target_group", "aws_vpclattice_target_group_attachment", "aws_vpclattice_listener",
+  "aws_vpclattice_service_network_service_association", "aws_vpclattice_service_network_vpc_association", "aws_vpclattice_auth_policy",
+  "aws_ec2_client_vpn_endpoint", "aws_ec2_client_vpn_network_association", "aws_ec2_client_vpn_authorization_rule",
+  "tls_private_key", "tls_self_signed_cert", "tls_cert_request", "tls_locally_signed_cert",
+  // AWS labs batch 4 final fix F2: lab 22's router's own primary interface
+  "aws_network_interface",
   // AWS labs batch 1: the data sources on AWS_DATA (realisticPlan needs every aws_ one), and the one the scope tests refuse
   "data.aws_ssm_parameter", "data.aws_ami", "data.aws_availability_zones", "data.aws_caller_identity", "data.aws_region", "data.aws_partition",
   "data.aws_iam_policy_document", "data.aws_ec2_managed_prefix_list", "data.archive_file", "data.aws_vpc",

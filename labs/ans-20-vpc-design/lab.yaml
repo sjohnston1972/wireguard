@@ -1,0 +1,48 @@
+# Lab ans-20 (AWS labs batch 4). ANS-C01 ((V) the wording against the current
+# exam guide): Network Design (IPv4 and IPv6 addressing, IPAM, egress
+# choices); Network Implementation (dual-stack subnets, route tables,
+# prefix lists).
+# London list prices × 0.75 (labs-verify --aws-prices); the NAT gateway and
+# its address bill each started hour whole (V, A20). IPAM's Free Tier, an
+# Amazon-provided IPv6 pool, the egress-only gateway and the prefix list
+# cost nothing (ruling P5; V on the IPAM pricing page, Task 23).
+id: ans-20-vpc-design
+version: 1
+cloud: aws
+title: "VPC design: dual stack, IPAM, prefix lists, egress"
+summary: >-
+  One VPC made dual stack: a secondary IPv4 range from the slot, IPv6 from a Free Tier IPAM pool of Amazon-provided
+  space, a NAT gateway for IPv4 and an egress-only gateway for IPv6, and a managed prefix list that a security group
+  names in place of addresses.
+exam: ANS-C01
+skill_areas: [ans.design, ans.implementation]
+level: associate
+type: explore
+prerequisites: []
+cost:
+  items:
+    - name: "NAT gateway, hourly"
+      gbp_h: 0.0375
+      whole_hours: true
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { productFamily: "NAT Gateway", usagetype: "{usage}-NatGateway-Hours" } }
+    - name: "Public IPv4 address (the NAT gateway's)"
+      gbp_h: 0.0038
+      aws_price: { service: AmazonVPC, unit: Hrs, filters: { group: VPCPublicIPv4Address, usagetype: "{usage}-PublicIPv4:InUseAddress" } }
+    - name: "EC2 t4g.nano, Linux"
+      gbp_h: 0.0035
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - { name: "IPAM Free Tier, an Amazon-provided IPv6 pool", gbp_h: 0 }
+    - { name: "Egress-only internet gateway and prefix list", gbp_h: 0 }
+    - { name: "EC2 Instance Connect Endpoint", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 5, destroy_min: 5, session_h: 2, max_h: 4 }
+capacity: { instance_types: [t4g.nano] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 2 }
+identity:
+  creates: []
+  roles: []
+  governance: false

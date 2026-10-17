@@ -1,0 +1,53 @@
+# Lab ans-28 (AWS labs batch 4), a break-fix lab. ANS-C01 ((V) the wording
+# against the current exam guide): Network Management and Operation
+# (troubleshooting with flow logs, Athena, Reachability Analyzer and Network
+# Access Analyzer; traffic mirroring); Network Security, Compliance, and
+# Governance (security groups and network ACLs behind a load balancer);
+# SOA-C03 Networking and Content Delivery.
+# The two faults are AWS labs spec §12.2's, verbatim (ruling A28, P17).
+# London list prices × 0.75 (labs-verify --aws-prices); the NLB bills each
+# started hour whole (V, A20; the NLB filter is V, Task 23). Authored: NLB
+# capacity units and flow logs (a few MB) for light test traffic. The mirror
+# target and filter cost nothing; a mirror session (made by hand, a Thing to
+# try) is billed per source interface-hour, as are Athena per GB scanned and
+# Reachability Analyzer per analysis (the readme says so beside each).
+id: ans-28-flow-logs-fix
+version: 1
+cloud: aws
+title: "Break-fix: flow logs, mirroring and analyzers"
+summary: >-
+  A client VPC peered to a service VPC with an internal Network Load Balancer in front of a web instance, and a
+  client whose requests never get an answer while the target looks healthy. Find the two faults with VPC Flow Logs in
+  CloudWatch and in S3 through Athena, traffic mirroring and the VPC analyzers, and fix them.
+exam: ANS-C01
+skill_areas: [ans.operations, ans.security, soa.networking]
+level: expert
+type: break-fix
+prerequisites: [soa-08-vpc-fix]
+cost:
+  items:
+    - name: "Network Load Balancer, hourly"
+      gbp_h: 0.0198
+      whole_hours: true
+      aws_price: { service: AWSELB, unit: Hrs, filters: { productFamily: "Load Balancer-Network", usagetype: "{usage}-LoadBalancerUsage" } }
+    - { name: "NLB capacity units, light test traffic", gbp_h: 0.0045 }
+    - name: "EC2 t4g.nano, Linux (vm-client, vm-svc, vm-monitor)"
+      gbp_h: 0.0035
+      qty: 3
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      qty: 3
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - { name: "Flow logs to CloudWatch and S3, a few MB", gbp_h: 0.0005 }
+    - { name: "Traffic mirror target and filter (a session is billed per hour, by hand)", gbp_h: 0 }
+    - { name: "EC2 Instance Connect Endpoints (2) and VPC peering in one AZ", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 6, destroy_min: 5, session_h: 2, max_h: 4 }
+capacity: { instance_types: [t4g.nano, t4g.nano, t4g.nano] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 2 }
+identity:
+  creates: [role]
+  roles: []
+  governance: false

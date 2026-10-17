@@ -16,7 +16,7 @@
 // Like the Azure one: sorted, no timestamp, every resource a card, a folded
 // entry or the `via` of an edge. The nodes carry `cloud: "aws"`.
 
-import { TOPOLOGY_SCHEMA, sortGraph, type TopoKind, type TopologyGraph, type TopoNode } from "./model";
+import { TOPOLOGY_SCHEMA, isGroupKind, sortGraph, type TopoKind, type TopologyGraph, type TopoNode } from "./model";
 import { kindOfTf } from "./kinds";
 import { awsMockNameCtx, disambiguate, nodeKey, planLabelAws } from "./keys";
 import { withheldNote } from "./props";
@@ -165,6 +165,11 @@ export function awsPlannedGraph(input: PlannedInput): TopologyGraph {
     },
     subnetsOf,
   };
+  // A rule may place its card in a group its kind's placement cannot find (Network Firewall: the subnet its mapping names).
+  for (const i of cards) {
+    const p = ruleOf(i).place?.(i, helpers);
+    if (p && nodes.has(p) && isGroupKind(nodes.get(p)!.kind)) nodes.get(i.id)!.parent = p;
+  }
   const raw = new Map<string, Record<string, unknown>>();
   for (const i of insts) {
     const n = nodes.get(i.id);

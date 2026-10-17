@@ -1,4 +1,88 @@
 {
+ "ans-20-vpc-design": [
+  {
+   "file": "architecture.svg",
+   "title": "VPC design: dual stack, IPAM, prefix lists, egress: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "ans-21-transit-gateway": [
+  {
+   "file": "architecture.svg",
+   "title": "Transit Gateway: segmentation and central egress: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "ans-22-s2s-vpn": [
+  {
+   "file": "architecture.svg",
+   "title": "Site-to-site VPN with BGP to a pretend data centre: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "ans-23-hybrid-dns": [
+  {
+   "file": "architecture.svg",
+   "title": "Hybrid DNS with Route 53 Resolver: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "ans-24-privatelink": [
+  {
+   "file": "architecture.svg",
+   "title": "PrivateLink: endpoints and endpoint services: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "ans-25-load-balancing": [
+  {
+   "file": "architecture.svg",
+   "title": "Load balancing in depth: ALB, NLB and GWLB: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "ans-26-edge": [
+  {
+   "file": "architecture.svg",
+   "title": "Edge: CloudFront, WAF and Global Accelerator: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "ans-27-network-firewall": [
+  {
+   "file": "architecture.svg",
+   "title": "Network Firewall in an inspection VPC: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "ans-28-flow-logs-fix": [
+  {
+   "file": "architecture.svg",
+   "title": "Break-fix: flow logs, mirroring and analyzers: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "ans-29-multi-region": [
+  {
+   "file": "architecture.svg",
+   "title": "Multi-region: inter-region TGW peering: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "ans-30-vpc-lattice": [
+  {
+   "file": "architecture.svg",
+   "title": "VPC Lattice service network with auth policies: architecture",
+   "kind": "architecture"
+  }
+ ],
+ "ans-31-client-vpn": [
+  {
+   "file": "architecture.svg",
+   "title": "AWS Client VPN with certificates, compared with WireGuard: architecture",
+   "kind": "architecture"
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

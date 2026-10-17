@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Give a VPC a second IPv4 range, IPv6 from an IPAM pool and the right way out for each family.
+learn:
+  - Add a secondary IPv4 range and IPv6 from an IPAM pool to a VPC
+  - Send IPv4 out through a NAT gateway and IPv6 through an egress-only gateway
+  - Name a managed prefix list in security group rules instead of addresses
+learning_min: 45

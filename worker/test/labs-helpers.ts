@@ -89,7 +89,7 @@ export const TEST_CATALOGUE: LabCatalogue = {
   },
 };
 
-/** AWS labs 3, 5 and 16 (AWS labs spec §12.2), shaped like the real ones: lab 3 bills its load balancer per started hour (A20), lab 16 uses Ireland too. */
+/** AWS labs 3, 5, 7, 9, 16 and 31 (AWS labs spec §12.2), shaped like the real ones: lab 3 bills its load balancer per started hour (A20), lab 16 uses Ireland too, lab 31 hands out files (ruling P2). */
 export const AWS_TEST_LABS: LabDef[] = [
   base("soa-03-auto-scaling", 3, {
     title: "Auto Scaling behind a load balancer",
@@ -106,7 +106,15 @@ export const AWS_TEST_LABS: LabDef[] = [
   base("soa-05-rds", 5, { title: "RDS Multi-AZ and a read replica", connectivity: { peering: "optional", dns_link: false, subnets_used: 1 } }),
   base("soa-07-iam-kms", 7, { title: "IAM, permission boundaries and KMS", connectivity: { peering: "off", dns_link: false, subnets_used: 0 } }),
   base("soa-09-route53-cloudfront", 9, { title: "Route 53 routing and CloudFront in front of S3", connectivity: { peering: "off", dns_link: false, subnets_used: 0 } }),
+  base("ans-31-client-vpn", 31, {
+    title: "AWS Client VPN with certificates, compared with WireGuard",
+    exam: "ANS-C01",
+    exams: ["ANS-C01"],
+    capacity: { vm_sizes: [], instance_types: ["t4g.micro"] },
+    connectivity: { peering: "optional", dns_link: false, subnets_used: 1 },
+  }),
   base("saa-16-dr-pilot-light", 16, { title: "Pilot-light disaster recovery", regions: { secondary: "eu-west-1" }, connectivity: { peering: "optional", dns_link: false, subnets_used: 1 } }),
+  base("ans-26-edge", 26, { title: "Global edge: CloudFront, WAF and Global Accelerator", exam: "ANS-C01", exams: ["ANS-C01"], regions: { secondary: "eu-west-1" }, connectivity: { peering: "optional", dns_link: false, subnets_used: 1 } }),
 ];
 
 /** The test catalogue with the AWS labs added (and the SOA and SAA skill areas they name). */
