@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { handleLabCallback, readFiles, FILES_MAX } from "../src/labs/callbacks";
 import { saveSnapshot } from "../src/state";
 import type { Env } from "../src/env";
-import { api, deployLab, freeze, labDispatches, labEnv, rows, secrets, withAwsLabs, NOW } from "./labs-helpers";
+import { advance, api, deployLab, freeze, labDispatches, labEnv, peerRunFor, report, rows, runningLab, secrets, withAwsLabs, MIN, NOW } from "./labs-helpers";
 
 const FILES = { "ans-31.ovpn": "client\ndev tun\n<ca>\n-----BEGIN CERTIFICATE-----\n</ca>\n", "client.crt": "-----BEGIN CERTIFICATE-----\nx\n", "client.key": "-----BEGIN PRIVATE KEY-----\ny\n" };
 const OUT = { private_ips: { "vm-target": "10.64.0.10" }, connect: [], clean: null, leftovers: [], deploy_seconds: 300, destroy_seconds: null };
@@ -84,6 +84,20 @@ describe("lab files (ruling P2)", () => {
     expect([res.status, (res.body as { message: string }).message]).toEqual([200, "already settled"]);
     expect(seen.changes).toEqual([0]);
     expect(await rows(env, "SELECT id FROM lab_runs WHERE files_json IS NOT NULL")).toEqual([]);
+  });
+
+  it("final fix F7: an Azure lab's secret is still its deploy run's password with no files, after a later peer run too", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    const up = await runningLab(env, world, "az104-05-storage");
+    const want = { adminPassword: up.password, users: {}, files: {} };
+    expect((await api(env, "GET", "/labs/az104-05-storage/secret")).json).toEqual(want);
+    advance(MIN);
+    const { run, token } = await peerRunFor(env, world, up.sid);
+    expect((await report(env, run.id, token, "success", OUT, "peer")).status).toBe(200);
+    expect(await rows(env, "SELECT action, status FROM lab_runs WHERE id = ?1", run.id)).toEqual([{ action: "peer", status: "succeeded" }]);
+    const got = await api(env, "GET", "/labs/az104-05-storage/secret");
+    expect([got.status, got.json]).toEqual([200, want]);
   });
 
   it("P2: files for another lab, a destroy, a failed deploy, too many or too large are refused", async () => {
