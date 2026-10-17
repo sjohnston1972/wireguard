@@ -1,5 +1,5 @@
 // Plan L3.4: the lab modal while a session is live.
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, onTestFinished, vi } from "vitest";
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { LabDetail, RunDetailResponse, RunLogResponse } from "@shared/api";
@@ -123,6 +123,10 @@ describe("the lab modal, running", () => {
     const created: string[] = [];
     const revoked: string[] = [];
     const types: string[] = [];
+    // The spies end with this test, whether it passes or fails.
+    onTestFinished(() => {
+      vi.restoreAllMocks();
+    });
     vi.spyOn(URL, "createObjectURL").mockImplementation((b) => {
       created.push("blob:1");
       types.push((b as Blob).type);
@@ -153,7 +157,6 @@ describe("the lab modal, running", () => {
     expect(screen.queryByRole("list", { name: "Lab files" })).toBeNull();
     expect(document.body.textContent).not.toContain("BEGIN PRIVATE KEY");
     expect(screen.getByText("The admin password, the lab's user names and its files, shown only when you ask.")).toBeInTheDocument();
-    vi.restoreAllMocks();
   });
 
   it("a lab without files shows no file list", async () => {
