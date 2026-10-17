@@ -15,7 +15,7 @@ output "connect" {
     "aws ec2-instance-connect ssh --instance-id ${aws_instance.london.id} --os-user labadmin --connection-type eice",
     "aws ec2-instance-connect ssh --region ${var.secondary_region} --instance-id ${aws_instance.ireland.id} --os-user labadmin --connection-type eice",
     "Global Accelerator: curl http://${aws_globalaccelerator_accelerator.lab.ip_sets[0].ip_addresses[0]}/",
-    "CloudFront: curl -I https://${aws_cloudfront_distribution.lab.domain_name}/",
+    "CloudFront: curl https://${aws_cloudfront_distribution.lab.domain_name}/",
     "NLBs directly: curl http://${aws_lb.london.dns_name}/ and curl http://${aws_lb.ireland.dns_name}/",
   ]
 }

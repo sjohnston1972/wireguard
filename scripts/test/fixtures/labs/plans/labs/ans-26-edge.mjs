@@ -168,8 +168,8 @@ export default () => {
       // cdn.tf
       {
         address: "aws_cloudfront_function.headers",
-        // No tags argument (CloudFront Functions are owned by name, A4), but the provider schema computes tags_all
-        // for every aws type, so the plan carries the default tags there, as for the other resources.
+        // No tags argument (CloudFront Functions are owned by name, A4), but this provider version tags CloudFront
+        // functions (its schema computes tags_all), so the plan carries the default tags there.
         values: tagged(c, {
           name: `lab-${id}-headers`, runtime: "cloudfront-js-2.0", comment: `lab ${id}: marks each request that came through CloudFront`, publish: true,
           code: "function handler(event) {\n  var request = event.request;\n  request.headers['x-cloudlabs-edge'] = { value: 'cloudfront' };\n  return request;\n}\n",
@@ -187,7 +187,7 @@ export default () => {
           origin_group: [{ origin_id: "failover", failover_criteria: [{ status_codes: [500, 502, 503, 504] }], member: [{ origin_id: "london" }, { origin_id: "ireland" }] }],
           default_cache_behavior: [{
             target_origin_id: "failover", viewer_protocol_policy: "redirect-to-https", allowed_methods: ["GET", "HEAD"], cached_methods: ["GET", "HEAD"],
-            cache_policy_id: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad", function_association: [{ event_type: "viewer-request" }],
+            cache_policy_id: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad", origin_request_policy_id: "b689b0a8-53d0-40ab-baf2-68738e2966ac", function_association: [{ event_type: "viewer-request" }],
           }],
           restrictions: [{ geo_restriction: [{ restriction_type: "none" }] }],
           viewer_certificate: [{ cloudfront_default_certificate: true }],
@@ -200,6 +200,7 @@ export default () => {
           "origin.1.domain_name": ref("aws_lb.ireland", "dns_name"),
           "default_cache_behavior.0.function_association.0.function_arn": ref("aws_cloudfront_function.headers", "arn"),
           "default_cache_behavior.0.cache_policy_id": ["local.caching_disabled"],
+          "default_cache_behavior.0.origin_request_policy_id": ["local.all_viewer_except_host"],
           web_acl_id: ref("aws_wafv2_web_acl.lab", "arn"),
         },
       },

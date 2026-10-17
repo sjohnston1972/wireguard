@@ -69,7 +69,7 @@ test("ruling P9: Global Accelerator fronts the two lab NLBs, never instances, wi
 test("CloudFront: an origin group London then Ireland on 500/502/503/504, the lab's function on viewer requests, the lab's ACL, PriceClass_100", () => {
   const { lab } = awsLab(ID);
   const cdn = block(lab, "aws_cloudfront_distribution", "lab");
-  for (const re of [/price_class\s+= "PriceClass_100"/, /retain_on_delete\s+= false/, /web_acl_id\s+= aws_wafv2_web_acl\.lab\.arn/, /domain_name\s+= aws_lb\.london\.dns_name/, /domain_name = aws_lb\.ireland\.dns_name/, /status_codes = \[500, 502, 503, 504\]/, /target_origin_id\s+= "failover"/, /event_type\s+= "viewer-request"\n\s+function_arn = aws_cloudfront_function\.headers\.arn/, /cache_policy_id\s+= local\.caching_disabled/]) assert.match(cdn, re);
+  for (const re of [/price_class\s+= "PriceClass_100"/, /retain_on_delete\s+= false/, /web_acl_id\s+= aws_wafv2_web_acl\.lab\.arn/, /domain_name\s+= aws_lb\.london\.dns_name/, /domain_name = aws_lb\.ireland\.dns_name/, /status_codes = \[500, 502, 503, 504\]/, /target_origin_id\s+= "failover"/, /event_type\s+= "viewer-request"\n\s+function_arn = aws_cloudfront_function\.headers\.arn/, /cache_policy_id\s+= local\.caching_disabled/, /origin_request_policy_id\s+= local\.all_viewer_except_host/]) assert.match(cdn, re);
   assert.doesNotMatch(cdn, /lambda_function_association|logging_config/);
   const fn = block(lab, "aws_cloudfront_function", "headers");
   for (const re of [/name\s+= "lab-\$\{var\.lab_id\}-headers"/, /runtime = "cloudfront-js-2\.0"/, /publish = true/, /x-cloudlabs-edge/]) assert.match(fn, re);

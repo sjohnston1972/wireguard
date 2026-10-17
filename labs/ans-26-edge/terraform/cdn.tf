@@ -15,6 +15,9 @@
 locals {
   # AWS's managed cache policy (the same id in every account, as lab 09 uses it).
   caching_disabled = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+  # AWS's managed origin request policy AllViewerExceptHostHeader: sends the viewer's headers (including those the
+  # function adds) on to the origin; with CachingDisabled and no policy, CloudFront would strip them.
+  all_viewer_except_host = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
 }
 
 resource "aws_cloudfront_function" "headers" {
@@ -77,11 +80,12 @@ resource "aws_cloudfront_distribution" "lab" {
   }
 
   default_cache_behavior {
-    target_origin_id       = "failover"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD"]
-    cached_methods         = ["GET", "HEAD"]
-    cache_policy_id        = local.caching_disabled
+    target_origin_id         = "failover"
+    viewer_protocol_policy   = "redirect-to-https"
+    allowed_methods          = ["GET", "HEAD"]
+    cached_methods           = ["GET", "HEAD"]
+    cache_policy_id          = local.caching_disabled
+    origin_request_policy_id = local.all_viewer_except_host
     function_association {
       event_type   = "viewer-request"
       function_arn = aws_cloudfront_function.headers.arn
