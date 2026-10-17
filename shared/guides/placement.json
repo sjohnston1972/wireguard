@@ -8,6 +8,15 @@
    "height": 1046
   }
  ],
+ "ans-21-transit-gateway": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two EC2 Instance Connect Endpoints, an NAT gateway, a transit gateway, an internet gateway and more, in three VPCs with seven subnets.",
+   "width": 2758,
+   "height": 1134
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

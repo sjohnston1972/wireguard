@@ -6,6 +6,13 @@
    "kind": "architecture"
   }
  ],
+ "ans-21-transit-gateway": [
+  {
+   "file": "architecture.svg",
+   "title": "Transit Gateway: segmentation and central egress: architecture",
+   "kind": "architecture"
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

@@ -1,0 +1,53 @@
+# Lab ans-21 (AWS labs batch 4). ANS-C01 ((V) the wording against the current
+# exam guide): Network Design (hub-and-spoke with a transit gateway,
+# segmentation, centralised egress); Network Implementation (attachments,
+# route table associations and propagations, appliance mode).
+# London list prices × 0.75 (labs-verify --aws-prices); the transit gateway
+# attachments, the NAT gateway and its address bill each started hour whole
+# (V, A20; the attachment filter is V, Task 23). Transit Gateway data
+# processing is per GB (authored, light test traffic).
+id: ans-21-transit-gateway
+version: 1
+cloud: aws
+title: "Transit Gateway: segmentation and central egress"
+summary: >-
+  A transit gateway joining three VPCs: two spokes that may not reach each other (separate route tables and a
+  blackhole route) and an egress VPC whose one NAT gateway is every spoke's way to the internet.
+exam: ANS-C01
+skill_areas: [ans.design, ans.implementation]
+level: expert
+type: explore
+prerequisites: [ans-20-vpc-design]
+cost:
+  items:
+    - name: "Transit gateway VPC attachments (3), hourly"
+      gbp_h: 0.0375
+      qty: 3
+      whole_hours: true
+      aws_price: { service: AmazonVPC, unit: Hrs, filters: { usagetype: "{usage}-TransitGateway-Hours" } }
+    - name: "NAT gateway, hourly"
+      gbp_h: 0.0375
+      whole_hours: true
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { productFamily: "NAT Gateway", usagetype: "{usage}-NatGateway-Hours" } }
+    - name: "Public IPv4 address (the NAT gateway's)"
+      gbp_h: 0.0038
+      aws_price: { service: AmazonVPC, unit: Hrs, filters: { group: VPCPublicIPv4Address, usagetype: "{usage}-PublicIPv4:InUseAddress" } }
+    - name: "EC2 t4g.nano, Linux (2 running)"
+      gbp_h: 0.0035
+      qty: 2
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      qty: 2
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - { name: "Transit Gateway data processing, light test traffic", gbp_h: 0.0005 }
+    - { name: "EC2 Instance Connect Endpoints (2)", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 8, destroy_min: 8, session_h: 2, max_h: 4 }
+capacity: { instance_types: [t4g.nano, t4g.nano] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 3 }
+identity:
+  creates: []
+  roles: []
+  governance: false
