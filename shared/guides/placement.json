@@ -53,6 +53,15 @@
    "height": 1586
   }
  ],
+ "ans-26-edge": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A CloudFront distribution and a Global Accelerator sending traffic to two EC2 instances, in two VPCs with five subnets.",
+   "width": 2583,
+   "height": 1146
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

@@ -1,0 +1,74 @@
+# Lab ans-26 (AWS labs batch 4). ANS-C01 ((V) the wording against the current
+# exam guide): Network Design (edge services: CloudFront origin failover and
+# functions, Global Accelerator's anycast addresses and endpoint groups);
+# Network Security, Compliance, and Governance (a WAF web ACL at the edge);
+# SOA-C03 Networking and Content Delivery (CloudFront).
+# Four regions (ruling P9): London and Ireland (the load balancers and
+# instances), us-east-1 (the WAF ACL, per-resource region; CloudFront is
+# signed there by the default provider) and us-west-2 (Global Accelerator,
+# signed there by the default provider, V; Task 24).
+# London list prices × 0.75 (labs-verify --aws-prices); the NLBs bill each
+# started hour whole (V, A20); Ireland items are region: secondary. Authored
+# (no regional hourly product): Global Accelerator's fixed fee ($0.025 an
+# hour, whole hours), the WAF ACL ($5 a month) and its two rules ($1 a month
+# each), believed prorated hourly (V, Task 23 Step 3: about £4.70 more if a
+# whole month is billed), and requests and data for light test traffic.
+id: ans-26-edge
+version: 1
+cloud: aws
+title: "Edge: CloudFront, WAF and Global Accelerator"
+summary: >-
+  The same small site in London and Ireland, each behind its own Network Load Balancer, reached two ways: through
+  CloudFront with an origin group that fails over to Ireland, a CloudFront Function and a WAF web ACL, and through
+  Global Accelerator's two fixed anycast addresses.
+exam: ANS-C01
+skill_areas: [ans.design, ans.security, soa.networking]
+level: expert
+type: explore
+prerequisites: [soa-09-route53-cloudfront]
+cost:
+  items:
+    - { name: "Global Accelerator fixed fee ($0.025 an hour)", gbp_h: 0.0188, whole_hours: true }
+    - { name: "Global Accelerator data transfer premium, light test traffic", gbp_h: 0.0005 }
+    - name: "Network Load Balancer, London, hourly"
+      gbp_h: 0.0198
+      whole_hours: true
+      aws_price: { service: AWSELB, unit: Hrs, filters: { productFamily: "Load Balancer-Network", usagetype: "{usage}-LoadBalancerUsage" } }
+    - name: "Network Load Balancer, Ireland, hourly"
+      gbp_h: 0.0189
+      whole_hours: true
+      region: secondary
+      aws_price: { service: AWSELB, unit: Hrs, filters: { productFamily: "Load Balancer-Network", usagetype: "{usage}-LoadBalancerUsage" } }
+    - name: "Public IPv4 address, London (the NLB's)"
+      gbp_h: 0.0038
+      aws_price: { service: AmazonVPC, unit: Hrs, filters: { group: VPCPublicIPv4Address, usagetype: "{usage}-PublicIPv4:InUseAddress" } }
+    - name: "Public IPv4 address, Ireland (the NLB's)"
+      gbp_h: 0.0038
+      region: secondary
+      aws_price: { service: AmazonVPC, unit: Hrs, filters: { group: VPCPublicIPv4Address, usagetype: "{usage}-PublicIPv4:InUseAddress" } }
+    - name: "EC2 t4g.nano, Linux, London (vm-london)"
+      gbp_h: 0.0035
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EC2 t4g.nano, Linux, Ireland (vm-ireland)"
+      gbp_h: 0.0034
+      region: secondary
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB, London"
+      gbp_h: 0.0008
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - name: "EBS gp3 root volume, 8 GiB, Ireland"
+      gbp_h: 0.0007
+      region: secondary
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - { name: "WAF web ACL and 2 rules ($7 a month, prorated hourly)", gbp_h: 0.0072 }
+    - { name: "WAF and CloudFront requests, light test traffic", gbp_h: 0.0002 }
+    - { name: "EC2 Instance Connect Endpoints (London and Ireland)", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 12, destroy_min: 15, session_h: 2, max_h: 3 }
+capacity: { instance_types: [t4g.nano, t4g.nano] }
+regions: { secondary: eu-west-1 }
+connectivity: { peering: "off", dns_link: false, subnets_used: 2 }
+identity:
+  creates: []
+  roles: []
+  governance: false

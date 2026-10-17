@@ -41,6 +41,13 @@
    "kind": "architecture"
   }
  ],
+ "ans-26-edge": [
+  {
+   "file": "architecture.svg",
+   "title": "Edge: CloudFront, WAF and Global Accelerator: architecture",
+   "kind": "architecture"
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

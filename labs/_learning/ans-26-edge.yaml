@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Reach one site in two regions through CloudFront and Global Accelerator, and see how each fails over and filters.
+learn:
+  - Fail a CloudFront origin group over from London to Ireland
+  - Move Global Accelerator traffic with health and traffic dials
+  - Block attacks and floods at the edge with a WAF web ACL
+learning_min: 75
