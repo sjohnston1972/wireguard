@@ -160,6 +160,71 @@ describe("the AWS orphan sweep", () => {
     expect(world.calls.length - before).toBe(AWS_SWEEP_CALLS + 2);
   });
 
+  it("a deleted, deleting or unknown transit gateway, attachment, VPN connection, Client VPN endpoint or IPAM is no leftover; an available one is", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    world.labAws.tagged["eu-west-2"] = [
+      tagged("ans-21-tgw", "transit-gateway/tgw-0real"),
+      tagged("ans-21-tgw", "transit-gateway/tgw-0deleted"),
+      tagged("ans-21-tgw", "transit-gateway/tgw-0unknown"),
+      tagged("ans-21-tgw", "transit-gateway-attachment/tgw-attach-0real"),
+      tagged("ans-21-tgw", "transit-gateway-attachment/tgw-attach-0deleting"),
+      tagged("ans-21-tgw", "transit-gateway-route-table/tgw-rtb-0deleted"),
+      tagged("ans-21-tgw", "vpn-connection/vpn-0real"),
+      tagged("ans-21-tgw", "vpn-connection/vpn-0deleted"),
+      tagged("ans-31-client-vpn", "client-vpn-endpoint/cvpn-endpoint-0real"),
+      tagged("ans-31-client-vpn", "client-vpn-endpoint/cvpn-endpoint-0deleted"),
+      tagged("ans-31-client-vpn", "ipam/ipam-0real"),
+      tagged("ans-31-client-vpn", "ipam/ipam-0deleted"),
+      tagged("ans-31-client-vpn", "customer-gateway/cgw-0deleted"),
+      tagged("ans-31-client-vpn", "vpn-gateway/vgw-0deleted"),
+    ];
+    world.labAws.ec2 = {
+      "eu-west-2": {
+        items: {
+          "transit-gateway": [{ id: "tgw-0real", state: "available" }, { id: "tgw-0deleted", state: "deleted" }],
+          "transit-gateway-attachment": [{ id: "tgw-attach-0real", state: "available" }, { id: "tgw-attach-0deleting", state: "deleting" }],
+          "transit-gateway-route-table": [{ id: "tgw-rtb-0deleted", state: "deleted" }],
+          "vpn-connection": [{ id: "vpn-0real", state: "available" }, { id: "vpn-0deleted", state: "deleted" }],
+          "client-vpn-endpoint": [{ id: "cvpn-endpoint-0real", state: "available" }, { id: "cvpn-endpoint-0deleted", state: "deleted" }],
+          ipam: [{ id: "ipam-0real", state: "create-complete" }, { id: "ipam-0deleted", state: "delete-complete" }],
+          "customer-gateway": [{ id: "cgw-0deleted", state: "deleted" }],
+          "vpn-gateway": [{ id: "vgw-0deleted", state: "deleted" }],
+        },
+      },
+    };
+    const t0 = new Date(NOW);
+    await sweepAwsOrphans(env, budgetedNet(60), t0);
+    const before = world.calls.length;
+    await sweepAwsOrphans(env, budgetedNet(60), new Date(t0.getTime() + 91 * MIN));
+    const o = await readOrphans(env);
+    expect(o).toEqual([
+      { labId: "ans-21-tgw", names: ["ec2:transit-gateway tgw-0real", "ec2:transit-gateway-attachment tgw-attach-0real", "ec2:vpn-connection vpn-0real"], since: t0.toISOString() },
+      { labId: "ans-31-client-vpn", names: ["ec2:client-vpn-endpoint cvpn-endpoint-0real", "ec2:ipam ipam-0real"], since: t0.toISOString() },
+    ]);
+    // One read per region and kind: eight kinds here.
+    expect(ec2Reads(world, before)).toHaveLength(8);
+  });
+
+  it("with only the reserved calls left (spent on instances and endpoints) a deleted transit gateway stays counted, and the sweep still runs", async () => {
+    freeze();
+    const { env, world } = await labEnv();
+    withAwsLabs();
+    for (const region of ["eu-west-2", "eu-west-1"]) {
+      world.labAws.tagged[region] = [{ arn: ARN("instance/i-0t", region), tags: { "cloudlabs-lab": "ans-21-tgw" } }, { arn: ARN("vpc-endpoint/vpce-0d", region), tags: { "cloudlabs-lab": "ans-21-tgw" } }];
+    }
+    world.labAws.tagged["eu-west-2"]!.push(tagged("ans-21-tgw", "transit-gateway/tgw-0deleted"));
+    world.labAws.ec2 = {
+      "eu-west-2": { instances: [{ id: "i-0t", state: "terminated" }], endpoints: [{ id: "vpce-0d", state: "deleted" }], items: { "transit-gateway": [{ id: "tgw-0deleted", state: "deleted" }] } },
+      "eu-west-1": { instances: [{ id: "i-0t", state: "terminated" }], endpoints: [{ id: "vpce-0d", state: "deleted" }] },
+    };
+    const t0 = new Date(NOW);
+    await sweepAwsOrphans(env, budgetedNet(AWS_SWEEP_CALLS + AWS_CONFIRM_CALLS), t0);
+    await sweepAwsOrphans(env, budgetedNet(AWS_SWEEP_CALLS + AWS_CONFIRM_CALLS), new Date(t0.getTime() + 91 * MIN));
+    expect(await readOrphans(env)).toEqual([{ labId: "ans-21-tgw", names: ["ec2:transit-gateway tgw-0deleted"], since: t0.toISOString() }]);
+  });
+
   it("a ghost-only lab's dirty slot goes back once EC2 says its instance is terminated", async () => {
     freeze();
     const { env, world } = await labEnv();

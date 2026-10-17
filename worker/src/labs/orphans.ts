@@ -32,8 +32,10 @@
 // listing deleted items for about an hour, so an AWS item counts only once
 // no live session of its lab has seen it for 90 minutes. It can keep listing
 // them for many hours more (live 2026-10-16: terminated instances, deleted
-// VPC endpoints, INACTIVE ECS clusters and services), so an EC2 instance or
-// VPC endpoint in a lab region counts only once EC2 confirms it still exists
+// VPC endpoints, INACTIVE ECS clusters and services), so an EC2 instance,
+// VPC endpoint, transit gateway (and attachment, route table), VPN connection, virtual private gateway, customer
+// gateway, Client VPN endpoint or IPAM in a lab region counts only once EC2 confirms it still exists and is not
+// deleting (live 2026-10-17: deleted transit gateways listed for hours)
 // (one Describe per region and kind, AWS_CONFIRM_CALLS at most; a read that
 // fails keeps it counted), and ECS clusters, services and task definitions,
 // which the Worker cannot describe, are never counted. Each sweep rewrites
@@ -50,7 +52,7 @@ import { arm, graph, BudgetExceeded, type Net } from "./net";
 import { labIdOf } from "./cost";
 import { freeSlot, LIVE_SQL } from "./store";
 import { AwsError } from "../cloud/awsApi";
-import { arnParts, configRecorderNames, dashboardNames, ec2Gone, iamLabNames, labTagged, taggedName, type Ec2ConfirmKind } from "./awsReads";
+import { arnParts, configRecorderNames, dashboardNames, ec2Gone, EC2_CONFIRM_KINDS, iamLabNames, labTagged, taggedName, type Ec2ConfirmKind } from "./awsReads";
 
 const MIN = 60_000;
 export const SWEEP_EVERY_MS = 60 * MIN;
@@ -67,7 +69,11 @@ const KV_SWEEP = "labs:sweep";
 const KV_ORPHANS = "labs:orphans";
 /** The AWS sweep's calls: tagging in four regions, four IAM listings, recorders and dashboards in both lab regions. */
 export const AWS_SWEEP_CALLS = 12;
-/** At most one confirm read per lab region and EC2 kind (instances, VPC endpoints), reserved before the sweep starts. */
+/**
+ * At most one confirm read per lab region for the two common EC2 kinds (instances, VPC endpoints), reserved before the
+ * sweep starts. Batch 4's kinds (transit gateways, VPN, Client VPN, IPAM: one read per region and kind that has a
+ * would-be leftover) are confirmed with whatever calls are left, after those two; with none left they stay counted.
+ */
 export const AWS_CONFIRM_CALLS = AWS_LAB_REGIONS.length * 2;
 /** How long an AWS item must go unseen by a live session of its lab before it counts (A16). */
 export const AWS_ORPHAN_GRACE_MS = 90 * MIN;
@@ -330,23 +336,28 @@ const AWS_SWEEP_SKIP = (arn: string) => KMS_KEY.test(arn) || ECS_GHOSTS.test(arn
 
 /**
  * Of the AWS sweep's would-be orphans, the ARNs EC2 says are really gone: the instances and VPC endpoints in a lab
- * region (the Worker's IAM user may describe only there), one read per region and kind. A read that fails (refused,
- * throttled, out of calls) clears nothing: those items stay counted.
+ * region (the Worker's IAM user may describe only there), one read per region and kind (the tagging API keeps
+ * listing deleted transit gateways, VPN connections, Client VPN endpoints and IPAMs for hours too). A read that fails
+ * (refused, throttled, out of calls) clears nothing: those items stay counted.
  */
+const isConfirmKind = (t: string): t is Ec2ConfirmKind => (EC2_CONFIRM_KINDS as string[]).includes(t);
+
 async function confirmGone(env: Env, net: Net, candidates: Found[]): Promise<Set<string>> {
   const groups = new Map<string, { region: string; kind: Ec2ConfirmKind; byId: Map<string, string> }>();
   for (const f of candidates) {
     if (!f.arn) continue;
     const region = f.arn.split(":")[3] ?? "";
     const p = arnParts(f.arn);
-    if (p.service !== "ec2" || (p.type !== "instance" && p.type !== "vpc-endpoint") || !(AWS_LAB_REGIONS as readonly string[]).includes(region)) continue;
+    if (p.service !== "ec2" || !isConfirmKind(p.type) || !(AWS_LAB_REGIONS as readonly string[]).includes(region)) continue;
     const key = `${region} ${p.type}`;
     const g = groups.get(key) ?? { region, kind: p.type, byId: new Map<string, string>() };
     g.byId.set(p.id, f.arn);
     groups.set(key, g);
   }
   const gone = new Set<string>();
-  for (const g of groups.values()) {
+  // The two reserved kinds first, so a short budget spends its calls on them.
+  const order = [...groups.values()].sort((a, b) => EC2_CONFIRM_KINDS.indexOf(a.kind) - EC2_CONFIRM_KINDS.indexOf(b.kind));
+  for (const g of order) {
     try {
       for (const id of await ec2Gone(env, net, g.region, g.kind, [...g.byId.keys()])) gone.add(g.byId.get(id)!);
     } catch {
