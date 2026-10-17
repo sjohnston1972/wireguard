@@ -69,6 +69,13 @@
    "kind": "architecture"
   }
  ],
+ "ans-30-vpc-lattice": [
+  {
+   "file": "architecture.svg",
+   "title": "VPC Lattice service network with auth policies: architecture",
+   "kind": "architecture"
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

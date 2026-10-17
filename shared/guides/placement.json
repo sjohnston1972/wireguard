@@ -89,6 +89,15 @@
    "height": 1146
   }
  ],
+ "ans-30-vpc-lattice": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. Two VPC Lattice services sending traffic to two EC2 instances, in two VPCs with four subnets.",
+   "width": 2323,
+   "height": 1314
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",
