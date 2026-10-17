@@ -243,8 +243,10 @@ jobs:
       # ── 7 ────────────────────────────────────────────────────────────────
       # Retried only on AWS transient errors (throttling, RequestLimitExceeded,
       # 5xx, a dropped connection; never AccessDenied or another 4xx), after a
-      # fresh plan that passes the scope check. Outputs are masked; the VPC to
-      # peer and its route tables are kept for Peer.
+      # fresh plan that passes the scope check. Outputs are masked (a lab's
+      # files only by their PEM lines, so an OpenVPN profile's directives do
+      # not mask common words across the job log); the VPC to peer and its
+      # route tables are kept for Peer.
       - name: Apply
         id: apply
         if: success() && steps.plan.outcome == 'success' && (inputs.action == 'deploy' || inputs.action == 'test')
@@ -258,7 +260,10 @@ jobs:
           bash "$GITHUB_WORKSPACE/infra/ci/lab-tf-run.sh" apply
           cd "$GITHUB_WORKSPACE/labs/$LAB_ID/terraform"
           terraform output -no-color -json > "$RUNNER_TEMP/outputs.json"
-          jq -r '.. | strings' "$RUNNER_TEMP/outputs.json" | while IFS= read -r s; do
+          jq -r 'del(.files) | .. | strings' "$RUNNER_TEMP/outputs.json" | while IFS= read -r s; do
+            [ "${#s}" -ge 4 ] && echo "::add-mask::$s"
+          done
+          jq -r '(.files.value // {}) | .[]? | strings' "$RUNNER_TEMP/outputs.json" | awk '/^-----BEGIN /{p=1} p{print} /^-----END /{p=0}' | while IFS= read -r s; do
             [ "${#s}" -ge 4 ] && echo "::add-mask::$s"
           done
           peer_vpc="$(jq -r '.peer_vpc_id.value // empty' "$RUNNER_TEMP/outputs.json")"
