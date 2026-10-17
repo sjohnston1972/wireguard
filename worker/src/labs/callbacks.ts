@@ -100,8 +100,9 @@ export async function handleLabCallback(env: Env, token: string | null, body: un
 
   const ghId = Number(body.github_run_id);
   if (Number.isInteger(ghId) && ghId > 0 && !run.github_run_id) await updateRun(env, run.id, { github_run_id: ghId });
-  // Before finishRun, so a session ended by this run's own result clears them at once (clearSecrets).
-  if (hasFiles) await updateRun(env, run.id, { files_json: JSON.stringify(files.files) });
+  // Before finishRun, so a session ended by this run's own result clears them at once (clearSecrets); only while the
+  // run is unsettled, so a run the watch settled (and whose session it may have ended) meanwhile never gets them.
+  if (hasFiles) await updateRun(env, run.id, { files_json: JSON.stringify(files.files) }, "finished_at IS NULL");
   const ok = body.status === "success";
   const settled = await finishRun(env, run, { ok, outputs: outputs.outputs, via: "callback", error: ok ? null : `The workflow reported "${String(body.status).slice(0, 40)}". See the GitHub log.` });
   return { status: 200, body: { message: settled ? "ok" : "already settled" } };
