@@ -23,7 +23,7 @@ test("ans-21 keeps the AWS lab contract", () => {
 test("ans-21's lab.yaml: §12.2 row 21, after lab 20, three /20s, about £0.19/h with the attachments and NAT billed by the whole hour", () => {
   const { yaml } = awsLab(ID);
   assert.deepEqual([yaml.exam, yaml.level, yaml.type, yaml.skill_areas, yaml.prerequisites], ["ANS-C01", "expert", "explore", ["ans.design", "ans.implementation"], ["ans-20-vpc-design"]]);
-  assert.deepEqual(yaml.timing, { deploy_min: 8, destroy_min: 8, session_h: 2, max_h: 4 });
+  assert.deepEqual(yaml.timing, { deploy_min: 8, destroy_min: 10, session_h: 2, max_h: 4 });
   assert.deepEqual(yaml.connectivity, { peering: "optional", dns_link: false, subnets_used: 3 });
   assert.deepEqual(yaml.identity, { creates: [], roles: [], governance: false });
   assert.deepEqual(yaml.capacity, { instance_types: ["t4g.nano", "t4g.nano"] });

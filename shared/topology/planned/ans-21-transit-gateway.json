@@ -1,7 +1,7 @@
 {
  "schema": 1,
  "labId": "ans-21-transit-gateway",
- "version": 1,
+ "version": 2,
  "source": "planned",
  "at": null,
  "nodes": [

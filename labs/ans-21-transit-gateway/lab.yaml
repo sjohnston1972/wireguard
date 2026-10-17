@@ -9,7 +9,7 @@
 # London (£0.045, the figure here). Transit Gateway data
 # processing is per GB (authored, light test traffic).
 id: ans-21-transit-gateway
-version: 1
+version: 2
 cloud: aws
 title: "Transit Gateway: segmentation and central egress"
 summary: >-
@@ -44,7 +44,7 @@ cost:
     - { name: "Transit Gateway data processing, light test traffic", gbp_h: 0.0005 }
     - { name: "EC2 Instance Connect Endpoints (2)", gbp_h: 0 }
   pricey: null
-timing: { deploy_min: 8, destroy_min: 8, session_h: 2, max_h: 4 }
+timing: { deploy_min: 8, destroy_min: 10, session_h: 2, max_h: 4 }
 capacity: { instance_types: [t4g.nano, t4g.nano] }
 regions: { secondary: null }
 connectivity: { peering: optional, dns_link: false, subnets_used: 3 }
