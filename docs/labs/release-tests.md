@@ -134,3 +134,6 @@ lab's hourly estimate times those minutes.
 | 2026-10-17 12:42 | ans-30-vpc-lattice | 1 | pass | yes | none | 4m 14s | 6m 34s | £0.0091 | 39032781215 |
 | 2026-10-17 13:16 | ans-26-edge | 1 | fail | unknown | unknown | — | — | — | 39035632924 |
 | 2026-10-17 13:30 | ans-26-edge | 2 | pass | yes | none | 5m 55s | 7m 7s | £0.0177 | 39035938358 |
+| 2026-10-17 14:57 | ans-30-vpc-lattice | 2 | pass | yes | none | 4m 6s | 6m 6s | £0.0086 | 39042190799 |
+| 2026-10-17 15:11 | ans-21-transit-gateway | 2 | pass | yes | none | 4m 10s | 7m 57s | £0.0374 | 39042980956 |
+| 2026-10-17 15:42 | ans-20-vpc-design | 2 | pass | yes | none | 5m 36s | 24m 14s | £0.0227 | 39043943238 |
