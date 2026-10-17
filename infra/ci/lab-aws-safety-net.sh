@@ -176,8 +176,9 @@
 # gateway, Client VPN endpoint, VPC endpoint service, IPAM, IPAM pool or scope
 # deleting or deleted is clean (nothing can stop it); a Network Firewall
 # firewall, policy or rule group, a traffic mirror session, target or filter,
-# or an ACM certificate only once AWS no longer has it (an IPAM's pools and
-# scopes go with it: judged only). A
+# or an ACM certificate only once AWS no longer has it (an IPAM's pools,
+# scopes and default resource discovery and its association go with it:
+# judged only, never deleted directly). A
 # type with no handler is never clean ("no handler for <type>: <name>"). While a lab VPC
 # still exists, every instance (not terminated) and every network interface
 # (not requester-managed, not attached to an instance, which is judged
@@ -510,6 +511,10 @@ describe() {
     ec2:ipam) set -- ec2 describe-ipams --ipam-ids "$id"; q='.Ipams[]?' ;;
     ec2:ipam-pool) set -- ec2 describe-ipam-pools --ipam-pool-ids "$id"; q='.IpamPools[]?' ;;
     ec2:ipam-scope) set -- ec2 describe-ipam-scopes --ipam-scope-ids "$id"; q='.IpamScopes[]?' ;;
+    # Final fix F3: CreateIpam's tags land on the default resource discovery and its association too; IPAM's cascade
+    # removes them (judged only).
+    ec2:ipam-resource-discovery) set -- ec2 describe-ipam-resource-discoveries --ipam-resource-discovery-ids "$id"; q='.IpamResourceDiscoveries[]?' ;;
+    ec2:ipam-resource-discovery-association) set -- ec2 describe-ipam-resource-discovery-associations --ipam-resource-discovery-association-ids "$id"; q='.IpamResourceDiscoveryAssociations[]?' ;;
     acm:certificate) set -- acm describe-certificate --certificate-arn "$x"; q='.Certificate' ;;
     kms:alias)
       [ -n "$x" ] || return 3
@@ -594,7 +599,7 @@ judge() {
     ec2:client-vpn-endpoint) g='(.Status.Code // "") | IN("deleting", "deleted")'; w='.Status.Code' ;;
     ec2:vpn-connection|ec2:vpn-gateway|ec2:customer-gateway) g='(.State // "") | IN("deleting", "deleted")'; w='.State' ;;
     ec2:transit-gateway|ec2:transit-gateway-attachment|ec2:transit-gateway-route-table) g='(.State // "") | IN("deleting", "deleted", "rejected", "failed")'; w='.State' ;;
-    ec2:ipam|ec2:ipam-pool|ec2:ipam-scope) g='(.State // "") | IN("delete-in-progress", "delete-complete")'; w='.State' ;;
+    ec2:ipam|ec2:ipam-pool|ec2:ipam-scope|ec2:ipam-resource-discovery|ec2:ipam-resource-discovery-association) g='(.State // "") | IN("delete-in-progress", "delete-complete")'; w='.State' ;;
     ec2:vpc-endpoint-service) g='(.ServiceState // "" | ascii_downcase) | IN("deleting", "deleted")'; w='.ServiceState' ;;
     # Ruling P23: every other batch 4 type (a Resolver endpoint DELETING, a Lattice association DELETE_IN_PROGRESS, a
     # Network Firewall item, a mirror item or an ACM certificate too) is there until AWS no longer has it, so the
@@ -1598,7 +1603,7 @@ del_sgr() {
   wr "$i" "revoke $(label "$i")" ec2 "revoke-security-group-$dir" --group-id "$g" --security-group-rule-ids "${C_I[$i]}"
 }
 # Phase 4, after the fabric (ruling P5 / P23): IPAM with --cascade (its pools, scopes and provisioned CIDRs with it);
-# a pool or scope found on its own is judged only.
+# a pool, scope, resource discovery or discovery association found on its own is judged only.
 del_ipam() {
   before_delete "$1" .State
   case $? in 1) return 1 ;; 2) return 0 ;; esac
@@ -1902,7 +1907,8 @@ HANDLED=" autoscaling:autoScalingGroup events:rule config:config-rule config:con
   ec2:client-vpn-endpoint network-firewall:firewall network-firewall:firewall-policy network-firewall:stateful-rulegroup
   network-firewall:stateless-rulegroup ec2:vpc-endpoint-service ec2:traffic-mirror-session ec2:traffic-mirror-target
   ec2:traffic-mirror-filter ec2:vpn-connection ec2:vpn-gateway ec2:customer-gateway ec2:transit-gateway
-  ec2:transit-gateway-attachment ec2:transit-gateway-route-table ec2:ipam ec2:ipam-pool ec2:ipam-scope acm:certificate "
+  ec2:transit-gateway-attachment ec2:transit-gateway-route-table ec2:ipam ec2:ipam-pool ec2:ipam-scope acm:certificate
+  ec2:ipam-resource-discovery ec2:ipam-resource-discovery-association "
 HANDLED="${HANDLED//$'\n'/ }"
 
 discover
@@ -2001,7 +2007,8 @@ run ec2:vpc-endpoint poll del_vpce
 run ec2:instance-connect-endpoint poll del_eice
 run ec2:volume - del_volume
 run ec2:vpc-flow-log - del_flowlog
-# 4 VPC fabric (then any security group rule its group did not take along), then IPAM (pools and scopes go with it)
+# 4 VPC fabric (then any security group rule its group did not take along), then IPAM (pools, scopes and its
+# default resource discovery and association go with it)
 fabric
 run ec2:security-group-rule - del_sgr
 run ec2:ipam poll del_ipam

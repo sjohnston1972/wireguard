@@ -1456,6 +1456,33 @@ test("ruling P23: Verify clean counts batch 4's deleting items clean; a firewall
   w.cleanup();
 });
 
+test("final fix F3: an IPAM's default resource discovery and its association are judged only: deleting, deleted or not found is clean; the sweep never deletes them", { skip }, () => {
+  const IPAM = "arn:aws:ec2::123456789012:ipam/ipam-0a";
+  const RD = (id) => `arn:aws:ec2::123456789012:ipam-resource-discovery/${id}`;
+  const RDA = (id) => `arn:aws:ec2::123456789012:ipam-resource-discovery-association/${id}`;
+  const notFound = (op) => `An error occurred (InvalidIpamResourceDiscoveryAssociationId.NotFound) when calling the ${op} operation: x`;
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged(IPAM, RD("ipam-res-disco-0a"), RD("ipam-res-disco-0b"), RDA("ipam-res-disco-assoc-0a"), RDA("ipam-res-disco-assoc-0b")) },
+    { cmd: "aws", match: "^ec2 describe-ipams", out: '{"Ipams":[{"State":"delete-complete"}]}' },
+    { cmd: "aws", match: "^ec2 describe-ipam-resource-discoveries --ipam-resource-discovery-ids ipam-res-disco-0a", out: '{"IpamResourceDiscoveries":[{"State":"delete-in-progress"}]}' },
+    { cmd: "aws", match: "^ec2 describe-ipam-resource-discoveries --ipam-resource-discovery-ids ipam-res-disco-0b", out: '{"IpamResourceDiscoveries":[{"State":"create-complete","Tags":[{"Key":"Name","Value":"rd-left"}]}]}' },
+    { cmd: "aws", match: "^ec2 describe-ipam-resource-discovery-associations --ipam-resource-discovery-association-ids ipam-res-disco-assoc-0a", out: "", code: 254, err: notFound("DescribeIpamResourceDiscoveryAssociations") },
+    { cmd: "aws", match: "^ec2 describe-ipam-resource-discovery-associations --ipam-resource-discovery-association-ids ipam-res-disco-assoc-0b", out: '{"IpamResourceDiscoveryAssociations":[{"State":"delete-complete"}]}' },
+    ...EMPTY_IAM,
+  ]);
+  const out = join(w.dir, "gh-output");
+  writeFileSync(out, "");
+  assert.equal(w.run("infra/ci/lab-aws-safety-net.sh", ["--verify", "ans-20-vpc-design"], { ...ENV, GITHUB_OUTPUT: fwd(out) }).status, 1);
+  const left = JSON.parse(/^leftovers=(.*)$/m.exec(readFileSync(out, "utf8"))[1]);
+  assert.deepEqual(left, ["ec2:ipam-resource-discovery ipam-res-disco-0b (rd-left)"], "only the one still create-complete");
+  // The sweep: no handler warning, no delete of either (IPAM's cascade takes them).
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["ans-20-vpc-design"], ENV);
+  assert.equal(r.status, 0, r.out);
+  assert.doesNotMatch(r.out, /no handler for ec2:ipam-resource-discovery/);
+  assert.deepEqual(w.calls().filter((c) => /^aws ec2 (delete|disassociate)-ipam-resource-discover/.test(c)), []);
+  w.cleanup();
+});
+
 test("review lessons (batch 4 II): a refused detach or disassociate is asked again; an attachment already deleting is only waited for; a certificate in use is waited for", { skip }, () => {
   const refused = (op) => `An error occurred (IncorrectState) when calling the ${op} operation: x`;
   const w = world([
