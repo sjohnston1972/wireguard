@@ -73,6 +73,11 @@
      "id": "tf:aws_eip_association.router",
      "label": "router",
      "armType": null
+    },
+    {
+     "id": "tf:aws_network_interface.router",
+     "label": "nic-router",
+     "armType": "ec2:network-interface"
     }
    ],
    "cloud": "aws"

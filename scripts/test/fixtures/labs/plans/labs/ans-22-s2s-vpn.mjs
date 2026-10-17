@@ -6,7 +6,8 @@
 // gateway, route table, S3 endpoint and Instance Connect Endpoint), vpn.tf
 // (the virtual private gateway and its propagation, the customer gateway, the
 // two pre-shared keys and the VPN connection), router.tf (the Elastic IP and
-// its association, sg-router and the Ubuntu router) and compute.tf (sg-aws and
+// its association with the router's own interface, sg-router, that interface
+// and the Ubuntu router on it) and compute.tf (sg-aws and
 // vm-aws). Every CIDR is built from var.address_space, so it is known at plan;
 // the router's address is fixed in its subnet. The connection's tunnel
 // addresses and the router's user data (which holds them, the inside
@@ -30,10 +31,12 @@ export default () => {
     rule("ingress", key, "aws_security_group.router", { ip_protocol: "udp", from_port: port, to_port: port }, { cidr_ipv4: ref("aws_vpn_connection.lab", `tunnel${n}_address`) }, ["cidr_ipv4"]);
   const router = al2023Instance(c, { key: "router", name: "vm-router", subnet: "aws_subnet.onprem", type: "t4g.micro", sgs: ["aws_security_group.router"], userDataUnknown: true });
   router.values.ami = UBUNTU;
-  router.values.private_ip = routerIp;
-  router.values.source_dest_check = false;
+  router.values.primary_network_interface = [{}];
+  router.unknown = ["primary_network_interface.0.network_interface_id", "user_data"];
+  delete router.refs.subnet_id;
+  delete router.refs.vpc_security_group_ids;
   router.refs.ami = ["data.aws_ssm_parameter.ubuntu_arm64.insecure_value", "data.aws_ssm_parameter.ubuntu_arm64"];
-  router.refs.private_ip = ["local.router_ip"];
+  router.refs["primary_network_interface.0.network_interface_id"] = ref("aws_network_interface.router", "id");
   router.refs.user_data = ["local.router_cloud_init"];
   const aws = al2023Instance(c, { key: "aws", name: "vm-aws", type: "t4g.nano", sgs: ["aws_security_group.vms", "aws_security_group.aws"] });
   aws.refs.user_data = ["local.aws_cloud_init"];
@@ -80,7 +83,7 @@ export default () => {
       },
       // router.tf
       { address: "aws_eip.router", values: tagged(c, { domain: "vpc", tags: { Name: "eip-router" } }) },
-      { address: "aws_eip_association.router", values: {}, unknown: ["instance_id", "allocation_id"], refs: { instance_id: ref("aws_instance.router", "id"), allocation_id: ref("aws_eip.router", "id") } },
+      { address: "aws_eip_association.router", values: {}, unknown: ["network_interface_id", "allocation_id"], refs: { network_interface_id: ref("aws_network_interface.router", "id"), allocation_id: ref("aws_eip.router", "id") } },
       { address: "aws_security_group.router", values: tagged(c, { name: "lab-router", description: "vm-router: IKE and IPsec from the two AWS tunnel endpoints, SSH from eice-onprem", tags: { Name: "sg-router" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.onprem", "id") } },
       tunnelRule("router_ike_1", 1, 500),
       tunnelRule("router_ike_2", 2, 500),
@@ -88,6 +91,12 @@ export default () => {
       tunnelRule("router_natt_2", 2, 4500),
       rule("ingress", "router_ssh_eice", "aws_security_group.router", { ip_protocol: "tcp", from_port: 22, to_port: 22 }, { referenced_security_group_id: ref("aws_security_group.eice_onprem", "id") }, ["referenced_security_group_id"]),
       rule("egress", "router_all", "aws_security_group.router", { cidr_ipv4: "0.0.0.0/0", ip_protocol: "-1" }),
+      {
+        address: "aws_network_interface.router",
+        values: tagged(c, { private_ips: [routerIp], source_dest_check: false, tags: { Name: "nic-router" } }),
+        unknown: ["subnet_id", "security_groups"],
+        refs: { subnet_id: ref("aws_subnet.onprem", "id"), private_ips: ["local.router_ip"], security_groups: ref("aws_security_group.router", "id") },
+      },
       router,
       // compute.tf
       { address: "aws_security_group.aws", values: tagged(c, { name: "lab-aws", description: "vm-aws: ping and HTTP from the on-prem VPC, through the VPN", tags: { Name: "sg-aws" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id") } },

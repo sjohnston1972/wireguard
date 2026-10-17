@@ -151,9 +151,11 @@ resource "aws_eip" "router" {
   tags   = { Name = "eip-router" }
 }
 
+# On the router's own interface: AWS authorises AssociateAddress on the network
+# interface too, and the one RunInstances would make carries no lab tag.
 resource "aws_eip_association" "router" {
-  instance_id   = aws_instance.router.id
-  allocation_id = aws_eip.router.id
+  network_interface_id = aws_network_interface.router.id
+  allocation_id        = aws_eip.router.id
 }
 
 resource "aws_security_group" "router" {
@@ -209,14 +211,26 @@ resource "aws_vpc_security_group_egress_rule" "router_all" {
   ip_protocol       = "-1"
 }
 
+# The router's primary interface, made by the lab (so it carries the lab's tag
+# through default_tags) at the router's fixed address, with forwarding on.
+resource "aws_network_interface" "router" {
+  subnet_id         = aws_subnet.onprem.id
+  private_ips       = [local.router_ip]
+  security_groups   = [aws_security_group.router.id]
+  source_dest_check = false
+  tags              = { Name = "nic-router" }
+}
+
 resource "aws_instance" "router" {
-  ami                    = data.aws_ssm_parameter.ubuntu_arm64.insecure_value
-  instance_type          = "t4g.micro"
-  subnet_id              = aws_subnet.onprem.id
-  private_ip             = local.router_ip
-  source_dest_check      = false
-  vpc_security_group_ids = [aws_security_group.router.id]
-  user_data              = local.router_cloud_init
+  ami           = data.aws_ssm_parameter.ubuntu_arm64.insecure_value
+  instance_type = "t4g.micro"
+  user_data     = local.router_cloud_init
+
+  # Subnet, address, security group and source/destination checking are the
+  # interface's (aws_network_interface.router).
+  primary_network_interface {
+    network_interface_id = aws_network_interface.router.id
+  }
 
   metadata_options {
     http_tokens   = "required"

@@ -85,7 +85,12 @@ export const AWS_TF_RULES: Record<string, TfRule> = {
   aws_subnet: { arm: "ec2:subnet", props: (i) => ({ prefix: str(i.after.cidr_block) }) },
 
   // ── Compute ──
-  aws_instance: { arm: "ec2:instance", props: (i) => ({ size: str(i.after.instance_type), privateIp: str(i.after.private_ip) }) },
+  // An instance on a lab-made primary interface (lab 22's router) takes its address from that interface.
+  aws_instance: {
+    arm: "ec2:instance",
+    props: (i, h) => ({ size: str(i.after.instance_type), privateIp: str(i.after.private_ip) ?? str(list(h.refs(i, ["primary_network_interface"])[0]?.after.private_ips)[0]) }),
+  },
+  aws_network_interface: { arm: "ec2:network-interface", ...intoReferrer("aws_instance") },
   aws_launch_template: { arm: "ec2:launch-template", ...intoReferrer("aws_autoscaling_group", "aws_eks_node_group") },
   aws_autoscaling_group: {
     arm: "autoscaling:autoScalingGroup",

@@ -451,6 +451,10 @@
   "rg": false,
   "tags": false
  },
+ "aws_network_interface": {
+  "rg": false,
+  "tags": true
+ },
  "aws_networkfirewall_firewall": {
   "rg": false,
   "tags": true

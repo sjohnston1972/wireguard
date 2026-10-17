@@ -997,6 +997,26 @@ const refs = (pairs) => ({ unknown: Object.keys(pairs), refs: Object.fromEntries
  */
 const rulesWith = (cx, owned, extra, base) => rulesFor(cx, [...owned.map((a) => T(cx, a, {})), ...extra], base).filter((x) => !owned.some((a) => x.endsWith(` ${a}`)));
 
+test("final fix F2: lab 22's router sits on its own interface in its own subnet; an interface or primary interface not the lab's own is refused", () => {
+  assert.ok(scope.AWS_TYPES.get("aws_network_interface"));
+  assert.deepEqual(labFixtureRules("ans-22-s2s-vpn"), []);
+  const net = templateResources(c22);
+  const ip = c22.vpcCidr.replace(/\.0\/20$/, ".10");
+  const nic = (values = {}, r = { subnet_id: "aws_subnet.private", security_groups: "aws_security_group.vms" }) => T(c22, "aws_network_interface.router", { private_ips: [ip], source_dest_check: false, ...values }, refs(r));
+  const vm = (r = { "primary_network_interface.0.network_interface_id": "aws_network_interface.router" }) => {
+    const i = al2023Instance(c22, { key: "router", name: "vm-router" });
+    delete i.refs.subnet_id;
+    delete i.refs.vpc_security_group_ids;
+    i.values.primary_network_interface = [{}];
+    return { ...i, unknown: Object.keys(r), refs: { ...i.refs, ...refs(r).refs } };
+  };
+  assert.deepEqual(rulesFor(c22, [nic(), vm()], net), []);
+  assert.deepEqual(rulesFor(c22, [nic({ subnet_id: "subnet-0123456789abcdef0" }, { security_groups: "aws_security_group.vms" })], net), ["gateway: aws_network_interface.router"], "a subnet not the lab's own");
+  assert.deepEqual(rulesFor(c22, [nic({ private_ips: ["10.9.9.9"] })], net), ["address: aws_network_interface.router"], "an address outside the slot");
+  assert.deepEqual(rulesFor(c22, [nic({ attachment: [{ device_index: 1 }] })], net), ["gateway: aws_network_interface.router"], "attached by its own block");
+  assert.deepEqual(rulesFor(c22, [nic(), vm({ "primary_network_interface.0.network_interface_id": "aws_subnet.onprem" })], net), ["gateway: aws_instance.router"], "a primary interface not the lab's own");
+});
+
 test("Review Focus 2: refuses an attachment, route, gateway, rule, endpoint, accelerator, auth policy, mirror target or Client VPN piece that names anything not the lab's own", () => {
   const tgw = T(c21, "aws_ec2_transit_gateway.lab", { auto_accept_shared_attachments: "disable", default_route_table_association: "disable", default_route_table_propagation: "disable" });
   const net21 = templateResources(c21);

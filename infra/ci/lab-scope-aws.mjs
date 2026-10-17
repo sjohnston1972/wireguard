@@ -318,6 +318,7 @@ export const AWS_TYPES = new Map([
   ["aws_ec2_managed_prefix_list", "a lab prefix list of the slot's and the headend's ranges (ruling P6)"],
   ...["aws_ec2_transit_gateway", "aws_ec2_transit_gateway_vpc_attachment", "aws_ec2_transit_gateway_route_table", "aws_ec2_transit_gateway_route_table_association", "aws_ec2_transit_gateway_route_table_propagation", "aws_ec2_transit_gateway_route", "aws_ec2_transit_gateway_peering_attachment", "aws_ec2_transit_gateway_peering_attachment_accepter"].map((t) => [t, "labs 21, 27 and 29's transit gateways, attaching only the lab's own VPCs (rulings P3, P15)"]),
   ...["aws_vpn_gateway", "aws_vpn_gateway_route_propagation", "aws_customer_gateway", "aws_vpn_connection", "aws_eip_association"].map((t) => [t, "lab 22's site-to-site VPN to its own router (ruling P11)"]),
+  ["aws_network_interface", "an instance's primary interface, made by the lab in its own subnet (lab 22's router: AWS authorises AssociateAddress on the interface too, and one RunInstances makes carries no lab tag)"],
   ...["aws_route53_resolver_endpoint", "aws_route53_resolver_rule", "aws_route53_resolver_rule_association", "aws_route53_resolver_firewall_domain_list", "aws_route53_resolver_firewall_rule_group", "aws_route53_resolver_firewall_rule", "aws_route53_resolver_firewall_rule_group_association", "aws_route53_resolver_query_log_config", "aws_route53_resolver_query_log_config_association"].map((t) => [t, "lab 23's Resolver, DNS Firewall and query logs, on the lab's own VPC (ruling P12)"]),
   ...["aws_vpc_endpoint_service", "aws_lb_target_group_attachment", "aws_lb_listener_rule"].map((t) => [t, "labs 24, 25's endpoint services (the lab's account only) and load balancer pieces (rulings P13, P14)"]),
   ...["aws_acm_certificate"].map((t) => [t, "a certificate imported from the lab's own tls resources (labs 25, 31; rulings P14, P20)"]),
@@ -1633,6 +1634,20 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
         case "aws_vpn_gateway_route_propagation":
           needOwn("vpn_gateway_id", ["aws_vpn_gateway"], "gateway", "the lab's own gateway");
           needOwn("route_table_id", ["aws_route_table"], "gateway", "the lab's own route table");
+          break;
+        case "aws_network_interface":
+          // Final fix F2: the lab's own subnet, groups and slot; attached only as an instance's primary interface.
+          needOwn("subnet_id", ["aws_subnet"], "gateway", "one of the lab's own subnets");
+          if (written("security_groups")) ownAll("security_groups", ["aws_security_group"], "gateway", "the lab's own security groups");
+          for (const ip of list(val.private_ips)) if (plan && !ipInSlot(ip)) refuse("address", `private_ips ${JSON.stringify(ip instanceof Unknown ? "(not known at plan)" : (ip ?? null))}: inside the lab's slot`);
+          if (list(val.attachment).length || blockUnknown(val.attachment)) refuse("gateway", "an interface is its instance's primary_network_interface, never attached by its own block");
+          break;
+        case "aws_instance":
+          // Left unset, the block is computed (the interface RunInstances makes); a written one names the lab's own.
+          if (res.configured?.has("primary_network_interface") || nonEmpty(first(val.primary_network_interface).network_interface_id)) {
+            const id = first(val.primary_network_interface).network_interface_id;
+            if (plan && !own(id, ["aws_network_interface"], "primary_network_interface.0.network_interface_id")) refuse("gateway", "primary_network_interface.0.network_interface_id must be the lab's own interface, by reference");
+          }
           break;
         case "aws_customer_gateway": {
           needOwn("ip_address", ["aws_eip"], "gateway", "the lab's own router's Elastic IP (ruling P11)");

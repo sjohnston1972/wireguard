@@ -55,9 +55,15 @@ test("ruling P11 and §7.4: the router's Elastic IP admits only IKE and NAT-T fr
   for (const b of fromTunnel) assert.match(b.body, /ip_protocol\s+= "udp"\n\s+from_port\s+= (500|4500)\n\s+to_port\s+= \1/);
   assert.match(rules.find((b) => !fromTunnel.includes(b)).body, /referenced_security_group_id = aws_security_group\.eice_onprem\.id/);
   const router = body(blocks, "aws_instance", "router");
-  for (const re of [/instance_type\s+= "t4g\.micro"/, /private_ip\s+= local\.router_ip/, /source_dest_check\s+= false/, /subnet_id\s+= aws_subnet\.onprem\.id/]) assert.match(router, re);
-  assert.doesNotMatch(router, /associate_public_ip_address/);
-  for (const re of [/instance_id\s+= aws_instance\.router\.id/, /allocation_id = aws_eip\.router\.id/]) assert.match(body(blocks, "aws_eip_association", "router"), re);
+  for (const re of [/instance_type = "t4g\.micro"/, /primary_network_interface \{\n\s+network_interface_id = aws_network_interface\.router\.id\n\s+\}/]) assert.match(router, re);
+  for (const re of [/associate_public_ip_address/, /subnet_id/, /private_ip/, /vpc_security_group_ids/, /source_dest_check/]) assert.doesNotMatch(router, re, "the interface's, not the instance's");
+  // Final fix F2: the router's primary interface is the lab's own (tagged), as AssociateAddress is authorised on it too.
+  const nic = body(blocks, "aws_network_interface", "router");
+  for (const re of [/subnet_id\s+= aws_subnet\.onprem\.id/, /private_ips\s+= \[local\.router_ip\]/, /security_groups\s+= \[aws_security_group\.router\.id\]/, /source_dest_check = false/, /tags\s+= \{ Name = "nic-router" \}/]) assert.match(nic, re);
+  assert.doesNotMatch(nic, /attachment/);
+  const assoc = body(blocks, "aws_eip_association", "router");
+  for (const re of [/network_interface_id = aws_network_interface\.router\.id/, /allocation_id\s+= aws_eip\.router\.id/]) assert.match(assoc, re);
+  assert.doesNotMatch(assoc, /instance_id/);
 });
 
 test("ans-22's router configures itself: sudo labadmin, strongSwan with the AWS-chosen inside addresses, FRR on 65001 advertising vpc-onprem, forwarding on", () => {

@@ -610,6 +610,27 @@ describe("batch 4's types on the diagrams", () => {
     expect(g.nodes.some((n) => n.key.startsWith("tls"))).toBe(false);
   });
 
+  it("final fix F2: an instance on a lab-made primary interface sits in that interface's subnet with its address; the interface and the EIP association fold in", () => {
+    const g = b4("ans-22-s2s-vpn", [
+      ch("aws_vpc.onprem", { tags: { Name: "vpc-onprem" } }),
+      ch("aws_subnet.onprem", { cidr_block: "10.64.16.0/24", tags: { Name: "snet-onprem" } }),
+      ch("aws_network_interface.router", { private_ips: ["10.64.16.10"], tags: { Name: "nic-router" } }),
+      ch("aws_instance.router", { instance_type: "t4g.micro", tags: { Name: "vm-router" } }),
+      ch("aws_eip.router", { tags: { Name: "eip-router" } }),
+      ch("aws_eip_association.router", {}),
+    ], {
+      "aws_subnet.onprem": { vpc_id: ["aws_vpc.onprem"] },
+      "aws_network_interface.router": { subnet_id: ["aws_subnet.onprem"] },
+      "aws_instance.router": { primary_network_interface: ["aws_network_interface.router"] },
+      "aws_eip_association.router": { network_interface_id: ["aws_network_interface.router"], allocation_id: ["aws_eip.router"] },
+    });
+    const vm = g.nodes.find((n) => n.key === "ec2:instance/vm-router")!;
+    expect(vm.parent).toBe(g.nodes.find((n) => n.key === "ec2:subnet/snet-onprem")!.id);
+    expect(vm.props.privateIp).toBe("10.64.16.10");
+    expect((vm.folded ?? []).map((f) => f.label).sort()).toEqual(["eip-router", "nic-router", "router"]);
+    expect(g.nodes.some((n) => /network-interface|elastic-ip/.test(n.key))).toBe(false);
+  });
+
   it("the edge: the accelerator's endpoint groups draw edges to their NLBs; the ACL protects the distribution; Lattice joins VPC, network and services", () => {
     const g = b4("ans-26-edge", [
       ch("aws_lb.london", { load_balancer_type: "network", tags: { Name: "nlb-ldn" } }),

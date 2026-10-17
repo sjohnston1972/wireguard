@@ -160,6 +160,8 @@ export const TYPES = [
   "aws_vpclattice_service_network_service_association", "aws_vpclattice_service_network_vpc_association", "aws_vpclattice_auth_policy",
   "aws_ec2_client_vpn_endpoint", "aws_ec2_client_vpn_network_association", "aws_ec2_client_vpn_authorization_rule",
   "tls_private_key", "tls_self_signed_cert", "tls_cert_request", "tls_locally_signed_cert",
+  // AWS labs batch 4 final fix F2: lab 22's router's own primary interface
+  "aws_network_interface",
   // AWS labs batch 1: the data sources on AWS_DATA (realisticPlan needs every aws_ one), and the one the scope tests refuse
   "data.aws_ssm_parameter", "data.aws_ami", "data.aws_availability_zones", "data.aws_caller_identity", "data.aws_region", "data.aws_partition",
   "data.aws_iam_policy_document", "data.aws_ec2_managed_prefix_list", "data.archive_file", "data.aws_vpc",
