@@ -55,6 +55,13 @@
    "kind": "architecture"
   }
  ],
+ "ans-28-flow-logs-fix": [
+  {
+   "file": "architecture.svg",
+   "title": "Break-fix: flow logs, mirroring and analyzers: architecture",
+   "kind": "architecture"
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

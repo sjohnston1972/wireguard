@@ -71,6 +71,15 @@
    "height": 1134
   }
  ],
+ "ans-28-flow-logs-fix": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A load balancer sending traffic to an EC2 instance, in two VPCs with four subnets.",
+   "width": 2195,
+   "height": 1146
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",
