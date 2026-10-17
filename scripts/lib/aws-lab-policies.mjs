@@ -112,7 +112,12 @@ export const CREATE_TAG_EXEMPT = ["ec2:CreateNetworkInterface", "ssm:CreateAssoc
 // accepter VPC; lab-scope-aws.mjs allows an accepter only of the lab's own peering, in AWS_PEER_REGION_LABS.
 // PeeringAcceptOwnAccountOnly keeps the VPC accept to peerings this account's own VPCs request (Task 2 fix round 1).
 // Ruling P17 (fix round 1): a mirror filter rule's modify and delete, judged on the rule's filter (MirrorRulesInLabFilters).
-export const CHANGE_TAG_EXEMPT = ["ec2:ReplaceNetworkAclAssociation", "elasticloadbalancing:DeleteLoadBalancer", "ec2:DeleteNetworkInterface", "ec2:AcceptVpcPeeringConnection", "ec2:AcceptTransitGatewayPeeringAttachment", "ec2:DeleteTrafficMirrorFilterRule", "ec2:ModifyTrafficMirrorFilterRule"];
+// Final fix F1 (lab 23): Route 53 Resolver makes its endpoint ENIs untagged, as the caller. The Service Authorization
+// Reference (read 2026-10-17) gives route53resolver:UpdateResolverEndpoint the dependent action
+// ec2:ModifyNetworkInterfaceAttribute, and AWS's AmazonRoute53ResolverFullAccess policy (v3) grants that and
+// ec2:CreateNetworkInterfacePermission; failing toward the lab working, both are exempt (not
+// ec2:DeleteNetworkInterfacePermission: neither source names it). DenyVpnServer and DenyDefaultVpcChildren still apply.
+export const CHANGE_TAG_EXEMPT = ["ec2:ReplaceNetworkAclAssociation", "elasticloadbalancing:DeleteLoadBalancer", "ec2:DeleteNetworkInterface", "ec2:AcceptVpcPeeringConnection", "ec2:AcceptTransitGatewayPeeringAttachment", "ec2:DeleteTrafficMirrorFilterRule", "ec2:ModifyTrafficMirrorFilterRule", "ec2:CreateNetworkInterfacePermission", "ec2:ModifyNetworkInterfaceAttribute"];
 /** Ruling P17: the filter rule actions, exempt from the lists, held instead to a lab-tagged filter. */
 export const MIRROR_RULE_ACTIONS = ["ec2:CreateTrafficMirrorFilterRule", "ec2:DeleteTrafficMirrorFilterRule", "ec2:ModifyTrafficMirrorFilterRule"];
 /** Ruling P8: the tag Kubernetes gives what lab 19's cluster makes (its cluster is lab-<id>, ruling P7). */
