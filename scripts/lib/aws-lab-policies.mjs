@@ -96,6 +96,13 @@ export const NAME_OWNED_TYPES = ["cloudwatch:dashboard", "config:ConfigurationRe
 // rule it makes; the rule sits in the lab's own tagged filter (lab-scope-aws.mjs: by reference). AWS authorises the
 // rule's create, modify and delete on both the rule (untagged) and its filter, so the modify and delete are
 // change-tag exempt too (CHANGE_TAG_EXEMPT) and MirrorRulesInLabFilters holds all three to a lab-tagged filter.
+/**
+ * ans-26 fix (release test run 39027988912): creates the reference gives the request tag on the action, refused without
+ * it only on the type each makes. AWS authorises CreateWebACL on the managed rule sets (AWS's own), rule groups, IP sets
+ * and pattern sets the ACL uses too, and CreateRuleGroup on the sets it uses, with no request tag in those resources'
+ * context, so a create-needs-tag deny on "*" refused lab 26's ACL.
+ */
+export const CREATE_ON_OWN_TYPE = { "wafv2:CreateWebACL": "webacl", "wafv2:CreateRuleGroup": "rulegroup", "wafv2:CreateIPSet": "ipset", "wafv2:CreateRegexPatternSet": "regexpatternset" };
 export const CREATE_TAG_EXEMPT = ["ec2:CreateNetworkInterface", "ssm:CreateAssociation", "ssm:CreateAssociationBatch", "ec2:CopyImage", "ec2:CreateTrafficMirrorFilterRule"];
 /**
  * Ruling A82: actions exempt from the change-needs-lab-tag rule. AWS authorises ReplaceNetworkAclAssociation on the ACL
@@ -262,6 +269,11 @@ export function abacLists(sar) {
       if (name === "ec2:RunInstances") {
         createOn[name] = RUN_INSTANCES_TYPES.flatMap((t) => arnsOf(service, top, t));
         create.push(name);
+      } else if (onAction && Object.hasOwn(CREATE_ON_OWN_TYPE, name)) {
+        // ans-26 fix: refused only on the type it makes (grouped below like the other per-type creates).
+        const t = CREATE_ON_OWN_TYPE[name];
+        if (!res.some((r) => r.Name === t)) throw new Error(`${name}: the reference no longer names ${t} among its resources`);
+        scoped.push({ name, made: [key(t)], touches: res.map((r) => key(r.Name)), arns: arnsOf(service, top, t) });
       } else if (onAction) {
         actionLevel.push(name);
       } else if (onTypes.length) {

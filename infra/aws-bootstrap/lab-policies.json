@@ -882,11 +882,7 @@
             "vpc-lattice:CreateServiceNetworkServiceAssociation",
             "vpc-lattice:CreateServiceNetworkVpcAssociation",
             "vpc-lattice:CreateTargetGroup",
-            "vpc-lattice:StartDomainVerification",
-            "wafv2:CreateIPSet",
-            "wafv2:CreateRegexPatternSet",
-            "wafv2:CreateRuleGroup",
-            "wafv2:CreateWebACL"
+            "vpc-lattice:StartDomainVerification"
           ],
           "Resource": "*",
           "Condition": {
@@ -944,7 +940,8 @@
             "ec2:CreateCapacityReservation",
             "ec2:CreateCapacityReservationFleet",
             "ec2:CreateCarrierGateway",
-            "ec2:CreateClientVpnEndpoint"
+            "ec2:CreateClientVpnEndpoint",
+            "ec2:CreateCoipPool"
           ],
           "Resource": [
             "arn:aws:ec2:*:*:application-status-check/*",
@@ -1010,7 +1007,9 @@
             "arn:aws:elasticache:*:*:cluster:*",
             "arn:aws:elasticache:*:*:usergroup:*",
             "arn:aws:elasticache::*:globalreplicationgroup:*",
-            "arn:aws:kinesis:*:*:stream/*"
+            "arn:aws:kinesis:*:*:stream/*",
+            "arn:aws:wafv2:*:*:*/ipset/*/*",
+            "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
           ],
           "Condition": {
             "Null": {
@@ -1027,7 +1026,6 @@
           "Sid": "CreateNeedsLabTag6",
           "Effect": "Deny",
           "Action": [
-            "ec2:CreateCoipPool",
             "ec2:CreateCustomerGateway",
             "ec2:CreateDelegateMacVolumeOwnershipTask",
             "ec2:CreateDhcpOptions",
@@ -1081,7 +1079,9 @@
             "elasticache:CreateGlobalReplicationGroup",
             "elasticache:CreateUserGroup",
             "kinesis:CreateStream",
-            "kinesis:RegisterStreamConsumer"
+            "kinesis:RegisterStreamConsumer",
+            "wafv2:CreateIPSet",
+            "wafv2:CreateRegexPatternSet"
           ],
           "Resource": [
             "arn:aws:ec2:*:*:application-status-check/*",
@@ -1147,7 +1147,9 @@
             "arn:aws:elasticache:*:*:cluster:*",
             "arn:aws:elasticache:*:*:usergroup:*",
             "arn:aws:elasticache::*:globalreplicationgroup:*",
-            "arn:aws:kinesis:*:*:stream/*"
+            "arn:aws:kinesis:*:*:stream/*",
+            "arn:aws:wafv2:*:*:*/ipset/*/*",
+            "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
           ],
           "Condition": {
             "Null": {
@@ -1180,11 +1182,7 @@
           "Sid": "CreateNeedsLabTag9",
           "Effect": "Deny",
           "Action": [
-            "ec2:CreateIpamScope",
-            "ec2:CreateNetworkInsightsPath",
-            "ec2:CreateReplaceRootVolumeTask",
-            "ec2:CreateSubnet",
-            "ec2:CreateTransitGatewayPeeringAttachment"
+            "ec2:CreateIpamScope"
           ],
           "Resource": [
             "arn:aws:ec2:*:*:network-insights-path/*",
@@ -1193,7 +1191,8 @@
             "arn:aws:ec2:*:*:transit-gateway-attachment/*",
             "arn:aws:ec2:*:*:volume/*",
             "arn:aws:ec2::*:ipam-scope/*",
-            "arn:aws:elasticache:*:*:snapshot:*"
+            "arn:aws:elasticache:*:*:snapshot:*",
+            "arn:aws:wafv2:*:*:*/webacl/*/*"
           ],
           "Condition": {
             "Null": {
@@ -1231,7 +1230,8 @@
             "ec2:CreateVolume",
             "ec2:ExportImage",
             "ec2:StartNetworkInsightsAccessScopeAnalysis",
-            "elasticache:CreateReplicationGroup"
+            "elasticache:CreateReplicationGroup",
+            "wafv2:CreateRuleGroup"
           ],
           "Resource": [
             "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -1256,7 +1256,8 @@
             "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
             "arn:aws:ec2::*:ipam-resource-discovery/*",
             "arn:aws:ec2::*:ipam/*",
-            "arn:aws:elasticache:*:*:replicationgroup:*"
+            "arn:aws:elasticache:*:*:replicationgroup:*",
+            "arn:aws:wafv2:*:*:*/rulegroup/*/*"
           ],
           "Condition": {
             "Null": {
@@ -1268,7 +1269,12 @@
           "Sid": "CreateNeedsLabTag10",
           "Effect": "Deny",
           "Action": [
-            "elasticache:CreateSnapshot"
+            "ec2:CreateNetworkInsightsPath",
+            "ec2:CreateReplaceRootVolumeTask",
+            "ec2:CreateSubnet",
+            "ec2:CreateTransitGatewayPeeringAttachment",
+            "elasticache:CreateSnapshot",
+            "wafv2:CreateWebACL"
           ],
           "Resource": [
             "arn:aws:ec2:*:*:network-insights-path/*",
@@ -1277,7 +1283,8 @@
             "arn:aws:ec2:*:*:transit-gateway-attachment/*",
             "arn:aws:ec2:*:*:volume/*",
             "arn:aws:ec2::*:ipam-scope/*",
-            "arn:aws:elasticache:*:*:snapshot:*"
+            "arn:aws:elasticache:*:*:snapshot:*",
+            "arn:aws:wafv2:*:*:*/webacl/*/*"
           ],
           "Condition": {
             "Null": {
@@ -1410,14 +1417,7 @@
             "autoscaling:PutScheduledUpdateGroupAction",
             "autoscaling:PutWarmPool",
             "autoscaling:RecordLifecycleActionHeartbeat",
-            "autoscaling:ResumeProcesses",
-            "autoscaling:RollbackInstanceRefresh",
-            "autoscaling:Set*",
-            "autoscaling:StartInstanceRefresh",
-            "autoscaling:SuspendProcesses",
-            "autoscaling:TerminateInstanceInAutoScalingGroup",
-            "autoscaling:UpdateAutoScalingGroup",
-            "backup:AssociateBackupVaultMpaApprovalTeam"
+            "autoscaling:ResumeProcesses"
           ],
           "Resource": "*",
           "Condition": {
@@ -1435,6 +1435,13 @@
           "Sid": "ChangeNeedsLabTag2",
           "Effect": "Deny",
           "Action": [
+            "autoscaling:RollbackInstanceRefresh",
+            "autoscaling:Set*",
+            "autoscaling:StartInstanceRefresh",
+            "autoscaling:SuspendProcesses",
+            "autoscaling:TerminateInstanceInAutoScalingGroup",
+            "autoscaling:UpdateAutoScalingGroup",
+            "backup:AssociateBackupVaultMpaApprovalTeam",
             "backup:CancelLegalHold",
             "backup:CopyFromBackupVault",
             "backup:CreateBackupSelection",
@@ -1595,14 +1602,7 @@
             "ec2:CreateCoipCidr",
             "ec2:CreateCoipPoolPermission",
             "ec2:CreateIpamRoutingPolicyRegistration",
-            "ec2:CreateLaunchTemplateVersion",
-            "ec2:CreateLocalGatewayRouteTablePermission",
-            "ec2:CreateNetworkAclEntry",
-            "ec2:CreateNetworkInterfacePermission",
-            "ec2:CreateOdbNetworkPeering",
-            "ec2:CreateRoute",
-            "ec2:CreateSubnetCidrReservation",
-            "ec2:CreateTransitGatewayMeteringPolicyEntry"
+            "ec2:CreateLaunchTemplateVersion"
           ],
           "Resource": "*",
           "Condition": {
@@ -1621,6 +1621,13 @@
           "Sid": "ChangeNeedsLabTag3",
           "Effect": "Deny",
           "Action": [
+            "ec2:CreateLocalGatewayRouteTablePermission",
+            "ec2:CreateNetworkAclEntry",
+            "ec2:CreateNetworkInterfacePermission",
+            "ec2:CreateOdbNetworkPeering",
+            "ec2:CreateRoute",
+            "ec2:CreateSubnetCidrReservation",
+            "ec2:CreateTransitGatewayMeteringPolicyEntry",
             "ec2:CreateTransitGatewayPolicyTableEntry",
             "ec2:CreateVpcEndpointConnectionNotification",
             "ec2:CreateVpnConnectionRoute",
@@ -1789,16 +1796,7 @@
             "ec2:StopInstances",
             "ec2:Terminate*",
             "ec2:Unassign*",
-            "ec2:UnmonitorInstances",
-            "ec2:UpdateInterruptibleCapacityReservationAllocation",
-            "ec2:UpdateSecurity*",
-            "ecr:BatchDeleteImage",
-            "ecr:BatchImportUpstreamImage",
-            "ecr:CompleteLayerUpload",
-            "ecr:DeleteLifecyclePolicy",
-            "ecr:DeleteRepository",
-            "ecr:DeleteRepositoryPolicy",
-            "ecr:InitiateLayerUpload"
+            "ec2:UnmonitorInstances"
           ],
           "Resource": "*",
           "Condition": {
@@ -1817,6 +1815,15 @@
           "Sid": "ChangeNeedsLabTag4",
           "Effect": "Deny",
           "Action": [
+            "ec2:UpdateInterruptibleCapacityReservationAllocation",
+            "ec2:UpdateSecurity*",
+            "ecr:BatchDeleteImage",
+            "ecr:BatchImportUpstreamImage",
+            "ecr:CompleteLayerUpload",
+            "ecr:DeleteLifecyclePolicy",
+            "ecr:DeleteRepository",
+            "ecr:DeleteRepositoryPolicy",
+            "ecr:InitiateLayerUpload",
             "ecr:PutImage*",
             "ecr:PutLifecyclePolicy",
             "ecr:ReplicateImage",
@@ -1977,25 +1984,13 @@
             "glue:StartBlueprintRun",
             "glue:StartCrawler",
             "glue:StartData*",
-            "glue:StartExportLabelsTaskRun",
-            "glue:StartImportLabelsTaskRun",
-            "glue:StartJob*",
-            "glue:StartML*",
-            "glue:StartTrigger",
-            "glue:StartWorkflowRun",
-            "glue:StopCrawler",
-            "glue:StopJobUpgradeAnalysis",
-            "glue:StopSession",
-            "glue:StopTrigger",
-            "glue:StopWorkflowRun",
-            "glue:TestConnection",
-            "glue:UpdateBlueprint",
-            "glue:UpdateCrawler"
+            "glue:StartExportLabelsTaskRun"
           ],
           "Resource": "*",
           "Condition": {
             "Null": {
-              "aws:ResourceTag/cloudlabs-lab": "true"
+              "aws:ResourceTag/cloudlabs-lab": "true",
+              "ec2:CreateAction": "true"
             }
           }
         }
@@ -2008,6 +2003,19 @@
           "Sid": "ChangeNeedsLabTag5",
           "Effect": "Deny",
           "Action": [
+            "glue:StartImportLabelsTaskRun",
+            "glue:StartJob*",
+            "glue:StartML*",
+            "glue:StartTrigger",
+            "glue:StartWorkflowRun",
+            "glue:StopCrawler",
+            "glue:StopJobUpgradeAnalysis",
+            "glue:StopSession",
+            "glue:StopTrigger",
+            "glue:StopWorkflowRun",
+            "glue:TestConnection",
+            "glue:UpdateBlueprint",
+            "glue:UpdateCrawler",
             "glue:UpdateDataQualityRuleset",
             "glue:UpdateDevEndpoint",
             "glue:UpdateIntegration*",
@@ -2188,18 +2196,7 @@
             "ssm:RegisterPatchBaselineForPatchGroup",
             "ssm:RegisterTargetWithMaintenanceWindow",
             "ssm:RegisterTaskWithMaintenanceWindow",
-            "ssm:RequestManagedInstanceRoleToken",
-            "ssm:SendAutomationSignal",
-            "ssm:StartAssociationsOnce",
-            "ssm:StopAutomationExecution",
-            "ssm:UpdateCloudConnector",
-            "ssm:UpdateInstance*",
-            "ssm:UpdateMaintenance*",
-            "ssm:UpdateManagedInstancePublicKey",
-            "ssm:UpdateOps*",
-            "ssm:UpdatePatchBaseline",
-            "states:CreateStateMachineAlias",
-            "states:Delete*"
+            "ssm:RequestManagedInstanceRoleToken"
           ],
           "Resource": "*",
           "Condition": {
@@ -2217,6 +2214,17 @@
           "Sid": "ChangeNeedsLabTag6",
           "Effect": "Deny",
           "Action": [
+            "ssm:SendAutomationSignal",
+            "ssm:StartAssociationsOnce",
+            "ssm:StopAutomationExecution",
+            "ssm:UpdateCloudConnector",
+            "ssm:UpdateInstance*",
+            "ssm:UpdateMaintenance*",
+            "ssm:UpdateManagedInstancePublicKey",
+            "ssm:UpdateOps*",
+            "ssm:UpdatePatchBaseline",
+            "states:CreateStateMachineAlias",
+            "states:Delete*",
             "states:GetActivityTask",
             "states:PublishStateMachineVersion",
             "states:RedriveExecution",

@@ -1264,7 +1264,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:Allocate*": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -1330,7 +1332,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:AssociateIpamResourceDiscovery": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -1396,7 +1400,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:AuthorizeSecurity*": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -1462,7 +1468,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CopySnapshot": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -1528,7 +1536,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CopyVolumes": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -1594,7 +1604,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateApplicationStatusCheck": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -1660,7 +1672,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateCapacityManagerDataExport": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -1726,7 +1740,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateCapacityReservation": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -1792,7 +1808,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateCapacityReservationCancellationQuote": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -1817,7 +1835,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateCapacityReservationFleet": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -1883,7 +1902,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateCarrierGateway": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -1949,7 +1970,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateClientVpnEndpoint": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -2015,7 +2038,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateCoipPool": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -2081,7 +2106,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateCustomerGateway": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -2147,7 +2174,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateDelegateMacVolumeOwnershipTask": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -2213,7 +2242,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateDhcpOptions": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -2279,7 +2310,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateEgressOnlyInternetGateway": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -2345,7 +2378,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateFleet": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -2370,7 +2405,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateFlowLogs": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -2436,7 +2472,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateFpgaImage": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -2502,7 +2540,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateImage": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -2568,7 +2608,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateImageUsageReport": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -2593,7 +2635,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateInstance*": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -2659,7 +2702,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateInternetGateway": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -2725,7 +2770,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateInterruptibleCapacityReservationAllocation": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -2791,7 +2838,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateIpam": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -2816,7 +2865,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateIpamExternalResourceVerificationToken": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -2882,7 +2932,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateIpamInternetRegistryAssociation": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -2948,7 +3000,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateIpamPolicy": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -3014,7 +3068,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateIpamPool": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -3039,7 +3095,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateIpamPrefixListResolver": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -3105,7 +3162,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateIpamPrefixListResolverTarget": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -3130,7 +3189,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateIpamResourceDiscovery": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -3155,7 +3215,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateIpamScope": [
       "arn:aws:ec2:*:*:network-insights-path/*",
@@ -3164,7 +3225,8 @@
       "arn:aws:ec2:*:*:transit-gateway-attachment/*",
       "arn:aws:ec2:*:*:volume/*",
       "arn:aws:ec2::*:ipam-scope/*",
-      "arn:aws:elasticache:*:*:snapshot:*"
+      "arn:aws:elasticache:*:*:snapshot:*",
+      "arn:aws:wafv2:*:*:*/webacl/*/*"
     ],
     "ec2:CreateKeyPair": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -3230,7 +3292,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateLaunchTemplate": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -3296,7 +3360,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateLocalGatewayRouteTable": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -3321,7 +3387,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateLocalGatewayRouteTableVirtualInterfaceGroupAssociation": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -3387,7 +3454,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateLocalGatewayRouteTableVpcAssociation": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -3453,7 +3522,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateLocalGatewayVirtualInterface": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -3519,7 +3590,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateLocalGatewayVirtualInterfaceGroup": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -3544,7 +3617,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateMacSystemIntegrityProtectionModificationTask": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -3610,7 +3684,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateManagedPrefixList": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -3676,7 +3752,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateNatGateway": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -3701,7 +3779,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateNetworkAcl": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -3767,7 +3846,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateNetworkInsightsAccessScope": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -3833,7 +3914,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateNetworkInsightsPath": [
       "arn:aws:ec2:*:*:network-insights-path/*",
@@ -3842,7 +3925,8 @@
       "arn:aws:ec2:*:*:transit-gateway-attachment/*",
       "arn:aws:ec2:*:*:volume/*",
       "arn:aws:ec2::*:ipam-scope/*",
-      "arn:aws:elasticache:*:*:snapshot:*"
+      "arn:aws:elasticache:*:*:snapshot:*",
+      "arn:aws:wafv2:*:*:*/webacl/*/*"
     ],
     "ec2:CreatePlacementGroup": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -3908,7 +3992,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreatePublicIpv4Pool": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -3933,7 +4019,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateReplaceRootVolumeTask": [
       "arn:aws:ec2:*:*:network-insights-path/*",
@@ -3942,7 +4029,8 @@
       "arn:aws:ec2:*:*:transit-gateway-attachment/*",
       "arn:aws:ec2:*:*:volume/*",
       "arn:aws:ec2::*:ipam-scope/*",
-      "arn:aws:elasticache:*:*:snapshot:*"
+      "arn:aws:elasticache:*:*:snapshot:*",
+      "arn:aws:wafv2:*:*:*/webacl/*/*"
     ],
     "ec2:CreateRestoreImageTask": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -4008,7 +4096,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateRouteServer": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -4074,7 +4164,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateRouteServerEndpoint": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -4099,7 +4191,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateRouteServerPeer": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -4165,7 +4258,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateRouteTable": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -4231,7 +4326,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateSecondaryNetwork": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -4297,7 +4394,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateSecondarySubnet": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -4322,7 +4421,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateSecurityGroup": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -4347,7 +4447,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateSnapshot*": [
       "arn:aws:ec2:*:*:transit-gateway-route-table-announcement/*",
@@ -4362,7 +4463,8 @@
       "arn:aws:ec2:*:*:transit-gateway-attachment/*",
       "arn:aws:ec2:*:*:volume/*",
       "arn:aws:ec2::*:ipam-scope/*",
-      "arn:aws:elasticache:*:*:snapshot:*"
+      "arn:aws:elasticache:*:*:snapshot:*",
+      "arn:aws:wafv2:*:*:*/webacl/*/*"
     ],
     "ec2:CreateTrafficMirrorFilter": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -4428,7 +4530,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateTrafficMirrorSession": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -4453,7 +4557,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateTrafficMirrorTarget": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -4519,7 +4624,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateTransitGateway": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -4544,7 +4651,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateTransitGatewayConnect": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -4569,7 +4677,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateTransitGatewayConnectPeer": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -4635,7 +4744,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateTransitGatewayMeteringPolicy": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -4701,7 +4812,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateTransitGatewayMulticastDomain": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -4767,7 +4880,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateTransitGatewayPeeringAttachment": [
       "arn:aws:ec2:*:*:network-insights-path/*",
@@ -4776,7 +4891,8 @@
       "arn:aws:ec2:*:*:transit-gateway-attachment/*",
       "arn:aws:ec2:*:*:volume/*",
       "arn:aws:ec2::*:ipam-scope/*",
-      "arn:aws:elasticache:*:*:snapshot:*"
+      "arn:aws:elasticache:*:*:snapshot:*",
+      "arn:aws:wafv2:*:*:*/webacl/*/*"
     ],
     "ec2:CreateTransitGatewayPolicyTable": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -4842,7 +4958,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateTransitGatewayRouteTable": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -4908,7 +5026,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateTransitGatewayRouteTableAnnouncement": [
       "arn:aws:ec2:*:*:transit-gateway-route-table-announcement/*",
@@ -4986,7 +5106,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateVerifiedAccessGroup": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -5011,7 +5133,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateVerifiedAccessInstance": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -5077,7 +5200,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateVerifiedAccessTrustProvider": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -5143,7 +5268,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateVolume": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -5168,7 +5295,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:CreateVpc": [
       "arn:aws:ec2:*:*:transit-gateway-route-table-announcement/*",
@@ -5240,7 +5368,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateVpcEncryptionControl": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -5306,7 +5436,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateVpcEndpoint": [
       "arn:aws:ec2:*:*:import-image-task/*",
@@ -5378,7 +5510,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateVpcPeeringConnection": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -5444,7 +5578,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateVpnConcentrator": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -5510,7 +5646,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:CreateVpnConnection": [
       "arn:aws:ec2:*:*:transit-gateway-route-table-announcement/*",
@@ -5582,7 +5720,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:ExportImage": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -5607,7 +5747,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:ImportImage": [
       "arn:aws:ec2:*:*:import-image-task/*",
@@ -5679,7 +5820,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:ImportSnapshot": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -5745,7 +5888,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:PurchaseCapacityBlock": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -5811,7 +5956,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "ec2:RegisterImage": [
       "arn:aws:ec2:*:*:import-image-task/*",
@@ -5850,7 +5997,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "ec2:StartNetworkInsightsAnalysis": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -5916,7 +6064,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "elasticache:CreateCacheCluster": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -5982,7 +6132,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "elasticache:CreateGlobalReplicationGroup": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -6048,7 +6200,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "elasticache:CreateReplicationGroup": [
       "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
@@ -6073,7 +6227,8 @@
       "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
       "arn:aws:ec2::*:ipam-resource-discovery/*",
       "arn:aws:ec2::*:ipam/*",
-      "arn:aws:elasticache:*:*:replicationgroup:*"
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
     ],
     "elasticache:CreateSnapshot": [
       "arn:aws:ec2:*:*:network-insights-path/*",
@@ -6082,7 +6237,8 @@
       "arn:aws:ec2:*:*:transit-gateway-attachment/*",
       "arn:aws:ec2:*:*:volume/*",
       "arn:aws:ec2::*:ipam-scope/*",
-      "arn:aws:elasticache:*:*:snapshot:*"
+      "arn:aws:elasticache:*:*:snapshot:*",
+      "arn:aws:wafv2:*:*:*/webacl/*/*"
     ],
     "elasticache:CreateUserGroup": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -6148,7 +6304,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "kinesis:CreateStream": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -6214,7 +6372,9 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
     ],
     "kinesis:RegisterStreamConsumer": [
       "arn:aws:ec2:*:*:application-status-check/*",
@@ -6280,7 +6440,181 @@
       "arn:aws:elasticache:*:*:cluster:*",
       "arn:aws:elasticache:*:*:usergroup:*",
       "arn:aws:elasticache::*:globalreplicationgroup:*",
-      "arn:aws:kinesis:*:*:stream/*"
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
+    ],
+    "wafv2:CreateIPSet": [
+      "arn:aws:ec2:*:*:application-status-check/*",
+      "arn:aws:ec2:*:*:capacity-manager-data-export/*",
+      "arn:aws:ec2:*:*:capacity-reservation-fleet/*",
+      "arn:aws:ec2:*:*:capacity-reservation/*",
+      "arn:aws:ec2:*:*:carrier-gateway/*",
+      "arn:aws:ec2:*:*:client-vpn-endpoint/*",
+      "arn:aws:ec2:*:*:coip-pool/*",
+      "arn:aws:ec2:*:*:customer-gateway/*",
+      "arn:aws:ec2:*:*:dedicated-host/*",
+      "arn:aws:ec2:*:*:dhcp-options/*",
+      "arn:aws:ec2:*:*:egress-only-internet-gateway/*",
+      "arn:aws:ec2:*:*:elastic-ip/*",
+      "arn:aws:ec2:*:*:export-instance-task/*",
+      "arn:aws:ec2:*:*:fpga-image/*",
+      "arn:aws:ec2:*:*:import-snapshot-task/*",
+      "arn:aws:ec2:*:*:instance-connect-endpoint/*",
+      "arn:aws:ec2:*:*:instance-event-window/*",
+      "arn:aws:ec2:*:*:internet-gateway/*",
+      "arn:aws:ec2:*:*:ipam-pool-allocation/*",
+      "arn:aws:ec2:*:*:key-pair/*",
+      "arn:aws:ec2:*:*:launch-template/*",
+      "arn:aws:ec2:*:*:local-gateway-route-table-virtual-interface-group-association/*",
+      "arn:aws:ec2:*:*:local-gateway-route-table-vpc-association/*",
+      "arn:aws:ec2:*:*:local-gateway-virtual-interface/*",
+      "arn:aws:ec2:*:*:mac-modification-task/*",
+      "arn:aws:ec2:*:*:network-acl/*",
+      "arn:aws:ec2:*:*:network-insights-access-scope/*",
+      "arn:aws:ec2:*:*:network-insights-analysis/*",
+      "arn:aws:ec2:*:*:placement-group/*",
+      "arn:aws:ec2:*:*:prefix-list/*",
+      "arn:aws:ec2:*:*:route-server-peer/*",
+      "arn:aws:ec2:*:*:route-server/*",
+      "arn:aws:ec2:*:*:route-table/*",
+      "arn:aws:ec2:*:*:secondary-network/*",
+      "arn:aws:ec2:*:*:security-group-rule/*",
+      "arn:aws:ec2:*:*:traffic-mirror-filter/*",
+      "arn:aws:ec2:*:*:traffic-mirror-target/*",
+      "arn:aws:ec2:*:*:transit-gateway-connect-peer/*",
+      "arn:aws:ec2:*:*:transit-gateway-metering-policy/*",
+      "arn:aws:ec2:*:*:transit-gateway-multicast-domain/*",
+      "arn:aws:ec2:*:*:transit-gateway-policy-table/*",
+      "arn:aws:ec2:*:*:transit-gateway-route-table/*",
+      "arn:aws:ec2:*:*:verified-access-endpoint/*",
+      "arn:aws:ec2:*:*:verified-access-instance/*",
+      "arn:aws:ec2:*:*:verified-access-trust-provider/*",
+      "arn:aws:ec2:*:*:volume/*",
+      "arn:aws:ec2:*:*:vpc-block-public-access-exclusion/*",
+      "arn:aws:ec2:*:*:vpc-encryption-control/*",
+      "arn:aws:ec2:*:*:vpc-endpoint-service/*",
+      "arn:aws:ec2:*:*:vpc-flow-log/*",
+      "arn:aws:ec2:*:*:vpc-peering-connection/*",
+      "arn:aws:ec2:*:*:vpn-concentrator/*",
+      "arn:aws:ec2:*:*:vpn-gateway/*",
+      "arn:aws:ec2:*::image/*",
+      "arn:aws:ec2:*::snapshot/*",
+      "arn:aws:ec2::*:ipam-external-resource-verification-token/*",
+      "arn:aws:ec2::*:ipam-internet-registry-association/*",
+      "arn:aws:ec2::*:ipam-policy/*",
+      "arn:aws:ec2::*:ipam-prefix-list-resolver/*",
+      "arn:aws:ec2::*:ipam-resource-discovery-association/*",
+      "arn:aws:elasticache:*:*:cluster:*",
+      "arn:aws:elasticache:*:*:usergroup:*",
+      "arn:aws:elasticache::*:globalreplicationgroup:*",
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
+    ],
+    "wafv2:CreateRegexPatternSet": [
+      "arn:aws:ec2:*:*:application-status-check/*",
+      "arn:aws:ec2:*:*:capacity-manager-data-export/*",
+      "arn:aws:ec2:*:*:capacity-reservation-fleet/*",
+      "arn:aws:ec2:*:*:capacity-reservation/*",
+      "arn:aws:ec2:*:*:carrier-gateway/*",
+      "arn:aws:ec2:*:*:client-vpn-endpoint/*",
+      "arn:aws:ec2:*:*:coip-pool/*",
+      "arn:aws:ec2:*:*:customer-gateway/*",
+      "arn:aws:ec2:*:*:dedicated-host/*",
+      "arn:aws:ec2:*:*:dhcp-options/*",
+      "arn:aws:ec2:*:*:egress-only-internet-gateway/*",
+      "arn:aws:ec2:*:*:elastic-ip/*",
+      "arn:aws:ec2:*:*:export-instance-task/*",
+      "arn:aws:ec2:*:*:fpga-image/*",
+      "arn:aws:ec2:*:*:import-snapshot-task/*",
+      "arn:aws:ec2:*:*:instance-connect-endpoint/*",
+      "arn:aws:ec2:*:*:instance-event-window/*",
+      "arn:aws:ec2:*:*:internet-gateway/*",
+      "arn:aws:ec2:*:*:ipam-pool-allocation/*",
+      "arn:aws:ec2:*:*:key-pair/*",
+      "arn:aws:ec2:*:*:launch-template/*",
+      "arn:aws:ec2:*:*:local-gateway-route-table-virtual-interface-group-association/*",
+      "arn:aws:ec2:*:*:local-gateway-route-table-vpc-association/*",
+      "arn:aws:ec2:*:*:local-gateway-virtual-interface/*",
+      "arn:aws:ec2:*:*:mac-modification-task/*",
+      "arn:aws:ec2:*:*:network-acl/*",
+      "arn:aws:ec2:*:*:network-insights-access-scope/*",
+      "arn:aws:ec2:*:*:network-insights-analysis/*",
+      "arn:aws:ec2:*:*:placement-group/*",
+      "arn:aws:ec2:*:*:prefix-list/*",
+      "arn:aws:ec2:*:*:route-server-peer/*",
+      "arn:aws:ec2:*:*:route-server/*",
+      "arn:aws:ec2:*:*:route-table/*",
+      "arn:aws:ec2:*:*:secondary-network/*",
+      "arn:aws:ec2:*:*:security-group-rule/*",
+      "arn:aws:ec2:*:*:traffic-mirror-filter/*",
+      "arn:aws:ec2:*:*:traffic-mirror-target/*",
+      "arn:aws:ec2:*:*:transit-gateway-connect-peer/*",
+      "arn:aws:ec2:*:*:transit-gateway-metering-policy/*",
+      "arn:aws:ec2:*:*:transit-gateway-multicast-domain/*",
+      "arn:aws:ec2:*:*:transit-gateway-policy-table/*",
+      "arn:aws:ec2:*:*:transit-gateway-route-table/*",
+      "arn:aws:ec2:*:*:verified-access-endpoint/*",
+      "arn:aws:ec2:*:*:verified-access-instance/*",
+      "arn:aws:ec2:*:*:verified-access-trust-provider/*",
+      "arn:aws:ec2:*:*:volume/*",
+      "arn:aws:ec2:*:*:vpc-block-public-access-exclusion/*",
+      "arn:aws:ec2:*:*:vpc-encryption-control/*",
+      "arn:aws:ec2:*:*:vpc-endpoint-service/*",
+      "arn:aws:ec2:*:*:vpc-flow-log/*",
+      "arn:aws:ec2:*:*:vpc-peering-connection/*",
+      "arn:aws:ec2:*:*:vpn-concentrator/*",
+      "arn:aws:ec2:*:*:vpn-gateway/*",
+      "arn:aws:ec2:*::image/*",
+      "arn:aws:ec2:*::snapshot/*",
+      "arn:aws:ec2::*:ipam-external-resource-verification-token/*",
+      "arn:aws:ec2::*:ipam-internet-registry-association/*",
+      "arn:aws:ec2::*:ipam-policy/*",
+      "arn:aws:ec2::*:ipam-prefix-list-resolver/*",
+      "arn:aws:ec2::*:ipam-resource-discovery-association/*",
+      "arn:aws:elasticache:*:*:cluster:*",
+      "arn:aws:elasticache:*:*:usergroup:*",
+      "arn:aws:elasticache::*:globalreplicationgroup:*",
+      "arn:aws:kinesis:*:*:stream/*",
+      "arn:aws:wafv2:*:*:*/ipset/*/*",
+      "arn:aws:wafv2:*:*:*/regexpatternset/*/*"
+    ],
+    "wafv2:CreateRuleGroup": [
+      "arn:aws:ec2:*:*:capacity-reservation-cancellation-quote/*",
+      "arn:aws:ec2:*:*:export-image-task/*",
+      "arn:aws:ec2:*:*:fleet/*",
+      "arn:aws:ec2:*:*:image-usage-report/*",
+      "arn:aws:ec2:*:*:instance/*",
+      "arn:aws:ec2:*:*:ipv4pool-ec2/*",
+      "arn:aws:ec2:*:*:local-gateway-route-table/*",
+      "arn:aws:ec2:*:*:local-gateway-virtual-interface-group/*",
+      "arn:aws:ec2:*:*:natgateway/*",
+      "arn:aws:ec2:*:*:network-insights-access-scope-analysis/*",
+      "arn:aws:ec2:*:*:route-server-endpoint/*",
+      "arn:aws:ec2:*:*:secondary-subnet/*",
+      "arn:aws:ec2:*:*:security-group/*",
+      "arn:aws:ec2:*:*:traffic-mirror-session/*",
+      "arn:aws:ec2:*:*:transit-gateway-attachment/*",
+      "arn:aws:ec2:*:*:transit-gateway/*",
+      "arn:aws:ec2:*:*:verified-access-group/*",
+      "arn:aws:ec2:*:*:volume/*",
+      "arn:aws:ec2::*:ipam-pool/*",
+      "arn:aws:ec2::*:ipam-prefix-list-resolver-target/*",
+      "arn:aws:ec2::*:ipam-resource-discovery/*",
+      "arn:aws:ec2::*:ipam/*",
+      "arn:aws:elasticache:*:*:replicationgroup:*",
+      "arn:aws:wafv2:*:*:*/rulegroup/*/*"
+    ],
+    "wafv2:CreateWebACL": [
+      "arn:aws:ec2:*:*:network-insights-path/*",
+      "arn:aws:ec2:*:*:replace-root-volume-task/*",
+      "arn:aws:ec2:*:*:subnet/*",
+      "arn:aws:ec2:*:*:transit-gateway-attachment/*",
+      "arn:aws:ec2:*:*:volume/*",
+      "arn:aws:ec2::*:ipam-scope/*",
+      "arn:aws:elasticache:*:*:snapshot:*",
+      "arn:aws:wafv2:*:*:*/webacl/*/*"
     ]
   },
   "untag": [
