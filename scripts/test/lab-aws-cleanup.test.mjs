@@ -1192,6 +1192,22 @@ test("Review Focus 4: Global Accelerator is disabled, waited for, emptied and de
   w.cleanup();
 });
 
+test("final fix F11: an inter-region peering listed in both regions is deleted once; the second region finds it deleting and skips it", { skip }, () => {
+  const pcx = (r) => ARNR(r, "ec2", "vpc-peering-connection/pcx-0a");
+  const st = (code) => JSON.stringify({ VpcPeeringConnections: [{ Status: { Code: code } }] });
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources .*--region eu-west-2", out: tagged(pcx("eu-west-2")) },
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources .*--region eu-west-1", out: tagged(pcx("eu-west-1")) },
+    { cmd: "aws", match: "^ec2 describe-vpc-peering-connections --vpc-peering-connection-ids pcx-0a", out: [st("active"), st("deleting"), st("deleted")] },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["ans-29-multi-region"], { ...ENV, LAB_REGIONS: "eu-west-2 eu-west-1" });
+  assert.equal(r.status, 0, r.out);
+  assert.deepEqual(calls3(w, /^aws ec2 delete-vpc-peering-connection/).map((c) => c.replace(/ --region \S+$/, "")), ["aws ec2 delete-vpc-peering-connection --vpc-peering-connection-id pcx-0a"]);
+  assert.doesNotMatch(r.out, /could not delete ec2:vpc-peering-connection/);
+  w.cleanup();
+});
+
 test("ruling P10 (M-4): a CloudFront disable that failed is retried on the next pass", { skip }, () => {
   const w = world([
     { cmd: "aws", match: "^resourcegroupstaggingapi get-resources .*--region us-east-1", out: tagged("arn:aws:cloudfront::123456789012:distribution/E1ABC") },

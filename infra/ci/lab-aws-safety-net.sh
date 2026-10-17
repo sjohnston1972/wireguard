@@ -1263,7 +1263,13 @@ del_instance() { vpc_ok "$1" && wr "$1" "terminate $(label "$1")" ec2 terminate-
 del_lt() { wr "$1" "delete $(label "$1")" ec2 delete-launch-template --launch-template-id "${C_I[$1]}"; }
 del_nat() { vpc_ok "$1" && wr "$1" "delete $(label "$1")" ec2 delete-nat-gateway --nat-gateway-id "${C_I[$1]}"; }
 del_eip() { wr "$1" "release $(label "$1")" ec2 release-address --allocation-id "${C_I[$1]}"; }
-del_pcx() { wr "$1" "delete $(label "$1")" ec2 delete-vpc-peering-connection --vpc-peering-connection-id "${C_I[$1]}"; }
+# Final fix F11: an inter-region peering is listed in both its regions; the second finds it deleting (or deleted) and
+# leaves it, so AWS is not asked twice.
+del_pcx() {
+  before_delete "$1" .Status.Code
+  case $? in 1 | 2) return 1 ;; esac
+  wr "$1" "delete $(label "$1")" ec2 delete-vpc-peering-connection --vpc-peering-connection-id "${C_I[$1]}"
+}
 del_vpce() { vpc_ok "$1" && wr "$1" "delete $(label "$1")" ec2 delete-vpc-endpoints --vpc-endpoint-ids "${C_I[$1]}"; }
 # One Terraform already deleted (the tagging API still lists it) is not asked again: AWS refuses that.
 del_eice() {
