@@ -163,7 +163,7 @@ const AWS: Partial<Record<TopoKind, { icon: string; types: string[]; tf: string[
   loadBalancer: { icon: "load-balancer", types: ["elasticloadbalancing:loadbalancer"], tf: ["aws_lb", "aws_alb"] },
   nsg: { icon: "security-group", types: ["ec2:security-group"], tf: ["aws_security_group"] },
   routeTable: { icon: "route-table", types: ["ec2:route-table"], tf: ["aws_route_table"] },
-  internetGateway: { icon: "internet-gateway", types: ["ec2:internet-gateway"], tf: ["aws_internet_gateway"] },
+  internetGateway: { icon: "internet-gateway", types: ["ec2:internet-gateway", "ec2:egress-only-internet-gateway"], tf: ["aws_internet_gateway", "aws_egress_only_internet_gateway"] },
   natGateway: { icon: "nat-gateway", types: ["ec2:natgateway"], tf: ["aws_nat_gateway"] },
   publicIp: { icon: "elastic-ip", types: ["ec2:elastic-ip"], tf: ["aws_eip"] },
   privateEndpoint: { icon: "vpc-endpoint", types: ["ec2:vpc-endpoint"], tf: ["aws_vpc_endpoint"] },

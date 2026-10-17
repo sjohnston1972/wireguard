@@ -557,3 +557,90 @@ describe("batch 3's types on the diagrams", () => {
     expect(kindOfAws("eks:nodegroup")).toBe("aks");
   });
 });
+
+describe("batch 4's types on the diagrams", () => {
+  const b4 = (labId: string, changes: ReturnType<typeof ch>[], refs: Record<string, Record<string, string[]>>) => plannedGraph({ labId, version: 1, number: labId.slice(4, 6), changes: [ch("aws_resourcegroups_group.lab", { name: `lab-${labId}` }), ...changes], outputs: {}, refs } as never);
+  const kindOf = (g: { nodes: { key: string; kind: string }[] }, k: string) => g.nodes.find((n) => n.key === k)?.kind;
+  const edge = (g: { nodes: { key: string; id: string }[]; edges: { from: string; to: string; label?: string }[] }, a: string, b: string, label: string) => {
+    const nid = (k: string) => g.nodes.find((n) => n.key === k)?.id;
+    return g.edges.some((e) => e.from === nid(a) && e.to === nid(b) && e.label === label);
+  };
+
+  it("a transit gateway draws an edge per attachment; its route tables, associations and routes fold in; a peering joins two TGWs", () => {
+    const g = b4("ans-29-multi-region", [
+      ch("aws_vpc.lab", { tags: { Name: "vpc-lab" } }),
+      ch("aws_ec2_transit_gateway.london", { tags: { Name: "tgw-london" } }),
+      ch("aws_ec2_transit_gateway.ireland", { tags: { Name: "tgw-ireland" } }),
+      ch("aws_ec2_transit_gateway_vpc_attachment.london", { tags: { Name: "tgwa-london" } }),
+      ch("aws_ec2_transit_gateway_peering_attachment.li", { tags: { Name: "tgwp-london-ireland" } }),
+      ch("aws_ec2_transit_gateway_route.l2i", { destination_cidr_block: "10.64.16.0/20" }),
+    ], {
+      "aws_ec2_transit_gateway_vpc_attachment.london": { transit_gateway_id: ["aws_ec2_transit_gateway.london"], vpc_id: ["aws_vpc.lab"] },
+      "aws_ec2_transit_gateway_peering_attachment.li": { transit_gateway_id: ["aws_ec2_transit_gateway.london"], peer_transit_gateway_id: ["aws_ec2_transit_gateway.ireland"] },
+      "aws_ec2_transit_gateway_route.l2i": { transit_gateway_attachment_id: ["aws_ec2_transit_gateway_peering_attachment.li"] },
+    });
+    expect(kindOf(g, "ec2:transit-gateway/tgw-london")).toBe("transitGateway");
+    expect(edge(g, "ec2:transit-gateway/tgw-london", "ec2:vpc/vpc-lab", "attachment")).toBe(true);
+    expect(edge(g, "ec2:transit-gateway/tgw-london", "ec2:transit-gateway/tgw-ireland", "inter-region peering")).toBe(true);
+    expect(g.nodes.some((n) => /attachment|route/.test(n.key))).toBe(false);
+  });
+
+  it("DNS Firewall: a domain list folds into the rule that uses it, and the rule into its group", () => {
+    const g = b4("ans-23-hybrid-dns", [
+      ch("aws_route53_resolver_firewall_rule_group.lab", { name: "lab-ans-23-hybrid-dns-dnsfw", tags: { Name: "dnsfw-lab" } }),
+      ch("aws_route53_resolver_firewall_domain_list.blocked", { name: "lab-ans-23-hybrid-dns-blocked", tags: { Name: "dnsfw-blocked" } }),
+      ch("aws_route53_resolver_firewall_rule.block", { name: "block" }),
+    ], { "aws_route53_resolver_firewall_rule.block": { firewall_rule_group_id: ["aws_route53_resolver_firewall_rule_group.lab"], firewall_domain_list_id: ["aws_route53_resolver_firewall_domain_list.blocked"] } });
+    expect(kindOf(g, "route53resolver:firewall-rule-group/dnsfw-lab")).toBe("generic");
+    expect(g.nodes.some((n) => /domain-list|dnsfw-blocked|firewall-rule\//.test(n.key))).toBe(false);
+  });
+
+  it("VPN: the gateway and customer gateway joined by the connection; Client VPN and Resolver kinds; certificates hidden", () => {
+    const g = b4("ans-22-s2s-vpn", [
+      ch("aws_vpn_gateway.lab", { tags: { Name: "vgw-lab" } }),
+      ch("aws_customer_gateway.onprem", { tags: { Name: "cgw-onprem" } }),
+      ch("aws_vpn_connection.lab", { tags: { Name: "vpn-lab" } }),
+      ch("aws_ec2_client_vpn_endpoint.lab", { tags: { Name: "cvpn-lab" } }),
+      ch("aws_route53_resolver_endpoint.in", { direction: "INBOUND", tags: { Name: "rslvr-in" } }),
+      ch("tls_private_key.ca", {}),
+      ch("aws_acm_certificate.server", { tags: { Name: "cert-cvpn-server" } }),
+    ], { "aws_vpn_connection.lab": { vpn_gateway_id: ["aws_vpn_gateway.lab"], customer_gateway_id: ["aws_customer_gateway.onprem"] } });
+    expect([kindOf(g, "ec2:vpn-gateway/vgw-lab"), kindOf(g, "ec2:customer-gateway/cgw-onprem"), kindOf(g, "ec2:client-vpn-endpoint/cvpn-lab"), kindOf(g, "route53resolver:resolver-endpoint/rslvr-in"), kindOf(g, "acm:certificate/cert-cvpn-server")]).toEqual(["vpnGateway", "localNetworkGateway", "clientVpn", "dnsResolver", "generic"]);
+    expect(edge(g, "ec2:vpn-gateway/vgw-lab", "ec2:customer-gateway/cgw-onprem", "IPsec, BGP")).toBe(true);
+    expect(g.nodes.some((n) => n.key.startsWith("tls"))).toBe(false);
+  });
+
+  it("the edge: the accelerator's endpoint groups draw edges to their NLBs; the ACL protects the distribution; Lattice joins VPC, network and services", () => {
+    const g = b4("ans-26-edge", [
+      ch("aws_lb.london", { load_balancer_type: "network", tags: { Name: "nlb-ldn" } }),
+      ch("aws_globalaccelerator_accelerator.lab", { tags: { Name: "ga-lab" } }),
+      ch("aws_globalaccelerator_listener.http", {}),
+      ch("aws_globalaccelerator_endpoint_group.ldn", { endpoint_group_region: "eu-west-2" }),
+      ch("aws_cloudfront_distribution.lab", { tags: { Name: "cdn-lab" } }),
+      ch("aws_wafv2_web_acl.lab", { tags: { Name: "waf-lab" } }),
+    ], {
+      "aws_globalaccelerator_listener.http": { accelerator_arn: ["aws_globalaccelerator_accelerator.lab"] },
+      "aws_globalaccelerator_endpoint_group.ldn": { listener_arn: ["aws_globalaccelerator_listener.http"], endpoint_configuration: ["aws_lb.london"] },
+      "aws_cloudfront_distribution.lab": { web_acl_id: ["aws_wafv2_web_acl.lab"] },
+    });
+    expect([kindOf(g, "globalaccelerator:accelerator/ga-lab"), kindOf(g, "wafv2:global/webacl/waf-lab")]).toEqual(["trafficManager", "wafPolicy"]);
+    expect(edge(g, "globalaccelerator:accelerator/ga-lab", "elasticloadbalancing:loadbalancer/nlb-ldn", "eu-west-2")).toBe(true);
+    expect(edge(g, "wafv2:global/webacl/waf-lab", "cloudfront:distribution/cdn-lab", "protects")).toBe(true);
+  });
+
+  it("ruling P22: live, Lattice listeners, target groups and associations and TGW route tables are left out; WAF's ARN is a wafPolicy", () => {
+    const row = (type: string, id: string, region = "eu-west-2", tags: Record<string, string> = {}): AwsRow => ({ arn: `arn:aws:${type.split(":")[0]}:${region}:123456789012:${type.split(":")[1]}/${id}`, type, id, region, name: tags.Name ?? null, tags: { "cloudlabs-lab": "ans-30-vpc-lattice", ...tags }, props: {}, refs: {} });
+    const g = awsLiveGraph([
+      row("resource-groups:group", "lab-ans-30-vpc-lattice", "eu-west-2", { Name: "lab-ans-30-vpc-lattice" }),
+      row("vpc-lattice:service", "svc-0a", "eu-west-2", { Name: "svc-a" }),
+      row("vpc-lattice:listener", "svc-0a/listener/l-1"),
+      row("vpc-lattice:targetgroup", "tg-1"),
+      row("vpc-lattice:servicenetworkvpcassociation", "snva-1"),
+      row("ec2:transit-gateway-route-table", "tgw-rtb-1"),
+    ], { labId: "ans-30-vpc-lattice", version: 1, gatewayVpcIds: [], at: "2026-10-17T00:00:00Z", region: "eu-west-2", secondaryRegion: null });
+    const keys = g.nodes.map((n) => n.key);
+    expect(keys.filter((k) => /listener|targetgroup|association|transit-gateway-route-table/.test(k))).toEqual([]);
+    expect(kindOfAws("wafv2:global/webacl")).toBe("wafPolicy");
+    expect(kindOfAws("ec2:egress-only-internet-gateway")).toBe("internetGateway");
+  });
+});

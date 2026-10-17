@@ -41,6 +41,8 @@ export function awsNameOf(i: TfInst): string {
 const into = (...attrs: string[]): TfRule => ({ fold: attrs });
 /** A rule folding into the first instance of these types that references it. */
 const intoReferrer = (...types: string[]): TfRule => ({ foldToReferrer: { types } });
+/** Folds into the first of these attributes that refers to something drawn. */
+const intoAny = (attrs: string[]): TfRule => ({ fold: attrs });
 /** Same rule for several Terraform types. */
 const each = (types: string[], rule: TfRule): Record<string, TfRule> => Object.fromEntries(types.map((t) => [t, rule]));
 
@@ -75,7 +77,7 @@ const S3_PIECES = [
 
 export const AWS_TF_RULES: Record<string, TfRule> = {
   // Not AWS resources: helpers a lab may use beside the aws provider.
-  ...each(["tls_private_key", "tls_self_signed_cert", "tls_cert_request", "archive_file", "random_password"], { ignore: true }),
+  ...each(["tls_private_key", "tls_self_signed_cert", "tls_cert_request", "archive_file", "random_password", "tls_locally_signed_cert"], { ignore: true }),
 
   // ── Groups ──
   aws_resourcegroups_group: { arm: "resource-groups:group" },
@@ -277,6 +279,98 @@ export const AWS_TF_RULES: Record<string, TfRule> = {
   aws_athena_workgroup: { arm: "athena:workgroup" },
   aws_eks_cluster: { arm: "eks:cluster" },
   aws_eks_node_group: { arm: "eks:nodegroup", props: (i) => ({ size: str(list(i.after.instance_types)[0]), instances: num(obj(list(i.after.scaling_config)[0]).desired_size) }) },
+
+  // ── Batch 4 (labs 20–31; ruling P22) ──
+  aws_vpc_ipam: { arm: "ec2:ipam" },
+  aws_vpc_ipam_pool: into("ipam_scope_id"),
+  aws_vpc_ipam_pool_cidr: into("ipam_pool_id"),
+  ...each(["aws_vpc_ipv6_cidr_block_association", "aws_vpc_ipv4_cidr_block_association"], into("vpc_id")),
+  aws_egress_only_internet_gateway: { arm: "ec2:egress-only-internet-gateway" },
+  aws_ec2_managed_prefix_list: { arm: "ec2:prefix-list" },
+  aws_ec2_transit_gateway_peering_attachment: {
+    fold: ["transit_gateway_id"],
+    edges: (i, h) => {
+      const a = h.refs(i, ["transit_gateway_id"])[0];
+      const b = h.refs(i, ["peer_transit_gateway_id"])[0];
+      return a && b ? [{ from: a, to: b, kind: "traffic" as const, label: "inter-region peering" }] : [];
+    },
+  },
+  ...each(["aws_ec2_transit_gateway_route_table", "aws_ec2_transit_gateway_route_table_association", "aws_ec2_transit_gateway_route_table_propagation", "aws_ec2_transit_gateway_route", "aws_ec2_transit_gateway_peering_attachment_accepter"], intoAny(["transit_gateway_id", "transit_gateway_route_table_id", "transit_gateway_attachment_id"])),
+  aws_vpn_gateway: { arm: "ec2:vpn-gateway" },
+  aws_customer_gateway: { arm: "ec2:customer-gateway" },
+  aws_vpn_connection: {
+    arm: "ec2:vpn-connection",
+    edges: (i, h) => {
+      const vgw = h.refs(i, ["vpn_gateway_id"])[0];
+      const cgw = h.refs(i, ["customer_gateway_id"])[0];
+      return vgw && cgw ? [{ from: vgw, to: cgw, kind: "traffic" as const, label: "IPsec, BGP" }] : [];
+    },
+  },
+  aws_vpn_gateway_route_propagation: into("vpn_gateway_id"),
+  aws_route53_resolver_endpoint: { arm: "route53resolver:resolver-endpoint", props: (i) => ({ sku: str(i.after.direction) }) },
+  aws_route53_resolver_rule: {
+    arm: "route53resolver:resolver-rule",
+    edges: (i, h) => h.refs(i, ["resolver_endpoint_id"]).map((e) => ({ from: e, to: i, kind: "dependency" as const, label: "forwards" })),
+  },
+  ...each(["aws_route53_resolver_rule_association"], into("resolver_rule_id")),
+  aws_route53_resolver_firewall_rule_group: { arm: "route53resolver:firewall-rule-group" },
+  ...each(["aws_route53_resolver_firewall_rule", "aws_route53_resolver_firewall_rule_group_association"], into("firewall_rule_group_id")),
+  // A domain list names no group (it has no firewall_rule_group_id): it folds into the rule that uses it, which folds into its group.
+  aws_route53_resolver_firewall_domain_list: intoReferrer("aws_route53_resolver_firewall_rule"),
+  aws_route53_resolver_query_log_config: { arm: "route53resolver:resolver-query-log-config" },
+  aws_route53_resolver_query_log_config_association: into("resolver_query_log_config_id"),
+  aws_vpc_endpoint_service: {
+    arm: "ec2:vpc-endpoint-service",
+    edges: (i, h) => h.refs(i, ["network_load_balancer_arns", "gateway_load_balancer_arns"]).map((lb) => ({ from: i, to: lb, kind: "dependency" as const, label: "fronts" })),
+  },
+  aws_acm_certificate: { arm: "acm:certificate" },
+  aws_globalaccelerator_accelerator: { arm: "globalaccelerator:accelerator" },
+  aws_globalaccelerator_listener: into("accelerator_arn"),
+  aws_globalaccelerator_endpoint_group: {
+    fold: ["listener_arn"],
+    edges: (i, h) => {
+      const ga = h.refs(i, ["listener_arn"]).flatMap((l) => h.refs(l, ["accelerator_arn"]))[0];
+      return ga ? h.refs(i, ["endpoint_configuration"]).filter((t) => t.type === "aws_lb").map((lb) => ({ from: ga, to: lb, kind: "traffic" as const, label: str(i.after.endpoint_group_region) ?? "endpoint" })) : [];
+    },
+  },
+  aws_cloudfront_function: intoReferrer("aws_cloudfront_distribution"),
+  aws_wafv2_web_acl: { arm: "wafv2:global/webacl", edges: (i, h) => h.referrers(i, ["aws_cloudfront_distribution"], ["web_acl_id"]).map((d) => ({ from: i, to: d, kind: "dependency" as const, label: "protects" })) },
+  aws_networkfirewall_firewall: { arm: "network-firewall:firewall" },
+  aws_networkfirewall_firewall_policy: { arm: "network-firewall:firewall-policy", edges: (i, h) => h.referrers(i, ["aws_networkfirewall_firewall"], ["firewall_policy_arn"]).map((f) => ({ from: i, to: f, kind: "dependency" as const, label: "policy" })) },
+  ...each(["aws_networkfirewall_rule_group"], intoReferrer("aws_networkfirewall_firewall_policy")),
+  aws_networkfirewall_logging_configuration: into("firewall_arn"),
+  aws_ec2_traffic_mirror_target: { arm: "ec2:traffic-mirror-target", edges: (i, h) => h.refs(i, ["network_interface_id"]).map((vm) => ({ from: i, to: vm, kind: "dependency" as const, label: "mirror to" })) },
+  aws_ec2_traffic_mirror_filter: { arm: "ec2:traffic-mirror-filter" },
+  aws_ec2_traffic_mirror_filter_rule: into("traffic_mirror_filter_id"),
+  aws_glue_catalog_table: into("database_name"),
+  aws_vpc_peering_connection_accepter: into("vpc_peering_connection_id"),
+  aws_vpclattice_service_network: { arm: "vpc-lattice:servicenetwork" },
+  aws_vpclattice_service: { arm: "vpc-lattice:service" },
+  aws_vpclattice_service_network_service_association: {
+    fold: ["service_identifier"],
+    edges: (i, h) => {
+      const sn = h.refs(i, ["service_network_identifier"])[0];
+      const s = h.refs(i, ["service_identifier"])[0];
+      return sn && s ? [{ from: sn, to: s, kind: "dependency" as const, label: "service" }] : [];
+    },
+  },
+  aws_vpclattice_service_network_vpc_association: {
+    fold: ["service_network_identifier"],
+    edges: (i, h) => {
+      const sn = h.refs(i, ["service_network_identifier"])[0];
+      const vpc = h.refs(i, ["vpc_identifier"])[0];
+      return sn && vpc ? [{ from: vpc, to: sn, kind: "traffic" as const, label: "associated" }] : [];
+    },
+  },
+  aws_vpclattice_target_group: {
+    fold: ["config"],
+    edges: (i, h) => {
+      const svc = h.referrers(i, ["aws_vpclattice_listener"], ["default_action"]).flatMap((l) => h.refs(l, ["service_identifier"]))[0];
+      return svc ? h.referrers(i, ["aws_vpclattice_target_group_attachment"], ["target_group_identifier"]).flatMap((a) => h.refs(a, ["target"])).map((vm) => ({ from: svc, to: vm, kind: "traffic" as const, label: "HTTP" })) : [];
+    },
+  },
+  ...each(["aws_vpclattice_target_group_attachment", "aws_vpclattice_listener", "aws_vpclattice_auth_policy"], intoAny(["target_group_identifier", "service_identifier", "resource_identifier"])),
+  ...each(["aws_ec2_client_vpn_network_association", "aws_ec2_client_vpn_authorization_rule"], into("client_vpn_endpoint_id")),
 
   // ── Systems Manager and Config: generic cards; their pieces fold in (C9) ──
   aws_config_config_rule: { arm: "config:config-rule" },
