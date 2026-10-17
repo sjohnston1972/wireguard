@@ -20,7 +20,7 @@ lab-ans-31-client-vpn (London)
 
 ## Things to try
 
-- Connect: under **Show**, download `ans-31.ovpn`, import it into the AWS VPN Client (or OpenVPN GUI) and connect. Run the lab unpeered, or disconnect WireGuard first, so only one VPN carries the lab's range. Then `ssh labadmin@<vm-target>` (the session password) and open `http://<vm-target>` in your browser.
+- Connect: under **Show**, download `ans-31.ovpn`, import it into the AWS VPN Client (or OpenVPN GUI) and connect. Disconnect WireGuard first (always, if your WireGuard profile sends all traffic through the tunnel; WireGuard for Windows blocks other tunnels then), so only one VPN carries the lab's range. Then `ssh labadmin@<vm-target>` (the session password) and open `http://<vm-target>` in your browser.
 - Split tunnel: while connected, run `route print` (Windows) or `ip route` (Linux): only `vpc-lab`'s range points at the VPN; your internet traffic does not. WireGuard does the same with the server's `AllowedIPs` list in your profile.
 - Who vm-target sees: on `vm-target` run `ss -tn state established '( sport = :22 )'`. Your SSH session comes from an address in `snet-private-1`, the endpoint's own interface, not from your client address in the /22: Client VPN hands your traffic on from its own addresses, which is why `sg-target` admits `sg-cvpn` rather than the client range.
 - In the VPC console, Client VPN endpoints, `cvpn-lab`: the Connections tab shows your connection (each one bills by the hour). Revoke the authorisation rule (Authorization rules tab) and watch SSH stop while you stay connected; authorise `vpc-lab`'s range again for all users to put it back.

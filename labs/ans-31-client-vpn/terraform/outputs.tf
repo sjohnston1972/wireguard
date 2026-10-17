@@ -22,6 +22,7 @@ locals {
     "remote-cert-tls server",
     "cipher AES-256-GCM",
     "verb 3",
+    "reneg-sec 0",
     "<ca>",
     trimspace(tls_self_signed_cert.ca.cert_pem),
     "</ca>",

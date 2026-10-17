@@ -58,7 +58,7 @@ test("ans-31's files output (rulings A13, P2): sensitive, three files, a complet
   assert.match(o, /^\s*sensitive = true$/m);
   for (const k of ['"ans-31.ovpn" = local.ovpn', '"client.crt"  = tls_locally_signed_cert.client.cert_pem', '"client.key"  = tls_private_key.client.private_key_pem']) assert.ok(o.includes(k), k);
   const { files } = awsLab(ID);
-  for (const s of ['"client"', '"dev tun"', '"proto udp"', '"remote ${replace(aws_ec2_client_vpn_endpoint.lab.dns_name, "*.", "")} 443"', '"remote-random-hostname"', '"remote-cert-tls server"', '"cipher AES-256-GCM"', '"<ca>"', '"<cert>"', '"<key>"', "trimspace(tls_private_key.client.private_key_pem)"]) assert.ok(files["outputs.tf"].includes(s), s);
+  for (const s of ['"client"', '"dev tun"', '"proto udp"', '"remote ${replace(aws_ec2_client_vpn_endpoint.lab.dns_name, "*.", "")} 443"', '"remote-random-hostname"', '"remote-cert-tls server"', '"cipher AES-256-GCM"', '"reneg-sec 0"', '"<ca>"', '"<cert>"', '"<key>"', "trimspace(tls_private_key.client.private_key_pem)"]) assert.ok(files["outputs.tf"].includes(s), s);
   assert.doesNotMatch(output("connect") + output("private_ips"), /private_key|cert_pem/, "no key or certificate outside the files output");
 });
 
