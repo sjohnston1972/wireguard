@@ -69,10 +69,12 @@ resource "aws_vpclattice_target_group" "a" {
     vpc_identifier = aws_vpc.lab.id
 
     health_check {
-      enabled  = true
-      protocol = "HTTP"
-      port     = 80
-      path     = "/"
+      enabled                       = true
+      protocol                      = "HTTP"
+      port                          = 80
+      path                          = "/"
+      health_check_interval_seconds = 10
+      healthy_threshold_count       = 2
     }
   }
   tags = { Name = "tg-a" }
@@ -88,10 +90,12 @@ resource "aws_vpclattice_target_group" "b" {
     vpc_identifier = aws_vpc.svc_b.id
 
     health_check {
-      enabled  = true
-      protocol = "HTTP"
-      port     = 80
-      path     = "/"
+      enabled                       = true
+      protocol                      = "HTTP"
+      port                          = 80
+      path                          = "/"
+      health_check_interval_seconds = 10
+      healthy_threshold_count       = 2
     }
   }
   tags = { Name = "tg-b" }

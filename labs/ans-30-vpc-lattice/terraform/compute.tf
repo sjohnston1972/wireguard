@@ -6,9 +6,10 @@
 # and has lattice-curl: curl signed with the instance's role credentials
 # (SigV4 for vpc-lattice-svcs, the payload unsigned, as Lattice requires).
 # vm-svc-a (vpc-lab) and vm-svc-b (vpc-svc-b) are the services' targets: they
-# admit HTTP only from VPC Lattice's own addresses (AWS's managed prefix
-# list), SSH from their VPC's Instance Connect Endpoint, and, once peered,
-# SSH and HTTP from the VPN server's VPC (ruling A45).
+# admit HTTP from VPC Lattice's own addresses (AWS's managed prefix list)
+# and SSH from their VPC's Instance Connect Endpoint; vm-svc-a, in vpc-lab, also
+# admits SSH and HTTP from the VPN server's VPC once vpc-lab is peered (ruling
+# A45). vpc-svc-b is never peered, so vm-svc-b has no gateway rules.
 
 locals {
   pages = {
@@ -95,7 +96,7 @@ resource "aws_vpc_security_group_egress_rule" "targets_a_all" {
 
 resource "aws_security_group" "targets_b" {
   name        = "lab-targets-b"
-  description = "vm-svc-b: HTTP from VPC Lattice, SSH from the Instance Connect Endpoint, SSH and HTTP from the gateway"
+  description = "vm-svc-b: HTTP from VPC Lattice, SSH from the Instance Connect Endpoint"
   vpc_id      = aws_vpc.svc_b.id
   tags        = { Name = "sg-targets-b" }
 }
@@ -114,22 +115,6 @@ resource "aws_vpc_security_group_ingress_rule" "targets_b_ssh_eice" {
   ip_protocol                  = "tcp"
   from_port                    = 22
   to_port                      = 22
-}
-
-resource "aws_vpc_security_group_ingress_rule" "targets_b_ssh_gateway" {
-  security_group_id = aws_security_group.targets_b.id
-  cidr_ipv4         = var.gateway_cidr
-  ip_protocol       = "tcp"
-  from_port         = 22
-  to_port           = 22
-}
-
-resource "aws_vpc_security_group_ingress_rule" "targets_b_http_gateway" {
-  security_group_id = aws_security_group.targets_b.id
-  cidr_ipv4         = var.gateway_cidr
-  ip_protocol       = "tcp"
-  from_port         = 80
-  to_port           = 80
 }
 
 resource "aws_vpc_security_group_egress_rule" "targets_b_all" {
@@ -163,7 +148,7 @@ resource "aws_instance" "client" {
 resource "aws_instance" "svc_a" {
   ami                    = data.aws_ssm_parameter.al2023_arm64.insecure_value
   instance_type          = "t4g.nano"
-  subnet_id              = aws_subnet.private[1].id
+  subnet_id              = aws_subnet.private[0].id
   vpc_security_group_ids = [aws_security_group.targets_a.id]
   user_data              = local.web_cloud_init["svc_a"]
 

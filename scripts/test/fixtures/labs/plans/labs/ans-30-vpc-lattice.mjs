@@ -42,17 +42,19 @@ export default () => {
     const sg = `aws_security_group.targets_${side}`;
     const tcp = (port) => ({ ip_protocol: "tcp", from_port: port, to_port: port });
     return [
-      { address: sg, values: tagged(c, { name: `lab-targets-${side}`, description: `vm-svc-${side}: HTTP from VPC Lattice, SSH from the Instance Connect Endpoint, SSH and HTTP from the gateway`, tags: { Name: `sg-targets-${side}` } }), unknown: ["vpc_id"], refs: { vpc_id: ref(vpc, "id") } },
+      { address: sg, values: tagged(c, { name: `lab-targets-${side}`, description: `vm-svc-${side}: HTTP from VPC Lattice, SSH from the Instance Connect Endpoint${side === "a" ? ", SSH and HTTP from the gateway" : ""}`, tags: { Name: `sg-targets-${side}` } }), unknown: ["vpc_id"], refs: { vpc_id: ref(vpc, "id") } },
       rule("ingress", `targets_${side}_lattice`, sg, { prefix_list_id: LIST, ...tcp(80) }, { prefix_list_id: ref("data.aws_ec2_managed_prefix_list.lattice", "id") }),
       rule("ingress", `targets_${side}_ssh_eice`, sg, tcp(22), { referenced_security_group_id: ref(eice, "id") }, ["referenced_security_group_id"]),
-      rule("ingress", `targets_${side}_ssh_gateway`, sg, { cidr_ipv4: GATEWAY_CIDR, ...tcp(22) }, { cidr_ipv4: ["var.gateway_cidr"] }),
-      rule("ingress", `targets_${side}_http_gateway`, sg, { cidr_ipv4: GATEWAY_CIDR, ...tcp(80) }, { cidr_ipv4: ["var.gateway_cidr"] }),
+      ...(side === "a" ? [
+        rule("ingress", "targets_a_ssh_gateway", sg, { cidr_ipv4: GATEWAY_CIDR, ...tcp(22) }, { cidr_ipv4: ["var.gateway_cidr"] }),
+        rule("ingress", "targets_a_http_gateway", sg, { cidr_ipv4: GATEWAY_CIDR, ...tcp(80) }, { cidr_ipv4: ["var.gateway_cidr"] }),
+      ] : []),
       rule("egress", `targets_${side}_all`, sg, { cidr_ipv4: "0.0.0.0/0", ip_protocol: "-1" }),
     ];
   };
   const targetGroup = (key, vpc) => ({
     address: `aws_vpclattice_target_group.${key}`,
-    values: tagged(c, { name: `lab-${id}-tg-${key}`, type: "INSTANCE", config: [{ port: 80, protocol: "HTTP", health_check: [{ enabled: true, protocol: "HTTP", port: 80, path: "/" }] }], tags: { Name: `tg-${key}` } }),
+    values: tagged(c, { name: `lab-${id}-tg-${key}`, type: "INSTANCE", config: [{ port: 80, protocol: "HTTP", health_check: [{ enabled: true, protocol: "HTTP", port: 80, path: "/", health_check_interval_seconds: 10, healthy_threshold_count: 2 }] }], tags: { Name: `tg-${key}` } }),
     unknown: ["config.0.vpc_identifier"],
     refs: { name: ["var.lab_id"], "config.0.vpc_identifier": ref(vpc, "id") },
   });
@@ -151,7 +153,7 @@ export default () => {
       ...targets("a", "aws_vpc.lab", "aws_security_group.eice"),
       ...targets("b", SB, "aws_security_group.eice_svc_b"),
       web(al2023Instance(c, { key: "client", name: "vm-client", type: "t4g.nano", profile: "aws_iam_instance_profile.client" }), "client"),
-      web(al2023Instance(c, { key: "svc_a", name: "vm-svc-a", type: "t4g.nano", subnet: "aws_subnet.private[1]", sgs: ["aws_security_group.targets_a"] }), "svc_a"),
+      web(al2023Instance(c, { key: "svc_a", name: "vm-svc-a", type: "t4g.nano", subnet: "aws_subnet.private[0]", sgs: ["aws_security_group.targets_a"] }), "svc_a"),
       web(al2023Instance(c, { key: "svc_b", name: "vm-svc-b", type: "t4g.nano", subnet: "aws_subnet.svc_b[0]", sgs: ["aws_security_group.targets_b"] }), "svc_b"),
     ],
   };

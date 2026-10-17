@@ -8,13 +8,13 @@ From the ANS-C01 outline: design service-to-service connectivity across VPCs wit
 - The service `svc-b` (`lab-ans-30-vpc-lattice-svc-b`): HTTP on port 80 to its target `vm-svc-b`, in a second VPC, `vpc-svc-b` (the slot's second /20), which has no peering and no route to `vpc-lab`
 - The client `vm-client` in `vpc-lab`, running as the role `lab-ans-30-vpc-lattice-client`, with `lattice-curl`, a small command that signs each request with that role
 - Auth policies: the network lets only the client role invoke anything; `svc-a` lets it make GET requests; `svc-b` has none, so it refuses everyone
-- The targets admit HTTP only from VPC Lattice's own addresses (AWS's managed prefix list `com.amazonaws.eu-west-2.vpc-lattice`)
+- The targets admit HTTP from VPC Lattice's prefix list (AWS's managed list `com.amazonaws.eu-west-2.vpc-lattice`); vm-svc-a also admits the VPN server's VPC once vpc-lab is peered
 
 ```text
 lab-ans-30-vpc-lattice (London)
   vm-client [role client] (vpc-lab) --signed GET--> sn-lab (auth: client role only) --> svc-a (auth: GET only) --> vm-svc-a (vpc-lab)
   vm-client --signed GET--> sn-lab --> svc-b (no auth policy: refused) --> vm-svc-b (vpc-svc-b)
-  vpc-lab and vpc-svc-b: no peering, no routes; targets admit only Lattice's prefix list
+  vpc-lab and vpc-svc-b: no peering, no routes; targets admit HTTP from Lattice's prefix list (vm-svc-a also from the VPN server's VPC once vpc-lab is peered)
   peering (optional, AWS server only) <--> VPN server's VPC <--> WireGuard tunnel <--> you
 ```
 

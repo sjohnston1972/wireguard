@@ -260,11 +260,6 @@
      "armType": null
     },
     {
-     "id": "tf:aws_vpc_security_group_ingress_rule.targets_b_http_gateway",
-     "label": "targets_b_http_gateway",
-     "armType": null
-    },
-    {
      "id": "tf:aws_vpc_security_group_ingress_rule.targets_b_lattice",
      "label": "targets_b_lattice",
      "armType": null
@@ -272,11 +267,6 @@
     {
      "id": "tf:aws_vpc_security_group_ingress_rule.targets_b_ssh_eice",
      "label": "targets_b_ssh_eice",
-     "armType": null
-    },
-    {
-     "id": "tf:aws_vpc_security_group_ingress_rule.targets_b_ssh_gateway",
-     "label": "targets_b_ssh_gateway",
      "armType": null
     }
    ],
