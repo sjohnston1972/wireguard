@@ -115,21 +115,35 @@ export async function dashboardNames(env: Env, net: Net, region: string): Promis
   return xmlAll(xml, "DashboardName");
 }
 
-/** The EC2 kinds the orphan sweep can confirm: the Describe call, the filter that names ids, and the states that mean gone. */
+/**
+ * The EC2 kinds the orphan sweep can confirm: the Describe call, the filter that names ids, where the answer lists
+ * each item (its set, its id field and its state field) and the states that mean gone. Batch 4's kinds are judged
+ * as Verify clean judges them (ruling P23): deleting / deleted (an IPAM: delete-in-progress / delete-complete) is no
+ * leftover. The tagging API lists these for hours after they are gone.
+ */
 const EC2_CONFIRM = {
-  instance: { action: "DescribeInstances", filter: "instance-id", gone: ["terminated", "shutting-down"] },
-  "vpc-endpoint": { action: "DescribeVpcEndpoints", filter: "vpc-endpoint-id", gone: ["deleted"] },
+  instance: { action: "DescribeInstances", filter: "instance-id", set: "", id: "instanceId", state: "instanceState.name", gone: ["terminated", "shutting-down"] },
+  "vpc-endpoint": { action: "DescribeVpcEndpoints", filter: "vpc-endpoint-id", set: "vpcEndpointSet", id: "vpcEndpointId", state: "state", gone: ["deleted"] },
+  "transit-gateway": { action: "DescribeTransitGateways", filter: "transit-gateway-id", set: "transitGatewaySet", id: "transitGatewayId", state: "state", gone: ["deleting", "deleted"] },
+  "transit-gateway-attachment": { action: "DescribeTransitGatewayAttachments", filter: "transit-gateway-attachment-id", set: "transitGatewayAttachments", id: "transitGatewayAttachmentId", state: "state", gone: ["deleting", "deleted"] },
+  "transit-gateway-route-table": { action: "DescribeTransitGatewayRouteTables", filter: "transit-gateway-route-table-id", set: "transitGatewayRouteTables", id: "transitGatewayRouteTableId", state: "state", gone: ["deleting", "deleted"] },
+  "vpn-connection": { action: "DescribeVpnConnections", filter: "vpn-connection-id", set: "vpnConnectionSet", id: "vpnConnectionId", state: "state", gone: ["deleting", "deleted"] },
+  "vpn-gateway": { action: "DescribeVpnGateways", filter: "vpn-gateway-id", set: "vpnGatewaySet", id: "vpnGatewayId", state: "state", gone: ["deleting", "deleted"] },
+  "customer-gateway": { action: "DescribeCustomerGateways", filter: "customer-gateway-id", set: "customerGatewaySet", id: "customerGatewayId", state: "state", gone: ["deleting", "deleted"] },
+  "client-vpn-endpoint": { action: "DescribeClientVpnEndpoints", filter: "endpoint-id", set: "clientVpnEndpoint", id: "clientVpnEndpointId", state: "status.code", gone: ["deleting", "deleted"] },
+  ipam: { action: "DescribeIpams", filter: "ipam-id", set: "ipamSet", id: "ipamId", state: "state", gone: ["delete-in-progress", "delete-complete", "deleting", "deleted"] },
 } as const;
 export type Ec2ConfirmKind = keyof typeof EC2_CONFIRM;
+/** The kinds in the order the sweep asks them: the two it always reserves calls for first, then batch 4's. */
+export const EC2_CONFIRM_KINDS = Object.keys(EC2_CONFIRM) as Ec2ConfirmKind[];
 /** EC2 takes at most 200 values in one filter; ids past that are left unconfirmed (still counted). */
 export const EC2_CONFIRM_MAX = 200;
 
 /**
- * Of `ids` (EC2 instances or VPC endpoints in `region`), the ones EC2 says are really gone: not listed at all, or
- * listed as terminated / shutting-down (an instance) or deleted (an endpoint). One call, filtered by id (so an id
- * EC2 no longer knows is simply absent rather than failing the whole call). When EC2 says there is another page,
- * only the ids it listed as gone count: an absent id might be on the next page. Any refusal throws (AwsError), so
- * the caller keeps those items counted.
+ * Of `ids` (EC2 items of one kind in `region`), the ones EC2 says are really gone: not listed at all, or listed in a
+ * state that means gone (see EC2_CONFIRM). One call, filtered by id (so an id EC2 no longer knows is simply absent
+ * rather than failing the whole call). When EC2 says there is another page, only the ids it listed as gone count: an
+ * absent id might be on the next page. Any refusal throws (AwsError), so the caller keeps those items counted.
  */
 export async function ec2Gone(env: Env, net: Net, region: string, kind: Ec2ConfirmKind, ids: string[]): Promise<Set<string>> {
   const c = EC2_CONFIRM[kind];
@@ -145,20 +159,17 @@ export async function ec2Gone(env: Env, net: Net, region: string, kind: Ec2Confi
     throw e;
   }
   const states = new Map<string, string>();
+  // `state` is a tag, or "outer.inner" when the state sits in a nested element (an instance's, a Client VPN endpoint's).
+  const read = (own: string) => {
+    const id = xmlFirst(own, c.id);
+    const [outer, inner] = c.state.split(".");
+    const scope = inner ? own.match(new RegExp("<" + outer + ">[^]*?</" + outer + ">"))?.[0] ?? "" : own;
+    if (id) states.set(id, (xmlFirst(scope, inner ?? outer!) ?? "").toLowerCase());
+  };
   if (kind === "instance") {
-    for (const r of xmlItems(xml, "reservationSet"))
-      for (const i of xmlOwnItems(r, "instancesSet")) {
-        const own = xmlOwn(i);
-        const id = xmlFirst(own, "instanceId");
-        const state = xmlFirst(own.match(/<instanceState>[\s\S]*?<\/instanceState>/)?.[0] ?? "", "name");
-        if (id) states.set(id, (state ?? "").toLowerCase());
-      }
+    for (const r of xmlItems(xml, "reservationSet")) for (const i of xmlOwnItems(r, "instancesSet")) read(xmlOwn(i));
   } else {
-    for (const it of xmlItems(xml, "vpcEndpointSet")) {
-      const own = xmlOwn(it);
-      const id = xmlFirst(own, "vpcEndpointId");
-      if (id) states.set(id, (xmlFirst(own, "state") ?? "").toLowerCase());
-    }
+    for (const it of xmlItems(xml, c.set)) read(xmlOwn(it));
   }
   const more = !!xmlFirst(xml, "nextToken");
   const gone: readonly string[] = c.gone;

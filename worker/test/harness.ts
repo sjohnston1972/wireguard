@@ -363,7 +363,13 @@ export interface LabAws {
    * What EC2 itself says, by region, for the sweep's confirm reads (DescribeInstances by instance-id, DescribeVpcEndpoints
    * by vpc-endpoint-id): an id not listed here does not exist. `fail` answers every such read with that error code.
    */
-  ec2?: Record<string, { instances?: { id: string; state: string }[]; endpoints?: { id: string; state: string }[]; fail?: string }>;
+  ec2?: Record<
+    string,
+    { instances?: { id: string; state: string }[]; endpoints?: { id: string; state: string }[]; fail?: string;
+      /** Batch 4's kinds by EC2 kind ("transit-gateway", "vpn-connection", "client-vpn-endpoint", "ipam", ...): same rule, an id not listed does not exist. */
+      items?: Record<string, { id: string; state: string }[]>;
+    }
+  >;
   /** IAM names at path /cloudlabs-lab/ (the fake lists every name given, whatever the path asked). */
   iam: { roles: string[]; instanceProfiles: string[]; policies: string[]; users: string[] };
   /** Config recorders by region. */
@@ -730,7 +736,18 @@ function labAwsAnswer(la: LabAws, u: URL, call: World["calls"][number], text: st
   if (ec2Host) {
     // Only the sweep's confirm reads (filtered by id); every other EC2 call is the gateway's (null).
     const a = form.get("Action") ?? "";
-    const filterName = a === "DescribeInstances" ? "instance-id" : a === "DescribeVpcEndpoints" ? "vpc-endpoint-id" : "";
+    const more4: Record<string, { kind: string; filter: string; set: string; id: string; state: (s: string) => string }> = {
+      DescribeTransitGateways: { kind: "transit-gateway", filter: "transit-gateway-id", set: "transitGatewaySet", id: "transitGatewayId", state: (s) => `<state>${s}</state>` },
+      DescribeTransitGatewayAttachments: { kind: "transit-gateway-attachment", filter: "transit-gateway-attachment-id", set: "transitGatewayAttachments", id: "transitGatewayAttachmentId", state: (s) => `<state>${s}</state>` },
+      DescribeTransitGatewayRouteTables: { kind: "transit-gateway-route-table", filter: "transit-gateway-route-table-id", set: "transitGatewayRouteTables", id: "transitGatewayRouteTableId", state: (s) => `<state>${s}</state>` },
+      DescribeVpnConnections: { kind: "vpn-connection", filter: "vpn-connection-id", set: "vpnConnectionSet", id: "vpnConnectionId", state: (s) => `<state>${s}</state>` },
+      DescribeVpnGateways: { kind: "vpn-gateway", filter: "vpn-gateway-id", set: "vpnGatewaySet", id: "vpnGatewayId", state: (s) => `<state>${s}</state>` },
+      DescribeCustomerGateways: { kind: "customer-gateway", filter: "customer-gateway-id", set: "customerGatewaySet", id: "customerGatewayId", state: (s) => `<state>${s}</state>` },
+      DescribeClientVpnEndpoints: { kind: "client-vpn-endpoint", filter: "endpoint-id", set: "clientVpnEndpoint", id: "clientVpnEndpointId", state: (s) => `<status><code>${s}</code></status>` },
+      DescribeIpams: { kind: "ipam", filter: "ipam-id", set: "ipamSet", id: "ipamId", state: (s) => `<state>${s}</state>` },
+    };
+    const k4 = more4[a];
+    const filterName = k4 ? k4.filter : a === "DescribeInstances" ? "instance-id" : a === "DescribeVpcEndpoints" ? "vpc-endpoint-id" : "";
     const n = filterName ? [...form.entries()].find(([k, v]) => /^Filter\.\d+\.Name$/.test(k) && v === filterName)?.[0].split(".")[1] : undefined;
     if (!n) return null;
     const ids = [...form.entries()].filter(([k]) => k.startsWith(`Filter.${n}.Value.`)).map(([, v]) => v);
@@ -740,6 +757,10 @@ function labAwsAnswer(la: LabAws, u: URL, call: World["calls"][number], text: st
     if (a === "DescribeInstances") {
       const items = (r.instances ?? []).filter((x) => ids.includes(x.id)).map((x) => `<item><reservationId>r-${x.id}</reservationId><groupSet/><instancesSet><item><instanceId>${x.id}</instanceId><instanceState><code>0</code><name>${x.state}</name></instanceState><placement><availabilityZone>${ec2Host[1]}a</availabilityZone><groupName/></placement><tagSet><item><key>Name</key><value>vm</value></item></tagSet></item></instancesSet></item>`);
       return ok(items.length ? `<reservationSet>${items.join("")}</reservationSet>` : "<reservationSet/>");
+    }
+    if (k4) {
+      const rows = (r.items?.[k4.kind] ?? []).filter((x) => ids.includes(x.id)).map((x) => `<item><${k4.id}>${x.id}</${k4.id}>${k4.state(x.state)}<tagSet><item><key>Name</key><value>x</value></item></tagSet></item>`);
+      return ok(rows.length ? `<${k4.set}>${rows.join("")}</${k4.set}>` : `<${k4.set}/>`);
     }
     const items = (r.endpoints ?? []).filter((x) => ids.includes(x.id)).map((x) => `<item><vpcEndpointId>${x.id}</vpcEndpointId><vpcEndpointType>Interface</vpcEndpointType><vpcId>vpc-1</vpcId><serviceName>com.amazonaws.${ec2Host[1]}.ssm</serviceName><state>${x.state}</state><tagSet/></item>`);
     return ok(items.length ? `<vpcEndpointSet>${items.join("")}</vpcEndpointSet>` : "<vpcEndpointSet/>");
