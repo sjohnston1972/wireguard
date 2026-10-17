@@ -281,6 +281,19 @@ test("the ready check waits for a peering attachment pending acceptance and an A
   w.cleanup();
 });
 
+test("the ready check reads a Lattice listener by its service and listener ids, and still judges a service by its status", { skip }, () => {
+  const arns = JSON.stringify({ ResourceTagMappingList: [{ ResourceARN: "arn:aws:vpc-lattice:eu-west-2:123456789012:service/svc-0a/listener/listener-0b" }, { ResourceARN: "arn:aws:vpc-lattice:eu-west-2:123456789012:service/svc-0a" }] });
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: arns },
+    { cmd: "aws", match: "^vpc-lattice get-listener --service-identifier svc-0a --listener-identifier listener-0b --region eu-west-2", out: '{"id":"listener-0b"}' },
+    { cmd: "aws", match: "^vpc-lattice get-service --service-identifier svc-0a --region eu-west-2", out: '{"status":"ACTIVE"}' },
+  ]);
+  const r = w.run("infra/ci/lab-ready-aws.sh", ["ans-30-vpc-lattice", "5"], { LAB_REGIONS: "eu-west-2", LAB_READY_POLL_SECONDS: "0" });
+  assert.equal(r.status, 0, r.out);
+  assert.equal(w.calls().filter((c) => c.startsWith("aws vpc-lattice get-listener")).length, 1);
+  w.cleanup();
+});
+
 test("the ready check fails at once on an ACM certificate FAILED, and waits on one PENDING_VALIDATION", { skip }, () => {
   const arns = JSON.stringify({ ResourceTagMappingList: [{ ResourceARN: "arn:aws:acm:eu-west-2:123456789012:certificate/c1" }] });
   const bad = world([
