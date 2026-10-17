@@ -46,9 +46,9 @@ export default () => {
     unknown: ["network_acl_id"],
     refs: { network_acl_id: ref("aws_network_acl.svc", "id"), ...refs },
   });
-  const sg = (key, name, description, vpc) => ({
+  const sg = (key, name, description, vpc, tagName = `sg-${key}`) => ({
     address: `aws_security_group.${key}`,
-    values: tagged(c, { name, description, tags: { Name: `sg-${key}` } }),
+    values: tagged(c, { name, description, tags: { Name: tagName } }),
     unknown: ["vpc_id"],
     refs: { vpc_id: ref(vpc, "id") },
   });
@@ -104,7 +104,7 @@ export default () => {
       { address: "aws_vpc_peering_connection.client_service", values: tagged(c, { auto_accept: true, tags: { Name: "pcx-client-service" } }), unknown: ["vpc_id", "peer_vpc_id"], refs: { vpc_id: ref("aws_vpc.lab", "id"), peer_vpc_id: ref("aws_vpc.service", "id") } },
       { address: "aws_route.client_to_service", values: { destination_cidr_block: svcVpc }, unknown: ["route_table_id", "vpc_peering_connection_id"], refs: { route_table_id: ref("aws_route_table.private", "id"), destination_cidr_block: ["local.svc_vpc_cidr"], vpc_peering_connection_id: ref("aws_vpc_peering_connection.client_service", "id") } },
       { address: "aws_route.service_to_client", values: { destination_cidr_block: c.vpcCidr }, unknown: ["route_table_id", "vpc_peering_connection_id"], refs: { route_table_id: ref("aws_route_table.service", "id"), destination_cidr_block: ["local.vpc_cidr"], vpc_peering_connection_id: ref("aws_vpc_peering_connection.client_service", "id") } },
-      sg("service_eice", "lab-eice-service", "Instance Connect Endpoint in vpc-service: SSH out to vm-svc and vm-monitor", "aws_vpc.service"),
+      sg("service_eice", "lab-eice-service", "Instance Connect Endpoint in vpc-service: SSH out to vm-svc and vm-monitor", "aws_vpc.service", "sg-eice-service"),
       { address: "aws_vpc_security_group_egress_rule.service_eice_ssh", values: tagged(c, { cidr_ipv4: svcVpc, ip_protocol: "tcp", from_port: 22, to_port: 22 }), unknown: ["security_group_id"], refs: { security_group_id: ref("aws_security_group.service_eice", "id"), cidr_ipv4: ["local.svc_vpc_cidr"] } },
       { address: "aws_ec2_instance_connect_endpoint.service", values: tagged(c, { preserve_client_ip: false, tags: { Name: "eice-service" } }), unknown: ["subnet_id", "security_group_ids.0"], refs: { subnet_id: ref("aws_subnet.svc", "id"), security_group_ids: ref("aws_security_group.service_eice", "id") } },
       // nlb.tf
