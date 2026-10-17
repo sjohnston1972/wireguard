@@ -4,7 +4,9 @@
 # (DNS Firewall, query logging).
 # London list prices × 0.75 (labs-verify --aws-prices). A Resolver endpoint
 # bills each of its network interfaces by the hour (two each, AWS's minimum:
-# four here), believed by the started hour (V, A20). The private zone bills by
+# four here), believed by the started hour (V, A20); authored only, as no
+# Price List product matched its filter (Task 23, 2026-10-17): AWS's page
+# lists $0.125 an interface-hour (£0.0938). The private zone bills by
 # the month (a zone deleted within 12 hours is believed not to be charged,
 # spec §15, V); DNS Firewall, Resolver queries and the S3 query logs bill per
 # use (authored).
@@ -27,7 +29,6 @@ cost:
       gbp_h: 0.0938
       qty: 4
       whole_hours: true
-      aws_price: { service: AmazonRoute53, unit: Hrs, filters: { usagetype: "{usage}-ResolverNetworkInterface" } }
     - name: "EC2 t4g.nano, Linux (vm-cloud and vm-dns)"
       gbp_h: 0.0035
       qty: 2

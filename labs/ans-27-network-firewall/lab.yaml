@@ -5,9 +5,13 @@
 # appliance mode).
 # London list prices × 0.75 (labs-verify --aws-prices); the firewall
 # endpoint, the transit gateway attachments and the NAT gateway bill each
-# started hour whole (V, A20). The firewall's and the attachments' filters
-# are (V, Task 23). AWS waives a NAT gateway's hourly charge for each firewall
-# endpoint hour (V): the estimate keeps the NAT item either way. Traffic
+# started hour whole (V, A20). The firewall endpoint and the attachments are
+# authored only: no Price List product matched their filters (Task 23,
+# 2026-10-17); AWS lists $0.395 a London endpoint-hour (£0.2963, usagetype
+# EUW2-Endpoint-Hour) and $0.06 an attachment-hour (£0.045, within 25% of the
+# figure here). AWS waives a NAT gateway's hourly and processing charges up
+# to the firewall's use in the same Region (public pricing page, 2026-10-17):
+# the estimate keeps the NAT item anyway, so it errs high. Traffic
 # processed is authored for light test traffic. This is the batch's dearest
 # lab (one firewall endpoint, about 30p an hour): its session is 2 hours.
 id: ans-27-network-firewall
@@ -28,13 +32,11 @@ cost:
     - name: "Network Firewall endpoint, one AZ"
       gbp_h: 0.2963
       whole_hours: true
-      aws_price: { service: AWSNetworkFirewall, unit: Hrs, filters: { usagetype: "{usage}-Endpoint-Hour" } }
     - { name: "Network Firewall traffic processed, light test traffic", gbp_h: 0.0010 }
     - name: "Transit gateway VPC attachments (2 spokes and the inspection VPC)"
       gbp_h: 0.0375
       qty: 3
       whole_hours: true
-      aws_price: { service: AmazonVPC, unit: Hrs, filters: { usagetype: "{usage}-TransitGateway-Hours" } }
     - name: "NAT gateway, hourly"
       gbp_h: 0.0375
       whole_hours: true

@@ -6,7 +6,10 @@
 # priced in eu-west-1 (region: secondary). Each side bills its transit
 # gateway's attachments by the started hour; whether the peering attachment
 # bills on both sides is V (Task 24 reads Cost Explorer), so both are
-# counted. Inter-Region data is per GB (authored, light test traffic).
+# counted. The attachments are authored only: no Price List product matched
+# their filter (Task 23, 2026-10-17); AWS lists $0.06 an attachment-hour in
+# London (£0.045, within 25% of the figure here) and $0.05 in Ireland
+# (£0.0375). Inter-Region data is per GB (authored, light test traffic).
 id: ans-29-multi-region
 version: 1
 cloud: aws
@@ -25,13 +28,11 @@ cost:
       gbp_h: 0.0375
       qty: 2
       whole_hours: true
-      aws_price: { service: AmazonVPC, unit: Hrs, filters: { usagetype: "{usage}-TransitGateway-Hours" } }
     - name: "Transit gateway attachments in Ireland (VPC and peering), hourly"
       gbp_h: 0.0375
       qty: 2
       whole_hours: true
       region: secondary
-      aws_price: { service: AmazonVPC, unit: Hrs, filters: { usagetype: "{usage}-TransitGateway-Hours" } }
     - { name: "Inter-Region data transfer, light test traffic", gbp_h: 0.0005 }
     - name: "EC2 t4g.nano, Linux (London)"
       gbp_h: 0.0035

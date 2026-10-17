@@ -4,7 +4,9 @@
 # route table associations and propagations, appliance mode).
 # London list prices × 0.75 (labs-verify --aws-prices); the transit gateway
 # attachments, the NAT gateway and its address bill each started hour whole
-# (V, A20; the attachment filter is V, Task 23). Transit Gateway data
+# (V, A20). The attachments are authored only: no Price List product matched
+# their filter (Task 23, 2026-10-17); AWS lists $0.06 an attachment-hour in
+# London (£0.045), within 25% of the figure here. Transit Gateway data
 # processing is per GB (authored, light test traffic).
 id: ans-21-transit-gateway
 version: 1
@@ -24,7 +26,6 @@ cost:
       gbp_h: 0.0375
       qty: 3
       whole_hours: true
-      aws_price: { service: AmazonVPC, unit: Hrs, filters: { usagetype: "{usage}-TransitGateway-Hours" } }
     - name: "NAT gateway, hourly"
       gbp_h: 0.0375
       whole_hours: true

@@ -30,7 +30,7 @@ test("ans-21's lab.yaml: §12.2 row 21, after lab 20, three /20s, about £0.16/h
   const total = yaml.cost.items.reduce((n, i) => n + i.gbp_h * (i.qty ?? 1), 0);
   assert.ok(total > 0.15 && total < 0.18, `about £0.163/h, got ${total}`);
   const tgw = yaml.cost.items.find((i) => i.name === "Transit gateway VPC attachments (3), hourly");
-  assert.deepEqual([tgw.qty, tgw.whole_hours, tgw.aws_price.filters.usagetype], [3, true, "{usage}-TransitGateway-Hours"]);
+  assert.deepEqual([tgw.qty, tgw.whole_hours, tgw.aws_price], [3, true, undefined], "authored only: no Price List product matches (Task 23)");
   assert.equal(yaml.cost.items.find((i) => i.name === "NAT gateway, hourly").whole_hours, true);
 });
 

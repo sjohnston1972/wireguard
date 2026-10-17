@@ -38,8 +38,8 @@ test("ans-29's lab.yaml: §12.2 row 29, after lab 21, about £0.16/h with four a
   assert.deepEqual(yaml.capacity, { instance_types: ["t4g.nano", "t4g.nano", "t4g.nano"] });
   const total = yaml.cost.items.reduce((n, i) => n + i.gbp_h * (i.qty ?? 1), 0);
   assert.ok(total > 0.15 && total < 0.18, `about £0.163/h, got ${total}`);
-  const tgw = yaml.cost.items.filter((i) => i.aws_price?.filters.usagetype === "{usage}-TransitGateway-Hours");
-  assert.deepEqual(tgw.map((i) => [i.qty, i.whole_hours, i.region ?? "london"]), [[2, true, "london"], [2, true, "secondary"]]);
+  const tgw = yaml.cost.items.filter((i) => i.name.startsWith("Transit gateway attachments"));
+  assert.deepEqual(tgw.map((i) => [i.qty, i.whole_hours, i.region ?? "london", i.aws_price]), [[2, true, "london", undefined], [2, true, "secondary", undefined]]);
   assert.equal(yaml.cost.items.filter((i) => i.region === "secondary").length, 3);
 });
 
