@@ -1,7 +1,7 @@
 {
  "schema": 1,
  "labId": "ans-30-vpc-lattice",
- "version": 1,
+ "version": 2,
  "source": "planned",
  "at": null,
  "nodes": [

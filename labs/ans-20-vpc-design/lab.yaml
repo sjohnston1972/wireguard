@@ -7,7 +7,7 @@
 # Amazon-provided IPv6 pool, the egress-only gateway and the prefix list
 # cost nothing (ruling P5; V on the IPAM pricing page, Task 23).
 id: ans-20-vpc-design
-version: 1
+version: 2
 cloud: aws
 title: "VPC design: dual stack, IPAM, prefix lists, egress"
 summary: >-
@@ -38,7 +38,7 @@ cost:
     - { name: "Egress-only internet gateway and prefix list", gbp_h: 0 }
     - { name: "EC2 Instance Connect Endpoint", gbp_h: 0 }
   pricey: null
-timing: { deploy_min: 5, destroy_min: 5, session_h: 2, max_h: 4 }
+timing: { deploy_min: 5, destroy_min: 30, session_h: 2, max_h: 4 }
 capacity: { instance_types: [t4g.nano] }
 regions: { secondary: null }
 connectivity: { peering: optional, dns_link: false, subnets_used: 2 }
