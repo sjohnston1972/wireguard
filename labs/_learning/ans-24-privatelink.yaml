@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Publish a service with PrivateLink and reach it from another VPC by a private name, with no peering.
+learn:
+  - Publish a load-balanced service as a PrivateLink endpoint service
+  - Reach it through an interface endpoint under a private DNS name
+  - Limit an S3 gateway endpoint to one bucket with its policy
+learning_min: 60

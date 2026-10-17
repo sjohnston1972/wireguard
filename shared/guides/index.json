@@ -27,6 +27,13 @@
    "kind": "architecture"
   }
  ],
+ "ans-24-privatelink": [
+  {
+   "file": "architecture.svg",
+   "title": "PrivateLink: endpoints and endpoint services: architecture",
+   "kind": "architecture"
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

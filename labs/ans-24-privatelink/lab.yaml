@@ -1,0 +1,52 @@
+# Lab ans-24 (AWS labs batch 4). ANS-C01 ((V) the wording against the current
+# exam guide): Network Design (private connectivity to services across VPCs);
+# Network Implementation (PrivateLink endpoint services and interface
+# endpoints, private DNS); Network Security, Compliance, and Governance
+# (endpoint policies); and SAA-C03's Design Secure Architectures.
+# London list prices × 0.75 (labs-verify --aws-prices); the NLB and the
+# interface endpoint bill each started hour whole (V, A20). NLB capacity
+# units, the private zone (a month's fee; spec §15, V) and data through the
+# endpoint are authored.
+id: ans-24-privatelink
+version: 1
+cloud: aws
+title: "PrivateLink: endpoints and endpoint services"
+summary: >-
+  A provider VPC publishes a web service behind an internal Network Load Balancer as a PrivateLink endpoint service;
+  a consumer VPC reaches it through an interface endpoint and a private DNS name, with no peering and no routes
+  between them, and reads S3 through a gateway endpoint whose policy allows only the lab's bucket.
+exam: ANS-C01
+skill_areas: [ans.design, ans.implementation, ans.security, saa.secure]
+level: expert
+type: explore
+prerequisites: [ans-20-vpc-design]
+cost:
+  items:
+    - name: "Network Load Balancer, hourly"
+      gbp_h: 0.0198
+      whole_hours: true
+      aws_price: { service: AWSELB, unit: Hrs, filters: { productFamily: "Load Balancer-Network", usagetype: "{usage}-LoadBalancerUsage" } }
+    - { name: "NLB capacity units, light test traffic", gbp_h: 0.0045 }
+    - name: "Interface endpoint, one Availability Zone"
+      gbp_h: 0.0083
+      whole_hours: true
+      aws_price: { service: AmazonVPC, unit: Hrs, filters: { productFamily: VpcEndpoint, usagetype: "{usage}-VpcEndpoint-Hours" } }
+    - name: "EC2 t4g.nano, Linux (vm-consumer and vm-provider)"
+      gbp_h: 0.0035
+      qty: 2
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      qty: 2
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - { name: "Route 53 private hosted zone ($0.50 a month)", gbp_h: 0.0005 }
+    - { name: "EC2 Instance Connect Endpoints (2) and the S3 gateway endpoints", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 6, destroy_min: 6, session_h: 2, max_h: 4 }
+capacity: { instance_types: [t4g.nano, t4g.nano] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 2 }
+identity:
+  creates: [role]
+  roles: []
+  governance: false
