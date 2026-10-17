@@ -156,16 +156,20 @@ function Addresses({ s, aws, connectPossible }: { s: LabSession; aws: boolean; c
   );
 }
 
-/** Save one file the lab handed over: a Blob, its own name, the object URL let go at once (ruling P25). */
+/**
+ * Save one file the lab handed over: a Blob, its own name, the object URL let go on the next tick (ruling P25; some
+ * browsers cancel a download whose URL is revoked in the click's own turn). application/octet-stream, so no browser
+ * adds .txt to ans-31.ovpn.
+ */
 function download(name: string, text: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+  const url = URL.createObjectURL(new Blob([text], { type: "application/octet-stream" }));
   const a = document.createElement("a");
   a.href = url;
   a.download = name;
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 /** The admin password and the lab's Entra users, fetched only on Show and dropped on Hide or close, and lab 31's files, each downloadable (ruling P25). */

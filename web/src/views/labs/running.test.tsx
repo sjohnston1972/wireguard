@@ -122,12 +122,21 @@ describe("the lab modal, running", () => {
     const secret = { adminPassword: "Fake-Pa55word-x", users: {}, files: { "ans-31.ovpn": "client\n", "client.key": "-----BEGIN PRIVATE KEY-----\n" } };
     const created: string[] = [];
     const revoked: string[] = [];
-    vi.spyOn(URL, "createObjectURL").mockImplementation(() => {
+    const types: string[] = [];
+    vi.spyOn(URL, "createObjectURL").mockImplementation((b) => {
       created.push("blob:1");
+      types.push((b as Blob).type);
       return "blob:1";
     });
     vi.spyOn(URL, "revokeObjectURL").mockImplementation((u) => {
       revoked.push(u);
+    });
+    // Final fix F8: what was revoked by the time the click's own call stack is done (a microtask after the click).
+    let revokedRightAfterClick: string[] | null = null;
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {
+      queueMicrotask(() => {
+        revokedRightAfterClick = [...revoked];
+      });
     });
     const s = session({ labId: AWS_ID });
     const user = userEvent.setup();
@@ -137,11 +146,14 @@ describe("the lab modal, running", () => {
     expect(within(list).getAllByRole("listitem").map((li) => li.querySelector(".labs-files__name")!.textContent)).toEqual(["ans-31.ovpn", "client.key"]);
     await user.click(within(list).getByRole("button", { name: "Download client.key" }));
     expect(created).toEqual(["blob:1"]);
-    expect(revoked).toEqual(["blob:1"]);
+    expect(types, "never text/plain, which makes browsers add .txt to ans-31.ovpn").toEqual(["application/octet-stream"]);
+    expect(revokedRightAfterClick).toEqual([]);
+    await waitFor(() => expect(revoked).toEqual(["blob:1"]));
     await user.click(screen.getByRole("button", { name: "Hide" }));
     expect(screen.queryByRole("list", { name: "Lab files" })).toBeNull();
     expect(document.body.textContent).not.toContain("BEGIN PRIVATE KEY");
     expect(screen.getByText("The admin password, the lab's user names and its files, shown only when you ask.")).toBeInTheDocument();
+    vi.restoreAllMocks();
   });
 
   it("a lab without files shows no file list", async () => {
