@@ -14,7 +14,7 @@
 # each), believed prorated hourly (V, Task 23 Step 3: about £4.70 more if a
 # whole month is billed), and requests and data for light test traffic.
 id: ans-26-edge
-version: 1
+version: 2
 cloud: aws
 title: "Edge: CloudFront, WAF and Global Accelerator"
 summary: >-

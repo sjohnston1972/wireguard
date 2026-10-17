@@ -96,3 +96,13 @@ test("ans-26's readme names every edge piece and Shield Advanced as not built; i
   for (const s of ["lab-ans-26-edge-waf", "lab-ans-26-edge-headers", "x-cloudlabs-edge", "traffic dial", "origin group", "us-west-2", "## Not built here", "Shield Advanced"]) assert.ok(readme.includes(s), s);
   assert.deepEqual(validateLearning(learning, yaml), []);
 });
+
+test("the WAF web ACL's description (and every name and description it writes) uses only characters AWS accepts: no apostrophe (release test 39031657786)", () => {
+  const { files } = awsLab(ID);
+  for (const [file, text] of Object.entries(files)) {
+    if (file === "variables.tf" || !file.endsWith(".tf")) continue;
+    for (const m of text.matchAll(/^\s*(description|name|metric_name)\s*=\s*"([^"\n]*)"/gm)) {
+      assert.doesNotMatch(m[2].replace(/\$\{[^}]*\}/g, ""), /[^A-Za-z0-9 ._:\/()#,@\[\]+=&;{}!$*-]/, `${file}: ${m[1]} = "${m[2]}"`);
+    }
+  }
+});
