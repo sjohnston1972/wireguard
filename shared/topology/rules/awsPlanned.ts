@@ -340,7 +340,8 @@ export const AWS_TF_RULES: Record<string, TfRule> = {
   },
   aws_cloudfront_function: intoReferrer("aws_cloudfront_distribution"),
   aws_wafv2_web_acl: { arm: "wafv2:global/webacl", edges: (i, h) => h.referrers(i, ["aws_cloudfront_distribution"], ["web_acl_id"]).map((d) => ({ from: i, to: d, kind: "dependency" as const, label: "protects" })) },
-  aws_networkfirewall_firewall: { arm: "network-firewall:firewall" },
+  // Final fix F9: in the subnet its (first) subnet_mapping names.
+  aws_networkfirewall_firewall: { arm: "network-firewall:firewall", place: (i, h) => h.refs(i, ["subnet_mapping"]).find((t) => t.type === "aws_subnet")?.id ?? null },
   aws_networkfirewall_firewall_policy: { arm: "network-firewall:firewall-policy", edges: (i, h) => h.referrers(i, ["aws_networkfirewall_firewall"], ["firewall_policy_arn"]).map((f) => ({ from: i, to: f, kind: "dependency" as const, label: "policy" })) },
   ...each(["aws_networkfirewall_rule_group"], intoReferrer("aws_networkfirewall_firewall_policy")),
   aws_networkfirewall_logging_configuration: into("firewall_arn"),

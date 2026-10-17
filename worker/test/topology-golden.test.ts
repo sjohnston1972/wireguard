@@ -1333,7 +1333,7 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     nodes: [
       "bastion eice-lab < snet-private-1",
       "bastion eice-spoke-b < snet-spoke-b-1",
-      "firewall nfw-lab < lab-ans-27-network-firewall · London",
+      "firewall nfw-lab < snet-insp-firewall",
       "firewallPolicy nfw-policy < lab-ans-27-network-firewall · London",
       "internetGateway igw-inspection < vpc-inspection",
       "natGateway nat-inspection < snet-insp-public",

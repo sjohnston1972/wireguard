@@ -24,14 +24,21 @@ export interface RefTools {
 
 /**
  * Reference lookups over the instances: `refs` are the instances an attribute (or any attribute) of one instance names
- * in the HCL (a count's index picks the matching instance), `referrers` the reverse. `skipAttrs` are table entries that
- * are not references (an AWS resource's `provider`); `extra` adds references the table cannot hold (an expanded
- * template resource's ARM ids).
+ * in the HCL (a count's index picks the matching instance; a reference with a numeric index, "type.name[1]", that
+ * element), `referrers` the reverse. `skipAttrs` are table entries that are not references (an AWS resource's
+ * `provider`); `extra` adds references the table cannot hold (an expanded template resource's ARM ids).
  */
 export function makeRefTools(insts: TfInst[], table: Record<string, Record<string, string[]>>, opts: { skipAttrs?: string[]; extra?: (inst: TfInst, out: TfInst[], attrs?: string[]) => void } = {}): RefTools {
   const byConfig = new Map<string, TfInst[]>();
   for (const i of insts) if (i.config) byConfig.set(i.config, [...(byConfig.get(i.config) ?? []), i]);
   const resolve = (from: TfInst, config: string): TfInst[] => {
+    // Final fix F9: "type.name[1]" (a numeric index, as refsFromHcl keeps it) is that element.
+    const at = /^(.*)\[(\d+)\]$/.exec(config);
+    if (at) {
+      const all = byConfig.get(at[1]) ?? [];
+      const hit = all.filter((t) => t.index === Number(at[2]));
+      return hit.length ? hit : all;
+    }
     const targets = byConfig.get(config) ?? [];
     if (targets.length <= 1) return targets;
     const same = targets.filter((t) => t.index !== null && t.index === from.index);

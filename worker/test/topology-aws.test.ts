@@ -610,6 +610,40 @@ describe("batch 4's types on the diagrams", () => {
     expect(g.nodes.some((n) => n.key.startsWith("tls"))).toBe(false);
   });
 
+  it("final fix F9: a Network Firewall sits in the subnet its subnet_mapping names", () => {
+    const g = b4("ans-27-network-firewall", [
+      ch("aws_vpc.inspection", { tags: { Name: "vpc-inspection" } }),
+      ch("aws_subnet.insp_tgw", { tags: { Name: "snet-insp-tgw" } }),
+      ch("aws_subnet.insp_firewall", { tags: { Name: "snet-insp-firewall" } }),
+      ch("aws_networkfirewall_firewall.lab", { name: "lab-ans-27-network-firewall", tags: { Name: "nfw-lab" } }),
+    ], {
+      "aws_subnet.insp_tgw": { vpc_id: ["aws_vpc.inspection"] },
+      "aws_subnet.insp_firewall": { vpc_id: ["aws_vpc.inspection"] },
+      "aws_networkfirewall_firewall.lab": { vpc_id: ["aws_vpc.inspection"], subnet_mapping: ["aws_subnet.insp_firewall"] },
+    });
+    const fw = g.nodes.find((n) => n.key === "network-firewall:firewall/nfw-lab")!;
+    expect(fw.parent).toBe(g.nodes.find((n) => n.key === "ec2:subnet/snet-insp-firewall")!.id);
+  });
+
+  it("final fix F9: a reference to an indexed address is that element; an unindexed one from a counted instance is its own index", () => {
+    const g = b4("soa-02-systems-manager", [
+      ch("aws_vpc.lab", { tags: { Name: "vpc-lab" } }),
+      ch("aws_subnet.private[0]", { tags: { Name: "snet-private-1" } }),
+      ch("aws_subnet.private[1]", { tags: { Name: "snet-private-2" } }),
+      ch("aws_instance.second", { tags: { Name: "vm-second" } }),
+      ch("aws_instance.web[0]", { tags: { Name: "vm-web-1" } }),
+      ch("aws_instance.web[1]", { tags: { Name: "vm-web-2" } }),
+      ch("aws_instance.pinned[1]", { tags: { Name: "vm-pinned" } }),
+    ], {
+      "aws_subnet.private": { vpc_id: ["aws_vpc.lab"] },
+      "aws_instance.second": { subnet_id: ["aws_subnet.private[1]"] },
+      "aws_instance.web": { subnet_id: ["aws_subnet.private"] },
+      "aws_instance.pinned": { subnet_id: ["aws_subnet.private[0]"] },
+    });
+    const parentOf = (k: string) => g.nodes.find((n) => n.id === g.nodes.find((x) => x.key === k)!.parent)?.label;
+    expect([parentOf("ec2:instance/vm-second"), parentOf("ec2:instance/vm-web-1"), parentOf("ec2:instance/vm-web-2"), parentOf("ec2:instance/vm-pinned")]).toEqual(["snet-private-2", "snet-private-1", "snet-private-2", "snet-private-1"]);
+  });
+
   it("final fix F2: an instance on a lab-made primary interface sits in that interface's subnet with its address; the interface and the EIP association fold in", () => {
     const g = b4("ans-22-s2s-vpn", [
       ch("aws_vpc.onprem", { tags: { Name: "vpc-onprem" } }),

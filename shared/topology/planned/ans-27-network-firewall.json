@@ -156,7 +156,7 @@
    "kind": "firewall",
    "label": "nfw-lab",
    "props": {},
-   "parent": "tf:aws_resourcegroups_group.lab",
+   "parent": "tf:aws_subnet.insp_firewall",
    "armType": "network-firewall:firewall",
    "scope": "lab",
    "folded": [
