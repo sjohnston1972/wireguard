@@ -1080,6 +1080,32 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: ["rt-private ..> nat-lab : 0.0.0.0/0", "rt-public ..> igw-lab : 0.0.0.0/0"],
   },
+  "ans-20-vpc-design": {
+    nodes: [
+      "bastion eice-lab < snet-private-1",
+      "generic ipam-lab < lab-ans-20-vpc-design · London",
+      "generic pl-admin < lab-ans-20-vpc-design · London",
+      "internetGateway eigw-lab < vpc-lab",
+      "internetGateway igw-lab < vpc-lab",
+      "natGateway nat-lab < snet-public",
+      "nsg sg-dual < vpc-lab",
+      "nsg sg-eice < vpc-lab",
+      "nsg sg-vms < vpc-lab",
+      "privateEndpoint vpce-s3 < vpc-lab",
+      "resourceGroup lab-ans-20-vpc-design · London",
+      "routeTable rt-dual < vpc-lab",
+      "routeTable rt-private < vpc-lab",
+      "routeTable rt-public < vpc-lab",
+      "subnet snet-dual-1 < vpc-lab",
+      "subnet snet-dual-2 < vpc-lab",
+      "subnet snet-private-1 < vpc-lab",
+      "subnet snet-private-2 < vpc-lab",
+      "subnet snet-public < vpc-lab",
+      "vm vm-dual < snet-dual-1",
+      "vnet vpc-lab < lab-ans-20-vpc-design · London",
+    ],
+    edges: ["rt-dual ..> nat-lab : 0.0.0.0/0", "rt-public ..> igw-lab", "rt-public ..> igw-lab : 0.0.0.0/0"],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);

@@ -1,4 +1,13 @@
 {
+ "ans-20-vpc-design": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. An EC2 Instance Connect Endpoint, an NAT gateway, two internet gateways, an EC2 instance and more, in one VPC with five subnets.",
+   "width": 2075,
+   "height": 1046
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

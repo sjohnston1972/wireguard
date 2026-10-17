@@ -1,4 +1,11 @@
 {
+ "ans-20-vpc-design": [
+  {
+   "file": "architecture.svg",
+   "title": "VPC design: dual stack, IPAM, prefix lists, egress: architecture",
+   "kind": "architecture"
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",
