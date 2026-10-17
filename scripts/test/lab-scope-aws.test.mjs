@@ -1017,6 +1017,20 @@ test("final fix F2: lab 22's router sits on its own interface in its own subnet;
   assert.deepEqual(rulesFor(c22, [nic(), vm({ "primary_network_interface.0.network_interface_id": "aws_subnet.onprem" })], net), ["gateway: aws_instance.router"], "a primary interface not the lab's own");
 });
 
+test("residual R3: lab 22's Elastic IP association names the lab's own interface or instance and the lab's own address, by reference", () => {
+  const owned = ["aws_network_interface.router", "aws_instance.router", "aws_eip.router", "aws_subnet.onprem"];
+  const assoc = (r) => U("aws_eip_association.router", {}, refs(r));
+  const ok = (r) => assert.deepEqual(rulesWith(c22, owned, [assoc(r)]), [], JSON.stringify(r));
+  const no = (r, why) => assert.deepEqual(rulesWith(c22, owned, [assoc(r)]), ["gateway: aws_eip_association.router"], why);
+  ok({ network_interface_id: "aws_network_interface.router", allocation_id: "aws_eip.router" });
+  ok({ instance_id: "aws_instance.router", allocation_id: "aws_eip.router" });
+  no({ network_interface_id: "aws_subnet.onprem", allocation_id: "aws_eip.router" }, "an interface not the lab's own");
+  no({ instance_id: "aws_network_interface.router", allocation_id: "aws_eip.router" }, "an instance not the lab's own");
+  no({ network_interface_id: "aws_network_interface.router", allocation_id: "aws_subnet.onprem" }, "an address not the lab's own");
+  no({ allocation_id: "aws_eip.router" }, "neither an interface nor an instance");
+  assert.deepEqual(rulesWith(c22, owned, [U("aws_eip_association.router", { network_interface_id: "eni-0123456789abcdef0", allocation_id: "eipalloc-0123456789abcdef0" })]), ["gateway: aws_eip_association.router"], "literal ids");
+});
+
 test("Review Focus 2: refuses an attachment, route, gateway, rule, endpoint, accelerator, auth policy, mirror target or Client VPN piece that names anything not the lab's own", () => {
   const tgw = T(c21, "aws_ec2_transit_gateway.lab", { auto_accept_shared_attachments: "disable", default_route_table_association: "disable", default_route_table_propagation: "disable" });
   const net21 = templateResources(c21);

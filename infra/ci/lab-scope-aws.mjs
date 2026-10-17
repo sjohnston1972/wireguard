@@ -1649,6 +1649,17 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
             if (plan && !own(id, ["aws_network_interface"], "primary_network_interface.0.network_interface_id")) refuse("gateway", "primary_network_interface.0.network_interface_id must be the lab's own interface, by reference");
           }
           break;
+        case "aws_eip_association": {
+          // Residual R3 (only PUBLIC_INSTANCE_LABS get this far: rule public refuses it elsewhere): the lab's own address
+          // on the lab's own interface or instance, by reference.
+          const nic = written("network_interface_id");
+          const vm = written("instance_id");
+          if (plan && mode !== "mock" && !nic && !vm) refuse("gateway", "an Elastic IP association names the lab's own interface or instance (ruling P11)");
+          if (nic) needOwn("network_interface_id", ["aws_network_interface"], "gateway", "the lab's own interface");
+          if (vm) needOwn("instance_id", ["aws_instance"], "gateway", "the lab's own instance");
+          needOwn("allocation_id", ["aws_eip"], "gateway", "the lab's own Elastic IP");
+          break;
+        }
         case "aws_customer_gateway": {
           needOwn("ip_address", ["aws_eip"], "gateway", "the lab's own router's Elastic IP (ruling P11)");
           const asn = val.bgp_asn;
