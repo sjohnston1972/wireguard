@@ -98,6 +98,15 @@
    "height": 1314
   }
  ],
+ "ans-31-client-vpn": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. An EC2 Instance Connect Endpoint, a Client VPN endpoint, an EC2 instance, a VPC endpoint and more, in one VPC with two subnets.",
+   "width": 1387,
+   "height": 928
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

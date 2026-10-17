@@ -1465,6 +1465,25 @@ const GOLDEN: Record<string, { nodes: string[]; edges: string[] }> = {
     ],
     edges: ["sn-lab ..> svc-a : service", "sn-lab ..> svc-b : service", "svc-a -> vm-svc-a : HTTP", "svc-b -> vm-svc-b : HTTP", "vpc-lab -> sn-lab : associated"],
   },
+  "ans-31-client-vpn": {
+    nodes: [
+      "bastion eice-lab < snet-private-1",
+      "clientVpn cvpn-lab < snet-private-1",
+      "generic cert-cvpn-server < lab-ans-31-client-vpn · London",
+      "nsg sg-cvpn < vpc-lab",
+      "nsg sg-eice < vpc-lab",
+      "nsg sg-target < vpc-lab",
+      "nsg sg-vms < vpc-lab",
+      "privateEndpoint vpce-s3 < vpc-lab",
+      "resourceGroup lab-ans-31-client-vpn · London",
+      "routeTable rt-private < vpc-lab",
+      "subnet snet-private-1 < vpc-lab",
+      "subnet snet-private-2 < vpc-lab",
+      "vm vm-target < snet-private-1",
+      "vnet vpc-lab < lab-ans-31-client-vpn · London",
+    ],
+    edges: [],
+  },
 };
 
 const LABS_DIR = new URL("../../labs/", import.meta.url);

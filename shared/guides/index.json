@@ -76,6 +76,13 @@
    "kind": "architecture"
   }
  ],
+ "ans-31-client-vpn": [
+  {
+   "file": "architecture.svg",
+   "title": "AWS Client VPN with certificates, compared with WireGuard: architecture",
+   "kind": "architecture"
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

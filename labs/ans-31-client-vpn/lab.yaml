@@ -1,0 +1,43 @@
+# Lab ans-31 (AWS labs batch 4). ANS-C01 ((V) the wording against the current
+# exam guide): Network Implementation (remote access with AWS Client VPN);
+# Network Security, Compliance, and Governance (mutual certificate
+# authentication, authorisation rules, split tunnel).
+# London list prices × 0.75 (labs-verify --aws-prices). Client VPN bills each
+# target network association by the hour ($0.10, believed by the started
+# hour, V) and each connection by the hour while a client is connected
+# ($0.05, V); neither has a single regional hourly product the verifier can
+# match, so both are authored. An imported ACM certificate is free.
+id: ans-31-client-vpn
+version: 1
+cloud: aws
+title: "AWS Client VPN with certificates, compared with WireGuard"
+summary: >-
+  An AWS Client VPN endpoint into the lab's VPC with mutual certificate authentication (a CA, a server and a client
+  certificate made by Terraform and imported to ACM), split tunnel and an authorisation rule, and a ready-made OpenVPN
+  profile to download, so you can connect from your PC and compare it with cloudlabs' own WireGuard server.
+exam: ANS-C01
+skill_areas: [ans.implementation, ans.security]
+level: expert
+type: explore
+prerequisites: []
+cost:
+  items:
+    - { name: "Client VPN subnet association ($0.10 an hour)", gbp_h: 0.0750, whole_hours: true }
+    - { name: "Client VPN connection while you are connected ($0.05 an hour)", gbp_h: 0.0375 }
+    - name: "EC2 t4g.nano, Linux (vm-target)"
+      gbp_h: 0.0035
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - { name: "ACM imported certificate", gbp_h: 0 }
+    - { name: "EC2 Instance Connect Endpoint", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 10, destroy_min: 8, session_h: 2, max_h: 3 }
+capacity: { instance_types: [t4g.nano] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 2 }
+identity:
+  creates: []
+  roles: []
+  governance: false
