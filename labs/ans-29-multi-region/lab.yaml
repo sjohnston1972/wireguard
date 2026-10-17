@@ -8,7 +8,7 @@
 # bills on both sides is V (Task 24 reads Cost Explorer), so both are
 # counted. The attachments are authored only: no Price List product matched
 # their filter (Task 23, 2026-10-17); AWS lists $0.06 an attachment-hour in
-# London (£0.045, within 25% of the figure here) and $0.05 in Ireland
+# London (£0.045, the figure here) and $0.05 in Ireland
 # (£0.0375). Inter-Region data is per GB (authored, light test traffic).
 id: ans-29-multi-region
 version: 1
@@ -25,7 +25,7 @@ prerequisites: [ans-21-transit-gateway]
 cost:
   items:
     - name: "Transit gateway attachments in London (VPC and peering), hourly"
-      gbp_h: 0.0375
+      gbp_h: 0.045
       qty: 2
       whole_hours: true
     - name: "Transit gateway attachments in Ireland (VPC and peering), hourly"

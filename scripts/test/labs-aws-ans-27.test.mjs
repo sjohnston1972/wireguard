@@ -19,7 +19,7 @@ test("ans-27 keeps the AWS lab contract", () => {
   assert.deepEqual(commonAwsProblems(ID), []);
 });
 
-test("ans-27's lab.yaml: §12.2 row 27, after ans-21, three /20s, about £0.46/h with the firewall, attachments and NAT billed by the whole hour", () => {
+test("ans-27's lab.yaml: §12.2 row 27, after ans-21, three /20s, about £0.48/h with the firewall, attachments and NAT billed by the whole hour", () => {
   const { yaml } = awsLab(ID);
   assert.deepEqual([yaml.exam, yaml.level, yaml.type, yaml.skill_areas, yaml.prerequisites], ["ANS-C01", "expert", "explore", ["ans.security", "ans.design"], ["ans-21-transit-gateway"]]);
   assert.deepEqual(yaml.timing, { deploy_min: 15, destroy_min: 15, session_h: 2, max_h: 3 });
@@ -27,7 +27,7 @@ test("ans-27's lab.yaml: §12.2 row 27, after ans-21, three /20s, about £0.46/h
   assert.deepEqual(yaml.capacity, { instance_types: ["t4g.nano", "t4g.nano"] });
   assert.deepEqual(yaml.identity, { creates: [], roles: [], governance: false });
   const total = yaml.cost.items.reduce((n, i) => n + i.gbp_h * (i.qty ?? 1), 0);
-  assert.ok(total > 0.43 && total < 0.49, `about £0.46/h, got ${total}`);
+  assert.ok(total > 0.45 && total < 0.51, `about £0.48/h, got ${total}`);
   for (const n of ["Network Firewall endpoint, one AZ", "Transit gateway VPC attachments (2 spokes and the inspection VPC)", "NAT gateway, hourly"]) assert.equal(yaml.cost.items.find((i) => i.name === n).whole_hours, true, n);
 });
 

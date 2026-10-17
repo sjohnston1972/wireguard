@@ -24,7 +24,7 @@ lab-ans-21-transit-gateway (London)
 - From `vm-a`, `ping -c 3` and `curl -m 5` `vm-b`'s address: nothing answers, though `vm-b`'s security group admits both. In the VPC console, open Transit gateway route tables, `tgw-rt-spokes`, **Routes**: spoke B's range is a blackhole. Look at the **Associations** and **Propagations** tabs of both tables too.
 - Now try it the other way, from `vm-b` to `vm-a`. Spoke A's range is not blackholed, so the packets follow `0.0.0.0/0` to the egress VPC. Does `vm-a` answer? Work out from the four route tables (`tgw-rt-spokes`, `rt-egress-tgw`, `rt-egress-public`, `tgw-rt-egress`) where the packets go, then add a blackhole route for spoke A's range (`vpc-lab`'s /20) to `tgw-rt-spokes` in the console and try again. Remove it afterwards.
 - Open `tgwa-egress` and find **Appliance mode support: enable**. Think about why it matters when a firewall in the egress VPC must see both directions of a flow (lab 27 builds exactly that).
-- Count the cost: three attachments at about 3.75p an hour each plus 2p a GB processed, against VPC peering, which has no hourly charge but needs a peering for every pair of VPCs.
+- Count the cost: three attachments at about 4.5p an hour each plus 2p a GB processed, against VPC peering, which has no hourly charge but needs a peering for every pair of VPCs.
 
 **Not built here** (each needs another account or a much larger budget): AWS Cloud WAN, a managed global network of transit-gateway-like segments with a policy document, and sharing a transit gateway with other accounts through AWS RAM. Both are in the Learn more links.
 

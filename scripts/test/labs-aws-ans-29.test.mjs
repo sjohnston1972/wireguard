@@ -30,14 +30,14 @@ test("ruling P1: ans-29 is the one peer-region lab; Ireland is its secondary reg
   assert.ok(!AWS_GLOBAL_LABS.includes(ID) && !AWS_DNS_LABS.includes(ID));
 });
 
-test("ans-29's lab.yaml: §12.2 row 29, after lab 21, about £0.16/h with four attachments billed by the whole hour (two in Ireland)", () => {
+test("ans-29's lab.yaml: §12.2 row 29, after lab 21, about £0.18/h with four attachments billed by the whole hour (two in Ireland)", () => {
   const { yaml } = awsLab(ID);
   assert.deepEqual([yaml.exam, yaml.level, yaml.type, yaml.skill_areas, yaml.prerequisites], ["ANS-C01", "expert", "explore", ["ans.design", "ans.implementation"], ["ans-21-transit-gateway"]]);
   assert.deepEqual(yaml.timing, { deploy_min: 15, destroy_min: 12, session_h: 2, max_h: 3 });
   assert.deepEqual(yaml.connectivity, { peering: "optional", dns_link: false, subnets_used: 2 });
   assert.deepEqual(yaml.capacity, { instance_types: ["t4g.nano", "t4g.nano", "t4g.nano"] });
   const total = yaml.cost.items.reduce((n, i) => n + i.gbp_h * (i.qty ?? 1), 0);
-  assert.ok(total > 0.15 && total < 0.18, `about £0.163/h, got ${total}`);
+  assert.ok(total > 0.16 && total < 0.20, `about £0.178/h, got ${total}`);
   const tgw = yaml.cost.items.filter((i) => i.name.startsWith("Transit gateway attachments"));
   assert.deepEqual(tgw.map((i) => [i.qty, i.whole_hours, i.region ?? "london", i.aws_price]), [[2, true, "london", undefined], [2, true, "secondary", undefined]]);
   assert.equal(yaml.cost.items.filter((i) => i.region === "secondary").length, 3);
