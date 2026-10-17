@@ -28,7 +28,7 @@ From `vm-client`, `curl http://<the NLB's name>` (the second Connect line) hangs
 <details>
 <summary>What was broken</summary>
 
-Two faults, and the request only works once both are fixed:
+Two faults, and with client IP preservation on (as built), the request only works once both are fixed:
 
 - **The service's security group admits only the load balancer's subnet, but the load balancer keeps the client's address.** `sg-svc` allows TCP 80 from `snet-nlb`'s range only. The target group has client IP preservation on, so the requests reach `vm-svc` from `vm-client`'s own address in `vpc-lab`, which `sg-svc` drops. The health checks come from the NLB's own addresses in `snet-nlb`, so the target looks healthy. The flow log for `vm-svc`'s interface shows the client's packets to port 80 as `REJECT`. Fix: allow TCP 80 from `vpc-lab`'s range in `sg-svc` (turning client IP preservation off on the target group instead also works, and also sidesteps the second fault, because `vm-svc` then replies to the NLB's address, not `vpc-lab`'s; but then `vm-svc` never sees who called).
 - **The service subnet's network ACL drops the replies to the client range.** `acl-svc` has outbound rule 90 denying everything to `vpc-lab`'s range, before rule 100 allows everything out. Network ACLs are stateless, so with the first fault fixed the flow logs show the client's request to port 80 as an `ACCEPT` inbound record and `vm-svc`'s reply as a `REJECT` outbound record. Fix: delete rule 90 (or change it to allow).
