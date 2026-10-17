@@ -112,9 +112,15 @@ export const CREATE_TAG_EXEMPT = ["ec2:CreateNetworkInterface", "ssm:CreateAssoc
 // accepter VPC; lab-scope-aws.mjs allows an accepter only of the lab's own peering, in AWS_PEER_REGION_LABS.
 // PeeringAcceptOwnAccountOnly keeps the VPC accept to peerings this account's own VPCs request (Task 2 fix round 1).
 // Ruling P17 (fix round 1): a mirror filter rule's modify and delete, judged on the rule's filter (MirrorRulesInLabFilters).
+// ans-21 fix (release test run 39026046930): a transit gateway route's create, replace and delete are authorised on
+// its route table and on the attachment it names, and a blackhole route names none, so AWS asks on
+// transit-gateway-attachment/* (no tags). The three are change-tag exempt and TgwRoutesInLabRouteTables holds them to a
+// lab-tagged route table instead. DenyVpnServer still refuses a route naming the VPN server's attachment.
 // Resolver endpoints: if lab 23's release test hits AccessDenied on an ENI action, fix it with a guard that cannot reach
 // the VPN server's VPC (not a blanket exemption).
-export const CHANGE_TAG_EXEMPT = ["ec2:ReplaceNetworkAclAssociation", "elasticloadbalancing:DeleteLoadBalancer", "ec2:DeleteNetworkInterface", "ec2:AcceptVpcPeeringConnection", "ec2:AcceptTransitGatewayPeeringAttachment", "ec2:DeleteTrafficMirrorFilterRule", "ec2:ModifyTrafficMirrorFilterRule"];
+export const CHANGE_TAG_EXEMPT = ["ec2:ReplaceNetworkAclAssociation", "elasticloadbalancing:DeleteLoadBalancer", "ec2:DeleteNetworkInterface", "ec2:AcceptVpcPeeringConnection", "ec2:AcceptTransitGatewayPeeringAttachment", "ec2:DeleteTrafficMirrorFilterRule", "ec2:ModifyTrafficMirrorFilterRule", "ec2:CreateTransitGatewayRoute", "ec2:ReplaceTransitGatewayRoute", "ec2:DeleteTransitGatewayRoute"];
+/** ans-21 fix: the transit gateway route actions, exempt from the change list, held instead to a lab-tagged route table. */
+export const TGW_ROUTE_ACTIONS = ["ec2:CreateTransitGatewayRoute", "ec2:ReplaceTransitGatewayRoute", "ec2:DeleteTransitGatewayRoute"];
 /** Ruling P17: the filter rule actions, exempt from the lists, held instead to a lab-tagged filter. */
 export const MIRROR_RULE_ACTIONS = ["ec2:CreateTrafficMirrorFilterRule", "ec2:DeleteTrafficMirrorFilterRule", "ec2:ModifyTrafficMirrorFilterRule"];
 /** Ruling P8: the tag Kubernetes gives what lab 19's cluster makes (its cluster is lab-<id>, ruling P7). */
@@ -423,6 +429,8 @@ function fixedStatements(abac) {
     // Ruling P17 (fix round 1): a mirror filter rule is untagged, so its create, modify and delete need the lab tag on
     // the filter it sits in (AWS authorises each on the filter too).
     deny("MirrorRulesInLabFilters", MIRROR_RULE_ACTIONS, "arn:aws:ec2:*:*:traffic-mirror-filter/*", { Null: { [`aws:ResourceTag/${LAB_TAG}`]: "true" } }),
+    // ans-21 fix: a transit gateway route is judged on its route table (a blackhole route is asked on every attachment).
+    deny("TgwRoutesInLabRouteTables", TGW_ROUTE_ACTIONS, "arn:aws:ec2:*:*:transit-gateway-route-table/*", { Null: { [`aws:ResourceTag/${LAB_TAG}`]: "true" } }),
     // Ruling P3 (fix rounds 1 and 2): the change-tag exempt VPC peering accept is refused when the peering's requester
     // VPC (ec2:RequesterVpc, on the peering connection) is another account's. Only when AWS gives the key: a negated
     // match on a missing key holds, and would refuse soa-08's released in-lab accept.
