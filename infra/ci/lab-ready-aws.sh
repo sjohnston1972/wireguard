@@ -27,7 +27,7 @@
 #   Network Firewall     READY
 #   CloudFront           Deployed (asked in us-east-1)
 #   Global Accelerator   DEPLOYED (asked in us-west-2)
-#   VPC Lattice          ACTIVE
+#   VPC Lattice          ACTIVE (a listener has no status: readable is ready)
 #   Resolver endpoints   OPERATIONAL (ACTION_NEEDED fails)
 #   Instance Connect Endpoints   create-complete (create-failed fails)
 #
@@ -86,6 +86,11 @@ check() {
   else
     rtype="${rest%%:*}"
     id="${rest#*:}"
+  fi
+  # arn:aws:vpc-lattice:<r>:<a>:service/<svc>/listener/<l>: a listener goes with its service (as in lab-aws-safety-net.sh).
+  if [ "$service" = vpc-lattice ] && [[ "$rest" == service/*/listener/* ]]; then
+    rtype=listener
+    id="${rest#service/}"
   fi
   TYPE="$service:$rtype"
   NAME="$id"
@@ -201,6 +206,9 @@ check() {
       json="$(awsq vpc-lattice get-service --service-identifier "$id" --region "$region")" || { unanswered; return; }
       s="$(jq -r '.status // ""' <<<"$json")"
       judge "$s" ACTIVE CREATE_FAILED ;;
+    vpc-lattice:listener)
+      # A listener has no status: it is ready once AWS can read it (a not-found is gone, as for any item).
+      awsq vpc-lattice get-listener --service-identifier "${id%%/*}" --listener-identifier "${id##*/}" --region "$region" >/dev/null || { unanswered; return; } ;;
     vpc-lattice:servicenetworkvpcassociation)
       json="$(awsq vpc-lattice get-service-network-vpc-association --service-network-vpc-association-identifier "$id" --region "$region")" || { unanswered; return; }
       s="$(jq -r '.status // ""' <<<"$json")"
