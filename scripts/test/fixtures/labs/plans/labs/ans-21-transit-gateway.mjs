@@ -92,7 +92,7 @@ export default () => {
       { address: "aws_vpc.egress", values: tagged(c, { cidr_block: e, enable_dns_support: true, enable_dns_hostnames: true, tags: { Name: "vpc-egress" } }), refs: { cidr_block: ["local.egress_cidr"] } },
       subnetTgw(0),
       subnetTgw(1),
-      { address: "aws_subnet.egress_public", values: tagged(c, { cidr_block: cidrsubnet(e, 4, 2), availability_zone: "eu-west-2a", map_public_ip_on_launch: false, tags: { Name: "snet-egress-public" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.egress", "id"), cidr_block: ["local.egress_cidr"], availability_zone: ["local.azs"] } },
+      { address: "aws_subnet.egress_public", values: tagged(c, { cidr_block: cidrsubnet(e, 4, 2), availability_zone: "eu-west-2a", map_public_ip_on_launch: false, tags: { Name: "snet-egress-public" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.egress", "id"), cidr_block: ["local.egress_cidr"], availability_zone: ["local.azs[0]", "local.azs"] } },
       { address: "aws_internet_gateway.egress", values: tagged(c, { tags: { Name: "igw-egress" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.egress", "id") } },
       { address: "aws_route_table.egress_public", values: tagged(c, { tags: { Name: "rt-egress-public" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.egress", "id") } },
       route("egress_public_internet", "aws_route_table.egress_public", { destination_cidr_block: "0.0.0.0/0" }, "gateway_id", "aws_internet_gateway.egress"),

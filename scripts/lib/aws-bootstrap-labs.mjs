@@ -102,6 +102,13 @@ export function simulatorCases(account, defaultVpcArns = []) {
     { name: "vended log delivery to a lab bucket", action: "logs:CreateLogDelivery", resource: "*", context: [region], want: "allowed" },
     { name: "a lab log bucket's policy", action: "s3:PutBucketPolicy", resource: "arn:aws:s3:::cloudlabs-a23k3x9q-dnslogs", context: [region], want: "allowed" },
     { name: "a mirror filter rule, untagged", action: "ec2:CreateTrafficMirrorFilterRule", resource: `arn:aws:ec2:eu-west-2:${account}:traffic-mirror-filter-rule/*`, context: [region], want: "allowed" },
+    // ans-21 fix: a transit gateway route is judged on its route table; a blackhole route is asked on every attachment.
+    { name: "a transit gateway route in a lab route table", action: "ec2:CreateTransitGatewayRoute", resource: `arn:aws:ec2:eu-west-2:${account}:transit-gateway-route-table/tgw-rtb-0123456789abcdef0`, context: [region, ...labResourceTag], want: "allowed" },
+    { name: "a blackhole route's attachment ARN, untagged", action: "ec2:CreateTransitGatewayRoute", resource: `arn:aws:ec2:eu-west-2:${account}:transit-gateway-attachment/*`, context: [region], want: "allowed" },
+    { name: "a transit gateway route in an untagged route table", action: "ec2:CreateTransitGatewayRoute", resource: `arn:aws:ec2:eu-west-2:${account}:transit-gateway-route-table/tgw-rtb-0123456789abcdef0`, context: [region], want: "denied" },
+    // ans-26 fix: a web ACL is also asked on the AWS managed rule set it uses, which carries no request tag.
+    { name: "a web ACL's managed rule set, untagged", action: "wafv2:CreateWebACL", resource: `arn:aws:wafv2:us-east-1:${account}:global/managedruleset/AWSManagedRulesCommonRuleSet/0123456789abcdef0`, context: [ctx("aws:RequestedRegion", ["us-east-1"])], want: "allowed" },
+    { name: "an untagged WAF web ACL", action: "wafv2:CreateWebACL", resource: `arn:aws:wafv2:us-east-1:${account}:global/webacl/lab-ans-26-edge-waf/*`, context: [ctx("aws:RequestedRegion", ["us-east-1"])], want: "denied" },
     ...defaultVpcCase(account, defaultVpcArns),
   ];
 }
