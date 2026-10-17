@@ -80,6 +80,15 @@
    "height": 1146
   }
  ],
+ "ans-29-multi-region": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A transit gateway sending traffic to a transit gateway, in two VPCs with four subnets.",
+   "width": 1939,
+   "height": 1146
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

@@ -62,6 +62,13 @@
    "kind": "architecture"
   }
  ],
+ "ans-29-multi-region": [
+  {
+   "file": "architecture.svg",
+   "title": "Multi-region: inter-region TGW peering: architecture",
+   "kind": "architecture"
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",
