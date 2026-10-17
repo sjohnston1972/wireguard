@@ -185,6 +185,7 @@ export const AWS_DYNAMIC_JUDGED = {
   aws_glue_catalog_table: { target_table: "gateway" },
   aws_ec2_client_vpn_endpoint: { authentication_options: "never", client_connect_options: "gateway" },
   aws_ec2_managed_prefix_list: { entry: "address" },
+  aws_network_interface: { attachment: "gateway" },
   aws_vpn_connection: { tunnel1_log_options: "lingering", tunnel2_log_options: "lingering" },
   aws_route53_resolver_endpoint: { ip_address: "gateway" },
   aws_route53_resolver_rule: { target_ip: "address" },

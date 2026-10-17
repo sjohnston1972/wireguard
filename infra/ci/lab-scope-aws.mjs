@@ -1641,8 +1641,9 @@ export function scopeProblemsAws(input, labId, { mode = "plan" } = {}) {
           if (written("security_groups")) ownAll("security_groups", ["aws_security_group"], "gateway", "the lab's own security groups");
           for (const ip of list(val.private_ips)) if (plan && !ipInSlot(ip)) refuse("address", `private_ips ${JSON.stringify(ip instanceof Unknown ? "(not known at plan)" : (ip ?? null))}: inside the lab's slot`);
           // Optional and Computed: left unset, a real plan prints `attachment` wholly unknown, with no references and not in the
-          // configuration (the provider's computed block, as the VPN tunnel log options); that passes. A written one (known values,
-          // references, or in the configuration, a dynamic block in HCL too) is refused.
+          // configuration (the provider's computed block, as the VPN tunnel log options); that passes. A written one (in the
+          // configuration, known values, or references) is refused; a dynamic one is refused on the text (AWS_DYNAMIC_JUDGED:
+          // HCL mode and lab-lint), since a plan cannot tell it from the unset block.
           {
             const at = val.attachment;
             const computedOnly = at instanceof Unknown && !res.configured?.has("attachment") && !(at.refs?.length > 0);
