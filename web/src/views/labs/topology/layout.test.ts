@@ -279,6 +279,7 @@ const TAB_1600 = { w: 905, h: 500 };
 // Labs that cannot reach the 60% full-screen floor. The full screen starts at MIN_FIT_ZOOM.full (60%) and lets the reader pan.
 const FULL_SCREEN_EXCEPTIONS: Record<string, { floor: number; why: string }> = {
   "ans-25-load-balancing": { floor: 0.4, why: "ALB, NLB and GWLB in one VPC: 7 subnets, 7 security groups and 5 route tables; the full screen starts at 60% and pans (ruling, batch 4 Task 20 follow-up)" },
+  "ans-30-vpc-lattice": { floor: 0.5, why: "two VPCs (four subnets, six security groups, two Instance Connect Endpoints) beside a service network and two services: 0.52 at 2000 × 1030; the full screen starts at 60% and pans (final fix F10)" },
 };
 
 describe("one packing for every view (Steven, 2026-10-09: full screen changed the layout)", () => {
@@ -345,8 +346,8 @@ describe("one packing for every view (Steven, 2026-10-09: full screen changed th
     for (const id of plannedIds()) expect(fitZoom(layoutTopology(planned(id), null), FULL_2000.w, FULL_2000.h, 1.75), `${id} at 2000 × 1030`).toBeGreaterThanOrEqual(FULL_SCREEN_EXCEPTIONS[id]?.floor ?? 0.6);
   });
 
-  it("the full-screen exception list stays exactly one lab, and each listed lab really is below 60%", () => {
-    expect(Object.keys(FULL_SCREEN_EXCEPTIONS)).toEqual(["ans-25-load-balancing"]);
+  it("the full-screen exception list stays exactly these two labs, and each listed lab really is below 60%", () => {
+    expect(Object.keys(FULL_SCREEN_EXCEPTIONS)).toEqual(["ans-25-load-balancing", "ans-30-vpc-lattice"]);
     for (const id of Object.keys(FULL_SCREEN_EXCEPTIONS)) {
       expect(plannedIds(), `${id} is still a planned lab`).toContain(id);
       expect(fitZoom(layoutTopology(planned(id), null), FULL_2000.w, FULL_2000.h, 1.75), `${id} no longer needs its exception: remove it`).toBeLessThan(0.6);
