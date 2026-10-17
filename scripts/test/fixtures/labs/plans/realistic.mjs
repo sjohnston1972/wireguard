@@ -115,6 +115,8 @@ export const UNSET_BLOCKS_UNKNOWN = {
   aws_ecs_service: ["deployment_configuration"],
   aws_lambda_function: ["ephemeral_storage", "tracing_config"],
   aws_vpc_peering_connection: ["accepter", "requester"],
+  // Lab 22 (batch 4 release test, 2026-10-17): Optional and Computed, so a lab-made primary interface plans it unknown.
+  aws_network_interface: ["attachment", "connection_tracking_specification"],
   aws_lb: ["subnet_mapping"],
   aws_lb_listener: ["mutual_authentication"],
   aws_lb_target_group: ["stickiness", "target_failover", "target_group_health", "target_health_state"],

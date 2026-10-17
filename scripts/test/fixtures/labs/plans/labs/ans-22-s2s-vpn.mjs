@@ -53,7 +53,7 @@ export default () => {
       ...templateResources(c),
       // onprem.tf
       { address: "aws_vpc.onprem", values: tagged(c, { cidr_block: o, enable_dns_support: true, enable_dns_hostnames: true, tags: { Name: "vpc-onprem" } }), refs: { cidr_block: ["local.onprem_cidr"] } },
-      { address: "aws_subnet.onprem", values: tagged(c, { cidr_block: os, availability_zone: "eu-west-2a", map_public_ip_on_launch: false, tags: { Name: "snet-onprem" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.onprem", "id"), cidr_block: ["local.onprem_subnet_cidr"], availability_zone: ["local.azs"] } },
+      { address: "aws_subnet.onprem", values: tagged(c, { cidr_block: os, availability_zone: "eu-west-2a", map_public_ip_on_launch: false, tags: { Name: "snet-onprem" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.onprem", "id"), cidr_block: ["local.onprem_subnet_cidr"], availability_zone: ["local.azs[0]", "local.azs"] } },
       { address: "aws_internet_gateway.onprem", values: tagged(c, { tags: { Name: "igw-onprem" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.onprem", "id") } },
       { address: "aws_route_table.onprem", values: tagged(c, { tags: { Name: "rt-onprem" } }), unknown: ["vpc_id"], refs: { vpc_id: ref("aws_vpc.onprem", "id") } },
       { address: "aws_route.onprem_internet", values: { destination_cidr_block: "0.0.0.0/0" }, unknown: ["route_table_id", "gateway_id"], refs: { route_table_id: ref("aws_route_table.onprem", "id"), gateway_id: ref("aws_internet_gateway.onprem", "id") } },

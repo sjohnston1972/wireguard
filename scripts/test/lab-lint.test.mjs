@@ -321,6 +321,7 @@ test("Task 4 fix round 2: --cloud aws refuses a dynamic block the scope check ju
   assert.equal(dyn("aws_security_group", "ingress", "      from_port = 500\n      to_port = 500\n      protocol = \"udp\"\n      cidr_blocks = [ingress.value]").length, 1);
   assert.equal(dyn("aws_sfn_state_machine", "logging_configuration", "      level = \"ALL\"\n      log_destination = logging_configuration.value").length, 1);
   assert.equal(aws({ "main.tf": 'resource aws_sfn_state_machine x {\n  dynamic logging_configuration {\n    for_each = var.logs\n    content {\n      level = "ALL"\n    }\n  }\n}\n' }).filter((p) => p.startsWith("dynamic")).length, 1, "unquoted labels too");
+  assert.equal(dyn("aws_network_interface", "attachment", "      instance = var.i\n      device_index = 1").length, 1, "a network interface's dynamic attachment");
   // A block written out, and a dynamic block the scope check does not judge, are left alone.
   assert.deepEqual(aws({ "main.tf": 'resource "aws_security_group" "x" {\n  name = "x"\n  ingress {\n    from_port = 22\n    to_port = 22\n    protocol = "tcp"\n    security_groups = [aws_security_group.y.id]\n  }\n}\n' }).filter((p) => p.startsWith("dynamic")), []);
   assert.deepEqual(dyn("aws_security_group", "egress", "      from_port = 0"), []);

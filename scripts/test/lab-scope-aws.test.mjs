@@ -1011,9 +1011,20 @@ test("final fix F2: lab 22's router sits on its own interface in its own subnet;
     return { ...i, unknown: Object.keys(r), refs: { ...i.refs, ...refs(r).refs } };
   };
   assert.deepEqual(rulesFor(c22, [nic(), vm()], net), []);
+  // Real plans print an unset `attachment` wholly unknown (run 39026020372): the computed block passes; a written one does not.
+  const planned = rulesFor(c22, [nic(), vm()], net);
+  assert.deepEqual(planned, []);
+  assert.deepEqual(rulesFor(c22, [nic({}, { subnet_id: "aws_subnet.private", security_groups: "aws_security_group.vms", attachment: "aws_instance.router" }), vm()], net), ["gateway: aws_network_interface.router"], "an attachment built from references");
   assert.deepEqual(rulesFor(c22, [nic({ subnet_id: "subnet-0123456789abcdef0" }, { security_groups: "aws_security_group.vms" })], net), ["gateway: aws_network_interface.router"], "a subnet not the lab's own");
   assert.deepEqual(rulesFor(c22, [nic({ private_ips: ["10.9.9.9"] })], net), ["address: aws_network_interface.router"], "an address outside the slot");
   assert.deepEqual(rulesFor(c22, [nic({ attachment: [{ device_index: 1 }] })], net), ["gateway: aws_network_interface.router"], "attached by its own block");
+  // Review of #147: unknown with no references but written in the configuration is refused; a separate attachment resource is not on the allowlist.
+  assert.deepEqual(rulesFor(c22, [{ ...nic({ attachment: [{}] }), unknown: ["subnet_id", "security_groups", "attachment"] }, vm()], net), ["gateway: aws_network_interface.router"], "attachment written, unknown, no references");
+  const sep = { resource: { aws_network_interface_attachment: { x: [{ instance_id: "${aws_instance.router.id}", network_interface_id: "${aws_network_interface.router.id}", device_index: 1 }] } } };
+  assert.ok(scope.checkHclAws(sep, c22.id).some((x) => x.address === "aws_network_interface_attachment.x"), "a separate attachment resource is not on the allowlist");
+  // A dynamic attachment is refused in HCL mode (a plan reads it as the unset, computed block).
+  const nicHcl = { resource: { aws_network_interface: { router: [{ subnet_id: "${aws_subnet.private.id}", dynamic: { attachment: [{ for_each: "${var.x}", content: [{ instance: "${var.i}", device_index: 1 }] }] } }] } } };
+  assert.ok(scope.checkHclAws(nicHcl, c22.id).some((x) => x.address === "aws_network_interface.router" && x.rule === "gateway"), "dynamic attachment in HCL");
   assert.deepEqual(rulesFor(c22, [nic(), vm({ "primary_network_interface.0.network_interface_id": "aws_subnet.onprem" })], net), ["gateway: aws_instance.router"], "a primary interface not the lab's own");
 });
 
