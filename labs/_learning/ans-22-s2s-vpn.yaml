@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Bring up a site-to-site VPN with BGP between a VPC and a pretend data centre router.
+learn:
+  - Build two IPsec tunnels from strongSwan to a virtual private gateway
+  - Exchange routes by BGP and see them propagate into a route table
+  - Fail one tunnel and watch the traffic move to the other
+learning_min: 75

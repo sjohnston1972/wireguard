@@ -17,6 +17,15 @@
    "height": 1134
   }
  ],
+ "ans-22-s2s-vpn": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A VPN gateway sending traffic to a customer gateway, in two VPCs with three subnets.",
+   "width": 2003,
+   "height": 1134
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

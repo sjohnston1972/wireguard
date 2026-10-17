@@ -13,6 +13,13 @@
    "kind": "architecture"
   }
  ],
+ "ans-22-s2s-vpn": [
+  {
+   "file": "architecture.svg",
+   "title": "Site-to-site VPN with BGP to a pretend data centre: architecture",
+   "kind": "architecture"
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",
