@@ -84,4 +84,6 @@ resource "aws_ec2_instance_connect_endpoint" "onprem" {
   security_group_ids = [aws_security_group.eice_onprem.id]
   preserve_client_ip = false
   tags               = { Name = "eice-onprem" }
+  # After the router, so AWS cannot hand the endpoint the router's fixed address.
+  depends_on = [aws_instance.router]
 }

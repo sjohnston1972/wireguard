@@ -61,9 +61,12 @@ test("ruling P11 and §7.4: the router's Elastic IP admits only IKE and NAT-T fr
 });
 
 test("ans-22's router configures itself: sudo labadmin, strongSwan with the AWS-chosen inside addresses, FRR on 65001 advertising vpc-onprem, forwarding on", () => {
-  const { files } = awsLab(ID);
+  const { blocks, files } = awsLab(ID);
   const r = files["router.tf"];
   for (const re of [/groups = \["sudo"\]/, /strongswan-swanctl charon-systemd frr/, /tunnel1_cgw_inside_address/, /tunnel1_vgw_inside_address/, /tunnel2_cgw_inside_address/, /tunnel2_vgw_inside_address/, /mode vti key \$\{t\.n \* 100\}/, /start_action = start/, /id = \$\{aws_eip\.router\.public_ip\}/, /router bgp \$\{aws_customer_gateway\.onprem\.bgp_asn\}/, /remote-as \$\{aws_vpn_gateway\.lab\.amazon_side_asn\}/, /network \$\{local\.onprem_cidr\}/, /net\.ipv4\.ip_forward = 1/, /install_routes = no/]) assert.match(r, re);
+  assert.match(r, /chpasswd = \{ expire = false, users = \[\{ name = "labadmin"/, "the modern chpasswd form, not the deprecated list");
+  assert.doesNotMatch(files["outputs.tf"], /psk|random_password|preshared/, "no pre-shared key in the outputs");
+  assert.match(body(blocks, "aws_ec2_instance_connect_endpoint", "onprem"), /depends_on\s+= \[aws_instance\.router\]/);
   const onprem = files["onprem.tf"];
   for (const re of [/onprem_cidr\s+= cidrsubnet\(var\.address_space, 2, 1\)/, /router_ip\s+= cidrhost\(local\.onprem_subnet_cidr, 10\)/, /destination_cidr_block = local\.vpc_cidr\n\s+network_interface_id\s+= aws_instance\.router\.primary_network_interface_id/]) assert.match(onprem, re);
   assert.equal(count(onprem, /map_public_ip_on_launch = false/g), 1);

@@ -121,6 +121,8 @@ locals {
       "default",
       { name = "labadmin", groups = ["sudo"], sudo = "ALL=(ALL) NOPASSWD:ALL", shell = "/bin/bash", lock_passwd = false },
     ]
+    # Ubuntu 24.04 flags the template's chpasswd.list as deprecated; this is the modern form.
+    chpasswd = { expire = false, users = [{ name = "labadmin", password = var.admin_password, type = "text" }] }
     write_files = [
       { path = "/etc/sysctl.d/90-lab-router.conf", permissions = "0644", content = "net.ipv4.ip_forward = 1\n" },
       { path = "/usr/local/sbin/lab-vti", permissions = "0755", content = local.router_vti },
