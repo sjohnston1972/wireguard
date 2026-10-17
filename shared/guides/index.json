@@ -48,6 +48,13 @@
    "kind": "architecture"
   }
  ],
+ "ans-27-network-firewall": [
+  {
+   "file": "architecture.svg",
+   "title": "Network Firewall in an inspection VPC: architecture",
+   "kind": "architecture"
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

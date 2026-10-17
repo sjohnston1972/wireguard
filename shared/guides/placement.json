@@ -62,6 +62,15 @@
    "height": 1146
   }
  ],
+ "ans-27-network-firewall": [
+  {
+   "file": "architecture.svg",
+   "sketch": 0,
+   "alt": "Architecture diagram. A Network Firewall, two EC2 Instance Connect Endpoints, an NAT gateway, a transit gateway and more, in three VPCs with seven subnets.",
+   "width": 2758,
+   "height": 1134
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

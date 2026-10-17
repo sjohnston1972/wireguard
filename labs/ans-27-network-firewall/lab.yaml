@@ -1,0 +1,62 @@
+# Lab ans-27 (AWS labs batch 4). ANS-C01 ((V) the wording against the current
+# exam guide): Network Security, Compliance, and Governance (AWS Network
+# Firewall: stateless and stateful rule groups, a domain allow-list, alert
+# logs); Network Design (centralised inspection through a transit gateway in
+# appliance mode).
+# London list prices × 0.75 (labs-verify --aws-prices); the firewall
+# endpoint, the transit gateway attachments and the NAT gateway bill each
+# started hour whole (V, A20). The firewall's and the attachments' filters
+# are (V, Task 23). AWS waives a NAT gateway's hourly charge for each firewall
+# endpoint hour (V): the estimate keeps the NAT item either way. Traffic
+# processed is authored for light test traffic. This is the batch's dearest
+# lab (one firewall endpoint, about 30p an hour): its session is 2 hours.
+id: ans-27-network-firewall
+version: 1
+cloud: aws
+title: "Network Firewall in an inspection VPC"
+summary: >-
+  Two spoke VPCs and an inspection VPC joined by a transit gateway in appliance mode, so every packet between the
+  spokes and to the internet passes AWS Network Firewall: a stateless rule that drops ping between the spokes, a
+  stateful domain allow-list, and alert logs in the lab's own bucket.
+exam: ANS-C01
+skill_areas: [ans.security, ans.design]
+level: expert
+type: explore
+prerequisites: [ans-21-transit-gateway]
+cost:
+  items:
+    - name: "Network Firewall endpoint, one AZ"
+      gbp_h: 0.2963
+      whole_hours: true
+      aws_price: { service: AWSNetworkFirewall, unit: Hrs, filters: { usagetype: "{usage}-Endpoint-Hour" } }
+    - { name: "Network Firewall traffic processed, light test traffic", gbp_h: 0.0010 }
+    - name: "Transit gateway VPC attachments (2 spokes and the inspection VPC)"
+      gbp_h: 0.0375
+      qty: 3
+      whole_hours: true
+      aws_price: { service: AmazonVPC, unit: Hrs, filters: { usagetype: "{usage}-TransitGateway-Hours" } }
+    - name: "NAT gateway, hourly"
+      gbp_h: 0.0375
+      whole_hours: true
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { productFamily: "NAT Gateway", usagetype: "{usage}-NatGateway-Hours" } }
+    - name: "Public IPv4 address (the NAT gateway's)"
+      gbp_h: 0.0038
+      aws_price: { service: AmazonVPC, unit: Hrs, filters: { group: VPCPublicIPv4Address, usagetype: "{usage}-PublicIPv4:InUseAddress" } }
+    - name: "EC2 t4g.nano, Linux (vm-a and vm-b)"
+      gbp_h: 0.0035
+      qty: 2
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      qty: 2
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - { name: "EC2 Instance Connect Endpoints (2)", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 15, destroy_min: 15, session_h: 2, max_h: 3 }
+capacity: { instance_types: [t4g.nano, t4g.nano] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 3 }
+identity:
+  creates: []
+  roles: []
+  governance: false
