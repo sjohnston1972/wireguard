@@ -119,7 +119,7 @@ export const UNSET_BLOCKS_UNKNOWN = {
   aws_network_interface: ["attachment", "connection_tracking_specification"],
   aws_lb: ["subnet_mapping"],
   aws_lb_listener: ["mutual_authentication"],
-  aws_lb_target_group: ["stickiness", "target_failover", "target_group_health", "target_health_state"],
+  aws_lb_target_group: ["health_check", "stickiness", "target_failover", "target_group_health", "target_health_state"],
   // AWS labs batch 3 (Task 3 fix round 2, R2-1): Optional and Computed blocks in aws 6.69's source (dynamodb/table.go,
   // eks/cluster.go), so planned wholly unknown when unset, as batch 1 and 2's real plans show for such blocks. Batch 3's
   // release tests (saa-11 to saa-19, aws 6.69.0, 2026-10-16) recorded the rest of each type's, and the other types'.
@@ -139,6 +139,14 @@ export const UNSET_BLOCKS_UNKNOWN = {
   aws_vpc_endpoint: ["dns_options", "subnet_configuration"],
   // AWS labs batch 4 (Task 4 fix round 2): Optional and Computed in aws 6.69's source (ec2/vpnsite_connection.go).
   aws_vpn_connection: ["tunnel1_log_options", "tunnel2_log_options"],
+  // AWS labs batch 4's release tests (ans-20 to ans-31, aws 6.69.0, 2026-10-17): more Optional and Computed blocks the
+  // real plans printed wholly unknown when unset (aws_lb_target_group's health_check is on the list above).
+  aws_acm_certificate: ["options"],
+  aws_ec2_client_vpn_endpoint: ["client_connect_options", "client_login_banner_options", "client_route_enforcement_options", "transit_gateway_configuration"],
+  aws_ec2_transit_gateway_peering_attachment: ["options"],
+  aws_glue_catalog_table: ["partition_index", "view_definition"],
+  aws_networkfirewall_firewall: ["availability_zone_mapping"],
+  aws_vpc_peering_connection_accepter: ["accepter", "requester"],
 };
 
 /** The aws provider's region when a plan's variables have none (common-aws.mjs's AWS_REGION, London). */
@@ -184,6 +192,11 @@ export const PLAN_DEFAULTS = {
   // AWS labs batch 3's release tests (aws 6.69.0, 2026-10-16): saa-13's queues know their data key reuse period
   // (AWS's 300 seconds), and saa-18's group its instances distribution's spot_instance_pools, left unset.
   aws_sqs_queue: { kms_data_key_reuse_period_seconds: 300 },
+  // AWS labs batch 4 release tests (hashicorp/tls, 2026-10-17): the tls provider knows these at plan though left unset
+  // (the shape records only that they are known; these values are the provider defaults).
+  tls_private_key: { ecdsa_curve: "P224" },
+  tls_self_signed_cert: { early_renewal_hours: 0, ready_for_renewal: false, set_authority_key_id: false, set_subject_key_id: false },
+  tls_locally_signed_cert: { early_renewal_hours: 0, is_ca_certificate: false, ready_for_renewal: false, set_subject_key_id: false },
   aws_autoscaling_group: (v) => (Array.isArray(v.mixed_instances_policy)
     ? { mixed_instances_policy: v.mixed_instances_policy.map((m) => (Array.isArray(m?.instances_distribution) ? { instances_distribution: m.instances_distribution.map(() => ({ spot_instance_pools: 0 })) } : {})) }
     : {}),

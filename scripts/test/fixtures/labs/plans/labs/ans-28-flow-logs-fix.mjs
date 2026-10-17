@@ -185,7 +185,7 @@ export default () => {
         address: "aws_s3_bucket_policy.flowlogs",
         values: { policy: bucketPolicy },
         unknown: ["bucket"],
-        refs: { bucket: ref("aws_s3_bucket.flowlogs", "id"), policy: ["local.flowlogs_arn", "local.flowlogs_s3_root", "local.account"] },
+        refs: { bucket: ref("aws_s3_bucket.flowlogs", "id"), policy: ["local.flowlogs_arn", "local.flowlogs_s3_root", "local.account", "local.flowlogs_arn", "local.account"] },
       },
       {
         address: "aws_flow_log.service_s3",
@@ -202,6 +202,7 @@ export default () => {
       {
         address: "aws_glue_catalog_table.flow",
         values: {
+          database_name: glueDb,
           name: "vpc_flow_logs", table_type: "EXTERNAL_TABLE", description: `lab ${id}: vpc-service flow logs in S3, partitioned by the hour`,
           parameters: {
             EXTERNAL: "TRUE", "skip.header.line.count": "1", "projection.enabled": "true",
@@ -222,7 +223,6 @@ export default () => {
             columns,
           }],
         },
-        unknown: ["database_name"],
         refs: {
           database_name: ref("aws_glue_catalog_database.flow", "name"),
           description: ["var.lab_id"],

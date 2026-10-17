@@ -139,7 +139,7 @@ export default () => {
         address: "aws_lb.alb",
         values: tagged(c, { name: `alb-${p}`, internal: false, load_balancer_type: "application", enable_deletion_protection: false, tags: { Name: "alb-app" } }),
         unknown: ["security_groups", "subnets"],
-        refs: { name: ["var.name_prefix"], security_groups: ref("aws_security_group.alb", "id"), subnets: ref("aws_subnet.public", "id") },
+        refs: { name: ["var.name_prefix"], security_groups: ref("aws_security_group.alb", "id"), subnets: ["aws_subnet.public"] },
       },
       tg("blue", `tg-${p}-blue`, { port: 80, protocol: "HTTP", deregistration_delay: "30", health_check: [health], tags: { Name: "tg-blue" } }),
       tg("green", `tg-${p}-green`, { port: 80, protocol: "HTTP", deregistration_delay: "30", health_check: [health], tags: { Name: "tg-green" } }),
@@ -158,7 +158,8 @@ export default () => {
         refs: {
           load_balancer_arn: ref("aws_lb.alb", "arn"),
           certificate_arn: ref("aws_acm_certificate.app", "arn"),
-          "default_action.0.forward.0.target_group": [...ref("aws_lb_target_group.blue", "arn"), ...ref("aws_lb_target_group.green", "arn")],
+          "default_action.0.forward.0.target_group.0.arn": ref("aws_lb_target_group.blue", "arn"),
+          "default_action.0.forward.0.target_group.1.arn": ref("aws_lb_target_group.green", "arn"),
         },
       },
       {

@@ -419,6 +419,24 @@ test("the realistic plans print batch 1 AWS labs' regions, unset blocks, sensiti
   assert.equal(tiers.after.rule[1].expiration[0].days, 365);
   // A local is referenced by its own name, not by what it is built from.
   assert.deepEqual(config("saa-11-three-tier", "aws_launch_template.app").expressions.user_data.references, ["local.app_cloud_init"]);
+  // 8. Batch 4 (ans-20 to ans-31): more unset Optional and Computed blocks, wholly unknown (a target group's
+  // health_check when the lab sets none), and the tls provider's plan-time defaults, known though left unset.
+  for (const [lab, address, block] of [
+    ["ans-25-load-balancing", "aws_acm_certificate.app", "options"],
+    ["ans-25-load-balancing", "aws_lb_target_group.web", "health_check"],
+    ["ans-27-network-firewall", "aws_networkfirewall_firewall.lab", "availability_zone_mapping"],
+    ["ans-28-flow-logs-fix", "aws_glue_catalog_table.flow", "partition_index"],
+    ["ans-29-multi-region", "aws_ec2_transit_gateway_peering_attachment.london_ireland", "options"],
+    ["ans-29-multi-region", "aws_vpc_peering_connection_accepter.ireland", "accepter"],
+    ["ans-31-client-vpn", "aws_ec2_client_vpn_endpoint.lab", "client_connect_options"],
+  ]) assert.equal(change(lab, address).after_unknown[block], true, `${address}: ${block}`);
+  const caKey = change("ans-25-load-balancing", "tls_private_key.ca");
+  assert.equal(caKey.after.ecdsa_curve, "P224");
+  assert.equal(caKey.after_unknown.ecdsa_curve, undefined);
+  const caCert = change("ans-25-load-balancing", "tls_self_signed_cert.ca");
+  assert.equal(caCert.after.set_authority_key_id, false);
+  assert.equal(caCert.after.early_renewal_hours, 0);
+  assert.equal(change("ans-25-load-balancing", "tls_locally_signed_cert.server").after.is_ca_certificate, false);
   // A plan with no region variable still knows each aws resource's region (London, the fixtures' default).
   const bare = realisticPlan({ resources: [{ address: "aws_vpc.x", values: { cidr_block: "10.0.0.0/16" } }], providers: ["aws"] });
   assert.equal(bare.resource_changes[0].change.after.region, "eu-west-2");
