@@ -1262,7 +1262,29 @@ del_dbsnap() {
 del_instance() { vpc_ok "$1" && wr "$1" "terminate $(label "$1")" ec2 terminate-instances --instance-ids "${C_I[$1]}"; }
 del_lt() { wr "$1" "delete $(label "$1")" ec2 delete-launch-template --launch-template-id "${C_I[$1]}"; }
 del_nat() { vpc_ok "$1" && wr "$1" "delete $(label "$1")" ec2 delete-nat-gateway --nat-gateway-id "${C_I[$1]}"; }
-del_eip() { wr "$1" "release $(label "$1")" ec2 release-address --allocation-id "${C_I[$1]}"; }
+# Residual R2: an address still on a lab-made interface (lab 22's router's primary interface outlives its instance) is
+# InUse until the fabric deletes that interface: it is kept for eip_later, which asks again after the fabric.
+EIP_LATER=()
+del_eip() {
+  QUIET_CODE=InvalidIPAddress.InUse wr "$1" "release $(label "$1")" ec2 release-address --allocation-id "${C_I[$1]}" && return 0
+  [ "$WCODE" = InvalidIPAddress.InUse ] && EIP_LATER+=("$1")
+  return 1
+}
+# eip_later: each address InUse before the fabric, released now; at most 3 tries, POLL_S apart, by UNTIL.
+eip_later() {
+  local i n
+  for i in "${EIP_LATER[@]}"; do
+    for n in 1 2 3; do
+      QUIET_CODE=InvalidIPAddress.InUse wr "$i" "release $(label "$i")" ec2 release-address --allocation-id "${C_I[$i]}" && break
+      [ "$WCODE" = InvalidIPAddress.InUse ] || break
+      if [ "$n" -eq 3 ] || past_until; then
+        warn "left behind: $(label "$i") is still in use"
+        break
+      fi
+      sleep "$POLL_S"
+    done
+  done
+}
 # Final fix F11: an inter-region peering is listed in both its regions; the second finds it deleting (or deleted) and
 # leaves it, so AWS is not asked twice.
 del_pcx() {
@@ -2016,6 +2038,7 @@ run ec2:vpc-flow-log - del_flowlog
 # 4 VPC fabric (then any security group rule its group did not take along), then IPAM (pools, scopes and its
 # default resource discovery and association go with it)
 fabric
+eip_later
 run ec2:security-group-rule - del_sgr
 run ec2:ipam poll del_ipam
 # 5 data and the rest (AMIs before snapshots: a snapshot behind an AMI cannot go first; certificates last, by when

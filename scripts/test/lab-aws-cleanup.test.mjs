@@ -1208,6 +1208,47 @@ test("final fix F11: an inter-region peering listed in both regions is deleted o
   w.cleanup();
 });
 
+// Residual R2: lab 22's router sits on its own interface, which outlives the instance with the Elastic IP still on it.
+test("residual R2: an Elastic IP still on the lab's interface is released after the fabric deletes that interface; a wg-admin one never", { skip }, () => {
+  const inUse = "An error occurred (InvalidIPAddress.InUse) when calling the ReleaseAddress operation: x";
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: JSON.stringify({ ResourceTagMappingList: [
+      ...[A("instance/i-0router"), A("elastic-ip/eipalloc-0router"), A("network-interface/eni-0router")].map((x) => ({ ResourceARN: x, Tags: [{ Key: "cloudlabs-lab", Value: "ans-22-s2s-vpn" }] })),
+      { ResourceARN: A("elastic-ip/eipalloc-0wg"), Tags: [{ Key: "cloudlabs-lab", Value: "ans-22-s2s-vpn" }, { Key: "wg-admin", Value: "vpn" }] },
+    ] }) },
+    { cmd: "aws", match: "^ec2 describe-instances --instance-ids i-0router", out: ['{"Reservations":[{"Instances":[{"State":{"Name":"running"},"VpcId":"vpc-0onprem"}]}]}', '{"Reservations":[{"Instances":[{"State":{"Name":"terminated"},"VpcId":"vpc-0onprem"}]}]}'] },
+    { cmd: "aws", match: "^ec2 release-address --allocation-id eipalloc-0router", out: ["", ""], code: [254, 0], err: [inUse, ""] },
+    { cmd: "aws", match: "^ec2 describe-network-interfaces --network-interface-ids eni-0router", out: '{"NetworkInterfaces":[{"Status":"available","VpcId":"vpc-0onprem"}]}' },
+    { cmd: "aws", match: "^ec2 describe-vpcs --filters Name=tag:wg-admin", out: '{"Vpcs":[]}' },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["ans-22-s2s-vpn"], ENV);
+  assert.equal(r.status, 0, r.out);
+  const all = w.calls();
+  const at = (re) => all.findIndex((c) => re.test(c));
+  const releases = all.map((c, k) => (/^aws ec2 release-address --allocation-id eipalloc-0router/.test(c) ? k : -1)).filter((k) => k >= 0);
+  assert.equal(releases.length, 2, all.join("\n"));
+  assert.ok(at(/^aws ec2 terminate-instances --instance-ids i-0router/) < releases[0], "the first ask follows the instance");
+  assert.ok(releases[0] < at(/^aws ec2 delete-network-interface --network-interface-id eni-0router/) && at(/^aws ec2 delete-network-interface --network-interface-id eni-0router/) < releases[1], "asked again after the interface is deleted");
+  assert.doesNotMatch(r.out, /could not release ec2:elastic-ip|left behind: ec2:elastic-ip/);
+  assert.ok(!all.some((c) => /^aws ec2 (release|disassociate)-address .*eipalloc-0wg/.test(c)), "never the VPN server's address");
+  w.cleanup();
+});
+
+test("residual R2: an Elastic IP still in use after the fabric is a bounded warning", { skip }, () => {
+  const inUse = "An error occurred (InvalidIPAddress.InUse) when calling the ReleaseAddress operation: x";
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: JSON.stringify({ ResourceTagMappingList: [{ ResourceARN: A("elastic-ip/eipalloc-0stuck"), Tags: [{ Key: "cloudlabs-lab", Value: "ans-22-s2s-vpn" }] }] }) },
+    { cmd: "aws", match: "^ec2 release-address --allocation-id eipalloc-0stuck", out: "", code: 254, err: inUse },
+    ...EMPTY_IAM,
+  ]);
+  const r = w.run("infra/ci/lab-aws-safety-net.sh", ["ans-22-s2s-vpn"], ENV);
+  assert.equal(r.status, 0, r.out);
+  assert.equal(calls3(w, /^aws ec2 release-address/).length, 4, "once before the fabric, at most three after");
+  assert.match(r.out, /::warning::.*left behind: ec2:elastic-ip eipalloc-0stuck is still in use/);
+  w.cleanup();
+});
+
 test("ruling P10 (M-4): a CloudFront disable that failed is retried on the next pass", { skip }, () => {
   const w = world([
     { cmd: "aws", match: "^resourcegroupstaggingapi get-resources .*--region us-east-1", out: tagged("arn:aws:cloudfront::123456789012:distribution/E1ABC") },
