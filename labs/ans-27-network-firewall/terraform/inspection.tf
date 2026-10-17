@@ -10,11 +10,10 @@
 # are back through the transit gateway. From the NAT gateway's subnet,
 # replies for the spokes go through the firewall endpoint again, so the
 # firewall sees both directions of every flow. The endpoint's id is read
-# from the firewall's own status (local.fw_endpoint).
+# from the firewall's own status, written out in each of the two routes.
 
 locals {
-  insp_cidr   = cidrsubnet(var.address_space, 2, 2)
-  fw_endpoint = one([for s in aws_networkfirewall_firewall.lab.firewall_status[0].sync_states : s.attachment[0].endpoint_id])
+  insp_cidr = cidrsubnet(var.address_space, 2, 2)
 }
 
 resource "aws_vpc" "inspection" {
@@ -83,7 +82,7 @@ resource "aws_route_table" "insp_public" {
 resource "aws_route" "insp_tgw_default" {
   route_table_id         = aws_route_table.insp_tgw.id
   destination_cidr_block = "0.0.0.0/0"
-  vpc_endpoint_id        = local.fw_endpoint
+  vpc_endpoint_id        = one([for s in aws_networkfirewall_firewall.lab.firewall_status[0].sync_states : s.attachment[0].endpoint_id])
 }
 
 resource "aws_route" "insp_firewall_default" {
@@ -108,7 +107,7 @@ resource "aws_route" "insp_public_default" {
 resource "aws_route" "insp_public_slot" {
   route_table_id         = aws_route_table.insp_public.id
   destination_cidr_block = var.address_space
-  vpc_endpoint_id        = local.fw_endpoint
+  vpc_endpoint_id        = one([for s in aws_networkfirewall_firewall.lab.firewall_status[0].sync_states : s.attachment[0].endpoint_id])
 }
 
 resource "aws_route_table_association" "insp_tgw" {

@@ -45,8 +45,8 @@ test("ruling P15: the transit gateway's defaults are off; spokes go to the inspe
 
 test("the inspection VPC sends both directions through the firewall endpoint, read from the firewall's own status", () => {
   const { lab, tf } = awsLab(ID);
-  assert.match(tf, /fw_endpoint = one\(\[for s in aws_networkfirewall_firewall\.lab\.firewall_status\[0\]\.sync_states : s\.attachment\[0\]\.endpoint_id\]\)/);
-  for (const r of ["insp_tgw_default", "insp_public_slot"]) assert.match(block(lab, "aws_route", r), /vpc_endpoint_id\s+= local\.fw_endpoint/, r);
+  assert.doesNotMatch(tf, /local\.fw_endpoint/);
+  for (const r of ["insp_tgw_default", "insp_public_slot"]) assert.match(block(lab, "aws_route", r), /vpc_endpoint_id\s+= one\(\[for s in aws_networkfirewall_firewall\.lab\.firewall_status\[0\]\.sync_states : s\.attachment\[0\]\.endpoint_id\]\)/, r);
   assert.match(block(lab, "aws_route", "insp_public_slot"), /destination_cidr_block = var\.address_space/);
   assert.match(block(lab, "aws_route", "insp_firewall_slot"), /transit_gateway_id\s+= aws_ec2_transit_gateway\.lab\.id/);
   assert.match(block(lab, "aws_route", "insp_firewall_default"), /nat_gateway_id\s+= aws_nat_gateway\.inspection\.id/);

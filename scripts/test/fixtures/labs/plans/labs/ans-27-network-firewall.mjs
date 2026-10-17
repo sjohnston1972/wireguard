@@ -9,10 +9,9 @@
 // and routes), firewall.tf (two rule groups, the policy, the firewall and the
 // 20-second wait), logs.tf (the alerts bucket, its policy and the logging
 // configuration) and compute.tf (the security groups and vm-a, vm-b). The
-// firewall endpoint's id is read from the firewall's own status, so it is
-// unknown at plan; the reference list for those routes is the path Terraform
-// is expected to print (a drafted guess, without local.fw_endpoint, which the
-// scope check cannot read through; recalibrated from a real plan later).
+// firewall endpoint's id is read from the firewall's own status, written inline in each of the
+// two routes, so it is unknown at plan and the routes record that expression's references as
+// written (a drafted guess at the printed forms, recalibrated from a real plan later).
 
 import { ACCOUNT, AWS_PROVIDER_CONFIG, al2023Instance, awsData, cidrsubnet, ctxAws, ref, tagged, templateResources } from "../common-aws.mjs";
 
@@ -25,7 +24,7 @@ export default () => {
   const bucket = `cloudlabs-${c.prefix}-nfwlogs`;
   const bucketArn = `arn:aws:s3:::${bucket}`;
   const tgwId = ref("aws_ec2_transit_gateway.lab", "id");
-  const fwEndpoint = ["aws_networkfirewall_firewall.lab.firewall_status", "aws_networkfirewall_firewall.lab"];
+  const fwEndpoint = ["aws_networkfirewall_firewall.lab.firewall_status[0].sync_states", "aws_networkfirewall_firewall.lab.firewall_status[0]", "aws_networkfirewall_firewall.lab.firewall_status", "aws_networkfirewall_firewall.lab"];
   const route = (key, table, values, unknownGw, refGw, refs = {}) => ({
     address: `aws_route.${key}`,
     values,
