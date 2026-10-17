@@ -74,7 +74,7 @@ locals {
       "systemctl enable --now lab-health.service",
       "for i in 1 2 3 4 5; do dnf install -y gcc gcc-c++ cmake make git iproute-tc tcpdump && break; sleep 10; done",
       "git clone --depth 1 --branch v3.3 https://github.com/aws-samples/aws-gateway-load-balancer-tunnel-handler /opt/gwlbtun",
-      "cd /opt/gwlbtun && cmake . && make -j2",
+      "cd /opt/gwlbtun && cmake . && make",
       "systemctl enable --now gwlbtun.service",
     ]
   }))}"
