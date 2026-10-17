@@ -1032,6 +1032,35 @@ test("NAT fix: Unblock deletes the lab's NAT gateway and waits until AWS has it 
   w.cleanup();
 });
 
+// Final fix F5: a learner's own mirror session (it carries the lab's tag: the role refuses one without) still using the
+// lab's target or filter would make terraform destroy fail, so Unblock deletes the lab's sessions first.
+test("final fix F5: Unblock deletes the lab's traffic mirror sessions before the destroy; never a wg-admin one; a refusal is a warning", { skip }, () => {
+  const LAB = "ans-28-flow-logs-fix";
+  const s = (id, tags) => ({ TrafficMirrorSessionId: id, Tags: tags });
+  const mine = [{ Key: "cloudlabs-lab", Value: LAB }];
+  const sessions = JSON.stringify({ TrafficMirrorSessions: [
+    s("tms-0lab", mine),
+    s("tms-0hand", [...mine, { Key: "Name", Value: "learner" }]),
+    s("tms-0wg", [...mine, { Key: "wg-admin", Value: "vpn" }]),
+    s("tms-0other", [{ Key: "cloudlabs-lab", Value: "ans-27-network-firewall" }]),
+    s("tms-0none", []),
+  ] });
+  const w = world([
+    { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged() },
+    { cmd: "aws", match: "^ec2 describe-traffic-mirror-sessions", out: sessions },
+    { cmd: "aws", match: "^ec2 delete-traffic-mirror-session --traffic-mirror-session-id tms-0hand", out: "", code: 254, err: "An error occurred (UnauthorizedOperation) when calling the DeleteTrafficMirrorSession operation: x" },
+  ]);
+  const r = w.run("infra/ci/lab-unblock-aws.sh", [LAB], { ...ENV, LAB_REGIONS: "eu-west-2 eu-west-1 us-east-1" });
+  assert.equal(r.status, 0, r.out);
+  const deletes = calls3(w, /^aws ec2 delete-traffic-mirror-session/);
+  assert.deepEqual(deletes.map((c) => c.split(" --region")[0]).sort(), ["aws ec2 delete-traffic-mirror-session --traffic-mirror-session-id tms-0hand", "aws ec2 delete-traffic-mirror-session --traffic-mirror-session-id tms-0hand", "aws ec2 delete-traffic-mirror-session --traffic-mirror-session-id tms-0lab", "aws ec2 delete-traffic-mirror-session --traffic-mirror-session-id tms-0lab"], "the lab's two, in each lab region");
+  assert.deepEqual(calls3(w, /^aws ec2 describe-traffic-mirror-sessions/).map((c) => /--region (\S+)/.exec(c)[1]).sort(), ["eu-west-1", "eu-west-2"], "lab regions only, never us-east-1");
+  assert.match(r.out, /::warning::.*tms-0wg.*VPN server/);
+  assert.match(r.out, /::warning::unblock: could not delete traffic mirror session tms-0hand \(UnauthorizedOperation\)/);
+  assert.match(r.out, /unblock: delete traffic mirror session tms-0lab/);
+  w.cleanup();
+});
+
 test("NAT fix: a NAT gateway already deleting is only waited for, never deleted again", { skip }, () => {
   const w = world([
     { cmd: "aws", match: "^resourcegroupstaggingapi get-resources", out: tagged() },
