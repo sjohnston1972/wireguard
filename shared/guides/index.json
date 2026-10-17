@@ -34,6 +34,13 @@
    "kind": "architecture"
   }
  ],
+ "ans-25-load-balancing": [
+  {
+   "file": "architecture.svg",
+   "title": "Load balancing in depth: ALB, NLB and GWLB: architecture",
+   "kind": "architecture"
+  }
+ ],
  "az104-01-identity": [
   {
    "file": "architecture.svg",

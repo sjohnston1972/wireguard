@@ -1,0 +1,7 @@
+# Labs catalogue learning content (labs redesign spec §5). Outside the lab folder: editing it never needs a version bump.
+objective: Use all three Elastic Load Balancing types for what each does best, and see an appliance inspect traffic in line.
+learn:
+  - Split HTTPS traffic by weight and by path on an ALB with an imported certificate
+  - Give an NLB a fixed address and read the proxy protocol header it adds
+  - Send a subnet's internet traffic through a Gateway Load Balancer appliance and back
+learning_min: 75

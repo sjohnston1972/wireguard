@@ -1,0 +1,76 @@
+# Lab ans-25 (AWS labs batch 4). ANS-C01 ((V) the wording against the current
+# exam guide): Network Design (choosing a load balancer: ALB listener rules
+# and weighted target groups, NLB static addresses, TLS and proxy protocol,
+# GWLB appliances behind an endpoint); Network Security, Compliance, and
+# Governance (TLS termination with an imported certificate, inline
+# inspection of a subnet's internet traffic).
+# London list prices × 0.75 (labs-verify --aws-prices); the three load
+# balancers, the GWLB endpoint and the NAT gateway bill each started hour
+# whole (V, A20). The NLB, GWLB and GWLB endpoint filters are (V, Task 23):
+# if labs-verify finds no single product the item becomes authored-only.
+# Capacity units are authored for light test traffic; ACM charges nothing for
+# an imported certificate. The appliance is a t4g.small (ruling P14): it
+# compiles AWS's tunnel handler at boot.
+id: ans-25-load-balancing
+version: 1
+cloud: aws
+title: "Load balancing in depth: ALB, NLB and GWLB"
+summary: >-
+  All three Elastic Load Balancing types in one VPC: an ALB with an HTTP redirect, an imported certificate, weighted
+  blue and green target groups and a path rule; an NLB on a static Elastic IP with TLS and proxy protocol; and a
+  Gateway Load Balancer sending one subnet's internet traffic through a GENEVE appliance.
+exam: ANS-C01
+skill_areas: [ans.design, ans.security]
+level: expert
+type: explore
+prerequisites: [soa-03-auto-scaling]
+cost:
+  items:
+    - name: "Application Load Balancer, hourly"
+      gbp_h: 0.0199
+      whole_hours: true
+      aws_price: { service: AWSELB, unit: Hrs, filters: { productFamily: "Load Balancer-Application", usagetype: "{usage}-LoadBalancerUsage" } }
+    - { name: "ALB capacity units, light test traffic", gbp_h: 0.0060 }
+    - name: "Network Load Balancer, hourly"
+      gbp_h: 0.0198
+      whole_hours: true
+      aws_price: { service: AWSELB, unit: Hrs, filters: { productFamily: "Load Balancer-Network", usagetype: "{usage}-LoadBalancerUsage" } }
+    - { name: "NLB capacity units, light test traffic", gbp_h: 0.0045 }
+    - name: "Gateway Load Balancer, hourly"
+      gbp_h: 0.0103
+      whole_hours: true
+      aws_price: { service: AWSELB, unit: Hrs, filters: { productFamily: "Load Balancer-Gateway", usagetype: "{usage}-LoadBalancerUsage" } }
+    - name: "Gateway Load Balancer endpoint, one AZ"
+      gbp_h: 0.0075
+      whole_hours: true
+      aws_price: { service: AmazonVPC, unit: Hrs, filters: { usagetype: "{usage}-VpcEndpoint-GWLBE-Hours" } }
+    - name: "NAT gateway, hourly"
+      gbp_h: 0.0375
+      whole_hours: true
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { productFamily: "NAT Gateway", usagetype: "{usage}-NatGateway-Hours" } }
+    - name: "Public IPv4 addresses (the ALB's 2, the NAT gateway's, the NLB's Elastic IP)"
+      gbp_h: 0.0038
+      qty: 4
+      aws_price: { service: AmazonVPC, unit: Hrs, filters: { group: VPCPublicIPv4Address, usagetype: "{usage}-PublicIPv4:InUseAddress" } }
+    - name: "EC2 t4g.small, Linux (the appliance)"
+      gbp_h: 0.0141
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.small, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EC2 t4g.nano, Linux (blue, green and the client)"
+      gbp_h: 0.0035
+      qty: 3
+      aws_price: { service: AmazonEC2, unit: Hrs, filters: { instanceType: t4g.nano, operatingSystem: Linux, tenancy: Shared, preInstalledSw: NA, capacitystatus: Used } }
+    - name: "EBS gp3 root volume, 8 GiB"
+      gbp_h: 0.0008
+      qty: 4
+      aws_price: { service: AmazonEC2, unit: GB-Mo, gb: 8, filters: { productFamily: Storage, volumeApiName: gp3 } }
+    - { name: "ACM imported certificate", gbp_h: 0 }
+    - { name: "EC2 Instance Connect Endpoint", gbp_h: 0 }
+  pricey: null
+timing: { deploy_min: 10, destroy_min: 8, session_h: 2, max_h: 3 }
+capacity: { instance_types: [t4g.small, t4g.nano, t4g.nano, t4g.nano] }
+regions: { secondary: null }
+connectivity: { peering: optional, dns_link: false, subnets_used: 1 }
+identity:
+  creates: []
+  roles: []
+  governance: false
