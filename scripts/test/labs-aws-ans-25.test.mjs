@@ -60,7 +60,9 @@ test("the NLB: one Elastic IP subnet mapping, its own security group, TLS 443 on
   for (const re of [/load_balancer_type\s+= "network"/, /security_groups\s+= \[aws_security_group\.nlb\.id\]/, /allocation_id = aws_eip\.nlb\.id/]) assert.match(nlb, re);
   assert.match(block(lab, "aws_lb_listener", "tls"), /protocol\s+= "TLS"[\s\S]*certificate_arn\s+= aws_acm_certificate\.app\.arn/);
   assert.match(block(lab, "aws_lb_listener", "pp"), /port\s+= 8080/);
-  assert.match(block(lab, "aws_lb_target_group", "pp"), /proxy_protocol_v2 = true/);
+  assert.match(block(lab, "aws_lb_target_group", "pp"), /proxy_protocol_v2\s+= true/);
+  assert.match(block(lab, "aws_lb_target_group", "pp"), /preserve_client_ip\s+= "false"/);
+  assert.match(block(lab, "aws_instance", "green"), /subnet_id\s+= aws_subnet\.private\[0\]\.id/); // the NLB has one zone
   assert.match(block(lab, "aws_vpc_security_group_ingress_rule", "web_from_nlb"), /referenced_security_group_id = aws_security_group\.nlb\.id/);
 });
 
@@ -78,6 +80,8 @@ test("ruling P13: the GWLB's endpoint service is this account's only, its endpoi
   assert.match(app, /instance_type\s+= "t4g\.small"/);
   assert.doesNotMatch(tf, /associate_public_ip_address|aws_eip_association/);
   assert.match(tf, /aws-gateway-load-balancer-tunnel-handler/);
+  assert.match(tf, /create-passthrough\.sh/);
+  assert.doesNotMatch(tf, /create-route\.sh/);
   assert.equal([...tf.matchAll(/resource "aws_nat_gateway"/g)].length, 1);
 });
 

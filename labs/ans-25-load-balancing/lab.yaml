@@ -36,6 +36,7 @@ cost:
       whole_hours: true
       aws_price: { service: AWSELB, unit: Hrs, filters: { productFamily: "Load Balancer-Network", usagetype: "{usage}-LoadBalancerUsage" } }
     - { name: "NLB capacity units, light test traffic", gbp_h: 0.0045 }
+    - { name: "GWLB capacity units, light test traffic", gbp_h: 0.003 }
     - name: "Gateway Load Balancer, hourly"
       gbp_h: 0.0103
       whole_hours: true

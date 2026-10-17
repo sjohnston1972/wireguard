@@ -184,7 +184,7 @@ export default () => {
         },
       },
       tg("web", `tgn-${p}-web`, { port: 80, protocol: "TCP", tags: { Name: "tgn-web" } }),
-      tg("pp", `tgn-${p}-pp`, { port: 80, protocol: "TCP", proxy_protocol_v2: true, tags: { Name: "tgn-pp" } }),
+      tg("pp", `tgn-${p}-pp`, { port: 80, protocol: "TCP", proxy_protocol_v2: true, preserve_client_ip: "false", tags: { Name: "tgn-pp" } }),
       attach("nlb_web", "aws_lb_target_group.web", "aws_instance.blue"),
       attach("nlb_pp", "aws_lb_target_group.pp", "aws_instance.green"),
       {
@@ -236,7 +236,7 @@ export default () => {
       sg("client", "lab-client", "vm-client: ping from the lab VPC"),
       rule("ingress", "client_ping", "aws_security_group.client", { cidr_ipv4: c.vpcCidr, ip_protocol: "icmp", from_port: -1, to_port: -1 }, { cidr_ipv4: ["local.vpc_cidr"] }),
       vm("blue", "vm-blue", "t4g.nano", "aws_subnet.private[0]", ["aws_security_group.web"], "blue_cloud_init"),
-      vm("green", "vm-green", "t4g.nano", "aws_subnet.private[1]", ["aws_security_group.web"], "green_cloud_init"),
+      vm("green", "vm-green", "t4g.nano", "aws_subnet.private[0]", ["aws_security_group.web"], "green_cloud_init"),
       vm("client", "vm-client", "t4g.nano", "aws_subnet.inspected", ["aws_security_group.client"], "cloud_init"),
       vm("appliance", "vm-appliance", "t4g.small", "aws_subnet.appliance", ["aws_security_group.appliance"], "appliance_cloud_init"),
     ],

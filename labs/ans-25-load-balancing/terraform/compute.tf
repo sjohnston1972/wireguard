@@ -3,7 +3,7 @@
 # Plain English: lab 25's four instances, each also in the template's sg-vms
 # (SSH from the Instance Connect Endpoint, anything from the VPN server's
 # range when peered, everything out). vm-blue (snet-private-1) and vm-green
-# (snet-private-2), t4g.nano, each serve a page naming itself on port 80
+# (also snet-private-1: the NLB has one zone), t4g.nano, each serve a page naming itself on port 80
 # (vm-green also /green/) to the ALB and the NLB only (sg-web). vm-client
 # (t4g.nano, snet-inspected) is the machine whose internet traffic the
 # appliance inspects. vm-appliance (t4g.small, snet-appliance; ruling P14)
@@ -42,7 +42,7 @@ locals {
     "ConditionPathExists=/opt/gwlbtun/gwlbtun",
     "[Service]",
     "WorkingDirectory=/opt/gwlbtun",
-    "ExecStart=/opt/gwlbtun/gwlbtun -c /opt/gwlbtun/example-scripts/create-route.sh -r /opt/gwlbtun/example-scripts/create-route.sh",
+    "ExecStart=/opt/gwlbtun/gwlbtun -c /opt/gwlbtun/example-scripts/create-passthrough.sh",
     "Restart=always",
     "[Install]",
     "WantedBy=multi-user.target",
@@ -68,15 +68,13 @@ locals {
       { path = "/srv/www/index.html", permissions = "0644", content = "vm-appliance health check\n" },
       { path = "/etc/systemd/system/lab-health.service", permissions = "0644", content = local.health_unit },
       { path = "/etc/systemd/system/gwlbtun.service", permissions = "0644", content = local.gwlbtun_unit },
-      { path = "/etc/sysctl.d/90-lab-forward.conf", permissions = "0644", content = "net.ipv4.ip_forward = 1\n" },
     ]
     runcmd = [
-      "sysctl --system",
       "systemctl daemon-reload",
       "systemctl enable --now lab-health.service",
-      "for i in 1 2 3 4 5; do dnf install -y gcc gcc-c++ cmake make git && break; sleep 10; done",
-      "git clone --depth 1 https://github.com/aws-samples/aws-gateway-load-balancer-tunnel-handler /opt/gwlbtun",
-      "cd /opt/gwlbtun && cmake . && make",
+      "for i in 1 2 3 4 5; do dnf install -y gcc gcc-c++ cmake make git iproute-tc tcpdump && break; sleep 10; done",
+      "git clone --depth 1 --branch v3.3 https://github.com/aws-samples/aws-gateway-load-balancer-tunnel-handler /opt/gwlbtun",
+      "cd /opt/gwlbtun && cmake . && make -j2",
       "systemctl enable --now gwlbtun.service",
     ]
   }))}"
@@ -167,7 +165,7 @@ resource "aws_instance" "blue" {
 resource "aws_instance" "green" {
   ami                    = data.aws_ssm_parameter.al2023_arm64.insecure_value
   instance_type          = "t4g.nano"
-  subnet_id              = aws_subnet.private[1].id
+  subnet_id              = aws_subnet.private[0].id
   vpc_security_group_ids = [aws_security_group.vms.id, aws_security_group.web.id]
   user_data              = local.green_cloud_init
 

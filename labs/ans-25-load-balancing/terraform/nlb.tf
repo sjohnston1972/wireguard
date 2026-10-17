@@ -66,12 +66,13 @@ resource "aws_lb_target_group" "web" {
 }
 
 resource "aws_lb_target_group" "pp" {
-  name              = "tgn-${var.name_prefix}-pp"
-  port              = 80
-  protocol          = "TCP"
-  vpc_id            = aws_vpc.lab.id
-  proxy_protocol_v2 = true
-  tags              = { Name = "tgn-pp" }
+  name               = "tgn-${var.name_prefix}-pp"
+  port               = 80
+  protocol           = "TCP"
+  vpc_id             = aws_vpc.lab.id
+  proxy_protocol_v2  = true
+  preserve_client_ip = "false"
+  tags               = { Name = "tgn-pp" }
 }
 
 resource "aws_lb_target_group_attachment" "nlb_web" {

@@ -3,7 +3,7 @@ From the ANS-C01 outline: design and implement load balancing for performance, a
 
 ## What it deploys
 
-- The VPC `vpc-lab` (the slot's first /20) with seven subnets: `snet-private-1/2` (the web instances), `snet-public-1/2` (the ALB, the NLB and the NAT gateway `nat-lab`), and in the first zone `snet-appliance`, `snet-gwlbe` and `snet-inspected`
+- The VPC `vpc-lab` (the slot's first /20) with seven subnets: `snet-private-1/2` (the web instances live in the first; the second gives the ALB its second zone), `snet-public-1/2` (the ALB, the NLB and the NAT gateway `nat-lab`), and in the first zone `snet-appliance`, `snet-gwlbe` and `snet-inspected`
 - A certificate for `app.<name prefix>.internal`, signed by a CA the lab makes ("cloudlabs ans-25 CA") and imported to ACM as `cert-app`
 - The ALB `alb-<name prefix>` (Name `alb-app`): HTTP 80 redirects to HTTPS; HTTPS 443 forwards 80% to `tg-blue` (`vm-blue`) and 20% to `tg-green` (`vm-green`), and a rule sends `/green/*` to green only
 - The NLB `nlb-<name prefix>` (Name `nlb-app`) on the Elastic IP `eip-nlb`: TLS 443 to `vm-blue` on port 80, and TCP 8080 to `vm-green` with a proxy protocol v2 header
@@ -16,7 +16,7 @@ The lab is ready in about 10 minutes, but the appliance compiles its software fo
 ```text
 lab-ans-25-load-balancing (London), vpc-lab
   you --HTTP 80 (redirect) / HTTPS 443--> alb-app --80%--> vm-blue (snet-private-1)
-                                                  --20%, and /green/*--> vm-green (snet-private-2)
+                                                  --20%, and /green/*--> vm-green (snet-private-1)
   you --TLS 443--> nlb-app (eip-nlb) --TCP 80--> vm-blue
   you --TCP 8080--> nlb-app --proxy protocol v2--> vm-green
   vm-client (snet-inspected) --0.0.0.0/0--> vpce-gwlb --> gwlb-appliance --GENEVE 6081--> vm-appliance
@@ -28,7 +28,7 @@ lab-ans-25-load-balancing (London), vpc-lab
 
 - Count the split: `for i in $(seq 20); do curl -sk https://<the ALB's name>/; done | sort | uniq -c` gives about 16 blue and 4 green. Ask for `https://<the ALB's name>/green/` and it is always green. `curl -sI http://<the ALB's name>/` shows the 301 redirect to HTTPS.
 - Read the certificate both load balancers present: `openssl s_client -connect <the NLB's address>:443 -servername app.<name prefix>.internal </dev/null | openssl x509 -noout -subject -issuer -dates`. In ACM (London) it is listed as Imported: ACM never renews an imported certificate, so you would import its replacement yourself.
-- Try proxy protocol: `curl http://<the NLB's address>:8080/` comes back as an error page, because `vm-green`'s simple web server does not expect the extra header. On `vm-green` (Instance Connect) run `sudo dnf install -y tcpdump && sudo tcpdump -A -n -i any tcp port 80` and call it again: the first bytes are the proxy protocol v2 signature, followed by your own public address. Real servers (nginx, HAProxy) read that header to log the true client.
+- Try proxy protocol: `curl http://<the NLB's address>:8080/` fails with `curl: (52) Empty reply from server`, because `vm-green`'s simple web server does not understand the extra header. On `vm-green` (Instance Connect) run `sudo dnf install -y tcpdump && sudo tcpdump -X -n -i any tcp port 80` and call it again: the first bytes are the proxy protocol v2 signature (`\r\n\r\n\0\r\nQUIT\n`), followed by your own public address as 4 bytes in hex. Real servers (nginx, HAProxy) read that header to log the true client.
 - Follow a packet through the appliance: on `vm-client`, `curl -sI https://aws.amazon.com`; on `vm-appliance`, `sudo tcpdump -n -i any udp port 6081` shows the same traffic wrapped in GENEVE, and `ip link` shows the `gwi-` interfaces `gwlbtun` made. Then `sudo systemctl stop gwlbtun` on the appliance: `vm-client` loses the internet, yet the target stays healthy, because the health check on port 8080 never touches the data path. Start it again with `sudo systemctl start gwlbtun`.
 - Time the appliance's build: `aws ec2 get-console-output --instance-id <vm-appliance's id> --latest --output text | tail -40` in CloudShell shows the compile; `systemctl status gwlbtun` on the appliance shows when it started.
 
