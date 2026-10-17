@@ -26,10 +26,10 @@ lab-ans-27-network-firewall (London)
 ## Things to try
 
 - On `vm-a` run the two `curl` lines from Connect: `https://aws.amazon.com` answers, `https://example.com` connects and then hangs until the timeout. The firewall let the TCP handshake through, read the TLS server name, found no rule passing it, and dropped the rest.
-- Read the alerts a few minutes later (the firewall delivers logs every few minutes): the `aws s3 ls` line lists the files, and `aws s3 cp s3://<the bucket>/<a file's key> - | gunzip | head -5` shows records naming the source, the destination, `example.com` and the action, `blocked`.
+- Read the alerts a few minutes later (the firewall delivers logs every few minutes). Run these in CloudShell, not on `vm-a`, which has no instance profile: the `aws s3 ls` line lists the files, and `aws s3 cp s3://<the bucket>/<a file's key> - | gunzip | head -5` shows records naming the source, the destination, `example.com` and the action, `blocked`.
 - Between the spokes: on `vm-b`, `ping -c 3 <vm-a's address>` gets no answer, and the alert log never mentions it: the stateless rule dropped it before the stateful engine saw it, and stateless drops are not logged. `curl --max-time 5 http://<vm-a's address>` from `vm-b` fails too, but leaves an alert: the allow-list only passes named domains from the slot to outside it, and the policy drops everything else.
 - Change the rules: in the VPC console, Network Firewall, Network Firewall rule groups, open `lab-ans-27-network-firewall-domains`, add `.example.com` to its domain list and save. A minute or so later the `example.com` line on `vm-a` answers.
-- Read the routing that makes it work: in the VPC console, Transit gateway route tables, `tgw-rt-spokes` has one route (to the inspection attachment) and `tgw-rt-inspection` has both spokes' ranges. Then open `tgwa-inspection` and note appliance mode is on: without it, the two directions of a flow between spokes could reach the firewall in different zones and be dropped as half a conversation.
+- Read the routing that makes it work: in the VPC console, Transit gateway route tables, `tgw-rt-spokes` has one route (to the inspection attachment) and `tgw-rt-inspection` has both spokes' ranges. Then open `tgwa-inspection` and note appliance mode is on. This lab has one firewall zone, so you cannot see what it does here: with firewall endpoints in two or more zones, without appliance mode a reply could return through a different zone's endpoint and be dropped as half a conversation.
 
 ## Not built here
 
