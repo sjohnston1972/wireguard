@@ -12,7 +12,7 @@
 resource "aws_wafv2_web_acl" "lab" {
   region      = "us-east-1"
   name        = "lab-${var.lab_id}-waf"
-  description = "lab ${var.lab_id}: the CloudFront distribution's web ACL"
+  description = "lab ${var.lab_id}: web ACL for the CloudFront distribution"
   scope       = "CLOUDFRONT"
 
   default_action {
